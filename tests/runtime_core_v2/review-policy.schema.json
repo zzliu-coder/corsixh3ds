@@ -1,6 +1,30 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://corsixth.example/schemas/runtime-core-review-policy-v5.json",
+  "$id": "https://corsixth.example/schemas/runtime-core-review-policy-v6.json",
+  "$defs": {
+    "lstat_closure": {
+      "type": "object",
+      "required": ["algorithm", "root_realpath", "node_count", "nodes", "sha256"],
+      "properties": {
+        "algorithm": {"const": "lstat-tree-v1"},
+        "root_realpath": {"type": "string", "pattern": "^/"},
+        "node_count": {"type": "integer", "minimum": 1},
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {"type": "object", "required": ["path", "type", "mode"], "properties": {"path": {"type": "string"}, "type": {"const": "directory"}, "mode": {"type": "string"}}, "additionalProperties": false},
+              {"type": "object", "required": ["path", "type", "mode", "bytes", "sha256"], "properties": {"path": {"type": "string"}, "type": {"const": "regular"}, "mode": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}, "additionalProperties": false},
+              {"type": "object", "required": ["path", "type", "mode", "target", "resolved_path"], "properties": {"path": {"type": "string"}, "type": {"const": "symlink"}, "mode": {"type": "string"}, "target": {"type": "string"}, "resolved_path": {"type": "string"}}, "additionalProperties": false}
+            ]
+          }
+        },
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    }
+  },
   "type": "object",
   "required": [
     "schema",
@@ -18,16 +42,20 @@
     "rh10_provenance",
     "upstream_source",
     "closure_inputs",
+    "host_regression",
+    "simulator_semantic_baseline",
+    "tool_implementation_identity",
+    "xbuild_input_closures",
     "fresh_chain",
     "acceptance_inputs",
     "limits"
   ],
   "properties": {
     "schema": {
-      "const": "cth3ds.runtime-core-review-policy/v5"
+      "const": "cth3ds.runtime-core-review-policy/v6"
     },
     "stage_id": {
-      "const": "C3"
+      "const": "C3-R5"
     },
     "policy_id": {
       "type": "string",
@@ -48,19 +76,19 @@
       ],
       "properties": {
         "commit": {
-          "const": "bedf567a4810d0479fba5ebcae7b49020d2988f3"
+          "const": "116048377c458efd943cf10ceb37b57589994ad0"
         },
         "tree": {
-          "const": "da4adfa31e556dec208d1dfd9074208a92f69b05"
+          "const": "622a39bb3489bf4f8197cf57074b094078b9657e"
         },
         "parent": {
-          "const": "e4e22be7c4694bce1c1432a3ba990eab47a1b485"
+          "const": "06b2e3836f9beaac8860fb4ecd47f15356904215"
         },
         "tracked_fingerprint_v3": {
-          "const": "75a7d14299f875163d7e8891768831c735fa775b6066c6c8667ab2aaa1f2463b"
+          "const": "7c68a659169ca5a4259f1669f56bf28d1b0f16c7f510eb752a45650c5f5e9d50"
         },
         "tracked_entries": {
-          "const": 174
+          "const": 193
         }
       },
       "additionalProperties": false
@@ -74,15 +102,19 @@
         "expected_tree",
         "expected_candidate_fingerprint",
         "expected_candidate_entries",
-        "require_clean"
+        "require_clean",
+        "ancestry"
       ],
       "properties": {
         "required_first_parent": {
-          "const": "bedf567a4810d0479fba5ebcae7b49020d2988f3"
+          "const": "116048377c458efd943cf10ceb37b57589994ad0"
         },
         "forbidden_ancestors": {
           "type": "array",
           "prefixItems": [
+            {
+              "const": "9ff2b84114df9070d578c88fe927255369c12b6d"
+            },
             {
               "const": "4b3bea525923a9ba6199c7b08f36aa814863f4e4"
             },
@@ -97,8 +129,8 @@
             }
           ],
           "items": false,
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 5,
+          "maxItems": 5,
           "uniqueItems": true
         },
         "expected_commit": {
@@ -115,10 +147,29 @@
         },
         "expected_candidate_entries": {
           "type": "integer",
-          "minimum": 174
+          "minimum": 192
         },
         "require_clean": {
           "const": true
+        },
+        "ancestry": {
+          "type": "object",
+          "required": ["algorithm", "object_format", "head", "head_tree", "head_parents", "first_parent_chain", "roots", "commit_count", "edge_count", "commits", "forbidden_intersection", "closure_sha256"],
+          "properties": {
+            "algorithm": {"const": "raw-full-parent-closure-v1"},
+            "object_format": {"const": "sha1"},
+            "head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "head_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "head_parents": {"type": "array", "prefixItems": [{"const": "116048377c458efd943cf10ceb37b57589994ad0"}], "items": false, "minItems": 1, "maxItems": 1},
+            "first_parent_chain": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 2, "uniqueItems": true},
+            "roots": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 1, "uniqueItems": true},
+            "commit_count": {"type": "integer", "minimum": 2},
+            "edge_count": {"type": "integer", "minimum": 1},
+            "commits": {"type": "array", "minItems": 2, "items": {"type": "object", "required": ["oid", "tree", "parents", "raw_sha256"], "properties": {"oid": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "parents": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}}, "raw_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}, "additionalProperties": false}},
+            "forbidden_intersection": {"const": []},
+            "closure_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -710,6 +761,58 @@
       "maxItems": 9,
       "uniqueItems": true
     },
+    "host_regression": {
+      "type": "object",
+      "required": ["expected_skipped", "unexpected_skipped", "allowed_skip_reason_prefixes"],
+      "properties": {
+        "expected_skipped": {"type": "integer", "minimum": 0},
+        "unexpected_skipped": {"const": 0},
+        "allowed_skip_reason_prefixes": {
+          "const": [
+            "Lua 5.4 runtime unavailable:",
+            "case-insensitive filesystem cannot create collision fixture",
+            "current devkitARM final-ELF proof was not supplied"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "simulator_semantic_baseline": {
+      "type": "object",
+      "required": ["top", "bottom", "trace"],
+      "properties": {
+        "top": {"const": "4a80c15cd28f7683506feb125162cae3d88066499be1f060655cfd068431e8f7"},
+        "bottom": {"const": "8f5bebc5c546bdafb26cfe3c2d3351664e9d4c8eb2c7d915e34d5894d0e7061f"},
+        "trace": {"const": "3bef0ea12d465e634cdc2c489dfe332e1fcafc93f2a9cc2d673ed692098404c8"}
+      },
+      "additionalProperties": false
+    },
+    "tool_implementation_identity": {
+      "type": "object",
+      "required": ["algorithm", "developer_dir", "macos_sdk_realpath", "host_target", "tools", "sha256"],
+      "properties": {
+        "algorithm": {"const": "dispatched-tool-identity-v1"},
+        "developer_dir": {"type": "string", "pattern": "^/"},
+        "macos_sdk_realpath": {"type": "string", "pattern": "^/"},
+        "host_target": {"type": "string", "minLength": 1},
+        "tools": {"type": "array", "minItems": 10, "maxItems": 10, "items": {"type": "object", "required": ["role", "dispatch_realpath", "dispatch_sha256", "implementation_realpath", "implementation_bytes", "implementation_sha256", "version_sha256"], "properties": {"role": {"type": "string"}, "dispatch_realpath": {"type": "string", "pattern": "^/"}, "dispatch_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "implementation_realpath": {"type": "string", "pattern": "^/"}, "implementation_bytes": {"type": "integer", "minimum": 1}, "implementation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "version_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}, "additionalProperties": false}, "uniqueItems": true},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "xbuild_input_closures": {
+      "type": "object",
+      "required": ["deps_prefix", "devkitarm", "devkitpro_tools", "libctru", "portlibs_3ds", "cmake_3ds"],
+      "additionalProperties": false,
+      "properties": {
+        "deps_prefix": {"$ref": "#/$defs/lstat_closure"},
+        "devkitarm": {"$ref": "#/$defs/lstat_closure"},
+        "devkitpro_tools": {"$ref": "#/$defs/lstat_closure"},
+        "libctru": {"$ref": "#/$defs/lstat_closure"},
+        "portlibs_3ds": {"$ref": "#/$defs/lstat_closure"},
+        "cmake_3ds": {"$ref": "#/$defs/lstat_closure"}
+      }
+    },
     "fresh_chain": {
       "type": "object",
       "required": ["review_session_id", "session_root_realpath", "initial_entry_count", "allowed_external_input_roles", "forbidden_prior_artifact_roles", "canonical_seal_writer", "closure_fixture_owner"],
@@ -785,11 +888,17 @@
             {"const": "RH07_EVIDENCE"},
             {"const": "RH10_SYNTHETIC_PROVENANCE"},
             {"const": "XBUILD_COMPILE_LINK"},
-            {"const": "UPSTREAM_SNAPSHOT_BYTES"}
+            {"const": "UPSTREAM_SNAPSHOT_BYTES"},
+            {"const": "RAW_ANCESTRY_CLOSURE"},
+            {"const": "TOOL_IMPLEMENTATION_IDENTITY"},
+            {"const": "XBUILD_INPUT_CLOSURE"},
+            {"const": "SIMULATOR_SEMANTIC_BASELINE"},
+            {"const": "FINAL_ELF_RUNTIME_CORE_PROOF"},
+            {"const": "RAW_EVIDENCE_CLOSURE"}
           ],
           "items": false,
-          "minItems": 20,
-          "maxItems": 20,
+          "minItems": 26,
+          "maxItems": 26,
           "uniqueItems": true
         },
         "required_product_baseline": {

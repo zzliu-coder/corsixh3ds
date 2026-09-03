@@ -11,6 +11,7 @@ import math
 import os
 import re
 import stat
+import struct
 import subprocess
 import sys
 import unicodedata
@@ -22,10 +23,10 @@ from jsonschema import Draft202012Validator, FormatChecker
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ID32 = re.compile(r"^[0-9a-f]{32}$")
-BASE_COMMIT = "bedf567a4810d0479fba5ebcae7b49020d2988f3"
-BASE_TREE = "da4adfa31e556dec208d1dfd9074208a92f69b05"
-BASE_PARENT = "e4e22be7c4694bce1c1432a3ba990eab47a1b485"
-BASE_FP = "75a7d14299f875163d7e8891768831c735fa775b6066c6c8667ab2aaa1f2463b"
+BASE_COMMIT = "116048377c458efd943cf10ceb37b57589994ad0"
+BASE_TREE = "622a39bb3489bf4f8197cf57074b094078b9657e"
+BASE_PARENT = "06b2e3836f9beaac8860fb4ecd47f15356904215"
+BASE_FP = "7c68a659169ca5a4259f1669f56bf28d1b0f16c7f510eb752a45650c5f5e9d50"
 PRODUCT_FP = "8793cc554948f45f08134bad22bb3a6172cb6ca97164aaf6a8a4e2b9776b8966"
 FORBIDDEN_KEYS = {
     "assertions", "status", "gate_status", "product_status",
@@ -50,6 +51,9 @@ REQUIRED_PROTOCOL_GATES = [
     "SIMULATOR", "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS",
     "RH09_EVIDENCE", "RH07_EVIDENCE", "RH10_SYNTHETIC_PROVENANCE",
     "XBUILD_COMPILE_LINK", "UPSTREAM_SNAPSHOT_BYTES",
+    "RAW_ANCESTRY_CLOSURE", "TOOL_IMPLEMENTATION_IDENTITY",
+    "XBUILD_INPUT_CLOSURE", "SIMULATOR_SEMANTIC_BASELINE",
+    "FINAL_ELF_RUNTIME_CORE_PROOF", "RAW_EVIDENCE_CLOSURE",
 ]
 FACT_PROTOCOL_GATES = [
     value for value in REQUIRED_PROTOCOL_GATES
@@ -282,13 +286,166 @@ def bootstrap_read(path: Path, maximum: int = 268435456,
 
 def run_git(git_path: str, repo: Path, *args: str,
             allow: tuple[int, ...] = (0,)) -> tuple[int, bytes, bytes]:
+    env = {
+        "PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0",
+    }
     result = subprocess.run([git_path, *args], cwd=repo, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, check=False,
-                            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C",
-                                 "TZ": "UTC"})
+                            env=env)
     if result.returncode not in allow:
         fail("GIT_COMMAND_FAILED", result.stderr.decode(errors="replace"))
     return result.returncode, result.stdout, result.stderr
+
+
+def parse_raw_commit(payload: bytes, expected_oid: str) -> dict[str, Any]:
+    """Parse one raw commit object without consulting revision traversal."""
+    if not HEX40.fullmatch(expected_oid):
+        fail("ANCESTRY_OBJECT_UNREADABLE", f"malformed commit id: {expected_oid}")
+    actual_oid = hashlib.sha1(
+        b"commit " + str(len(payload)).encode("ascii") + b"\0" + payload
+    ).hexdigest()
+    if actual_oid != expected_oid:
+        fail("ANCESTRY_OBJECT_UNREADABLE",
+             f"commit object id mismatch: expected={expected_oid} actual={actual_oid}")
+    separator = payload.find(b"\n\n")
+    if separator < 0:
+        fail("ANCESTRY_OBJECT_UNREADABLE", f"commit header terminator missing: {expected_oid}")
+    tree_rows: list[str] = []
+    parents: list[str] = []
+    for line in payload[:separator].split(b"\n"):
+        if line.startswith(b" "):
+            continue
+        if line.startswith(b"tree "):
+            value = line[5:].decode("ascii", errors="strict")
+            tree_rows.append(value)
+        elif line.startswith(b"parent "):
+            value = line[7:].decode("ascii", errors="strict")
+            if not HEX40.fullmatch(value):
+                fail("ANCESTRY_OBJECT_UNREADABLE",
+                     f"malformed parent in {expected_oid}: {value!r}")
+            parents.append(value)
+    if len(tree_rows) != 1 or not HEX40.fullmatch(tree_rows[0]):
+        fail("ANCESTRY_OBJECT_UNREADABLE",
+             f"commit must contain one valid tree: {expected_oid}")
+    return {"oid": expected_oid, "tree": tree_rows[0], "parents": parents,
+            "raw_sha256": sha_bytes(payload)}
+
+
+def git_pollution_preflight(git_path: str, repo: Path) -> dict[str, Any]:
+    object_format = run_git(git_path, repo, "rev-parse", "--show-object-format")[1].decode().strip()
+    if object_format != "sha1":
+        fail("GIT_OBJECT_FORMAT_UNSUPPORTED", f"object format: {object_format}")
+    shallow = run_git(git_path, repo, "rev-parse", "--is-shallow-repository")[1].decode().strip()
+    if shallow != "false":
+        fail("GIT_SHALLOW_REPOSITORY", f"shallow repository: {shallow}")
+    replace = run_git(git_path, repo, "for-each-ref", "--format=%(refname)",
+                      "refs/replace")[1].decode().splitlines()
+    if replace:
+        fail("GIT_REPLACE_REFS_PRESENT", f"replace refs: {replace}")
+    git_dir = Path(run_git(git_path, repo, "rev-parse", "--absolute-git-dir")[1]
+                   .decode().strip()).resolve(strict=True)
+    common_dir_raw = run_git(git_path, repo, "rev-parse", "--git-common-dir")[1].decode().strip()
+    common_dir = (repo / common_dir_raw).resolve(strict=True) if not common_dir_raw.startswith("/") \
+        else Path(common_dir_raw).resolve(strict=True)
+    graft = common_dir / "info/grafts"
+    if graft.exists() and graft.stat().st_size:
+        fail("GIT_GRAFTS_PRESENT", f"legacy graft file: {graft}")
+    object_dir = common_dir / "objects"
+    alternate = object_dir / "info/alternates"
+    if alternate.exists() and alternate.stat().st_size:
+        fail("GIT_ALTERNATES_PRESENT", f"alternate object database: {alternate}")
+    for name in ("GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                 "GIT_REPLACE_REF_BASE", "GIT_SHALLOW_FILE"):
+        if os.environ.get(name):
+            fail("GIT_OBJECT_DIRECTORY_EXTERNAL", f"forbidden Git environment: {name}")
+    if common_dir not in [git_dir, *git_dir.parents] and git_dir not in common_dir.parents:
+        # Linked worktrees are accepted only as construction inputs. The full
+        # authority path normalizes them to a standalone repository first.
+        pass
+    return {"object_format": object_format, "shallow": False,
+            "replace_ref_count": 0, "graft_bytes": 0, "alternate_bytes": 0,
+            "git_dir": str(git_dir), "common_dir": str(common_dir),
+            "object_dir": str(object_dir.resolve(strict=True))}
+
+
+def raw_ancestry_commitment(git_path: str, repo: Path, head: str,
+                            forbidden: list[str]) -> dict[str, Any]:
+    pollution = git_pollution_preflight(git_path, repo)
+    pending = [head]
+    visiting: set[str] = set()
+    rows: dict[str, dict[str, Any]] = {}
+    while pending:
+        oid = pending.pop()
+        if oid in rows:
+            continue
+        if oid in visiting:
+            fail("GIT_TOPOLOGY", f"ancestry cycle: {oid}")
+        visiting.add(oid)
+        code, kind, _ = run_git(git_path, repo, "--no-replace-objects",
+                                "cat-file", "-t", oid, allow=(0, 128))
+        if code != 0 or kind.strip() != b"commit":
+            fail("ANCESTRY_OBJECT_UNREADABLE",
+                 f"commit object unavailable: oid={oid} git_exit={code}")
+        code, payload, _ = run_git(git_path, repo, "--no-replace-objects",
+                                   "cat-file", "commit", oid, allow=(0, 128))
+        if code != 0:
+            fail("ANCESTRY_OBJECT_UNREADABLE",
+                 f"commit payload unavailable: oid={oid} git_exit={code}")
+        row = parse_raw_commit(payload, oid)
+        rows[oid] = row
+        visiting.remove(oid)
+        pending.extend(parent for parent in row["parents"] if parent not in rows)
+    commits = [rows[oid] for oid in sorted(rows)]
+    roots = sorted(row["oid"] for row in commits if not row["parents"])
+    first_parent_chain = []
+    current = head
+    chain_seen: set[str] = set()
+    while current:
+        if current in chain_seen or current not in rows:
+            fail("GIT_TOPOLOGY", "invalid first-parent chain")
+        chain_seen.add(current)
+        first_parent_chain.append(current)
+        current = rows[current]["parents"][0] if rows[current]["parents"] else ""
+    intersection = sorted(set(rows).intersection(forbidden))
+    body = {"algorithm": "raw-full-parent-closure-v1",
+            "object_format": pollution["object_format"], "head": head,
+            "head_tree": rows[head]["tree"],
+            "head_parents": rows[head]["parents"],
+            "first_parent_chain": first_parent_chain, "roots": roots,
+            "commit_count": len(commits),
+            "edge_count": sum(len(row["parents"]) for row in commits),
+            "commits": commits, "forbidden_intersection": intersection}
+    body["closure_sha256"] = sha_bytes(canonical(body))
+    if intersection:
+        fail("GIT_TOPOLOGY", f"forbidden reachable commits: {intersection}")
+    return body
+
+
+def parse_unittest_counts(text: str) -> dict[str, int]:
+    runs = re.findall(r"Ran (\d+) tests?", text)
+    if len(runs) != 1:
+        fail("HOST_REGRESSION_COUNT_MISMATCH", "one unittest executed count required")
+    summaries = re.findall(r"^FAILED \(([^)]*)\)$|^OK(?: \(([^)]*)\))?$",
+                           text, flags=re.MULTILINE)
+    if len(summaries) != 1:
+        fail("HOST_REGRESSION_COUNT_MISMATCH", "one unittest summary required")
+    fields = next((value for value in summaries[0] if value), "")
+    counts = {"executed": int(runs[0]), "failures": 0, "errors": 0, "skipped": 0}
+    for name, value in re.findall(r"(failures|errors|skipped)=(\d+)", fields):
+        counts[name] = int(value)
+    counts["passed"] = counts["executed"] - counts["failures"] - \
+        counts["errors"] - counts["skipped"]
+    if counts["passed"] < 0:
+        fail("HOST_REGRESSION_COUNT_MISMATCH", "unittest counts are inconsistent")
+    return counts
+
+
+def parse_unittest_skip_reasons(text: str) -> list[str]:
+    """Return every verbose unittest skip reason in transcript order."""
+    return re.findall(r"^(?:.* \.\.\. )?skipped ['\"](.*)['\"]$", text,
+                      flags=re.MULTILINE)
 
 
 def fingerprint(git_path: str, repo: Path, revision: str,
@@ -661,21 +818,21 @@ def consume(args: argparse.Namespace) -> int:
         {role for kind, role in expected if kind == "tool"}, "tool")
     git_path = tools["git"]["absolute_realpath"]
     head = run_git(git_path, candidate, "rev-parse", "HEAD^{commit}")[1].decode().strip()
-    tree = run_git(git_path, candidate, "rev-parse", "HEAD^{tree}")[1].decode().strip()
-    parents = run_git(git_path, candidate, "show", "-s", "--format=%P", head)[1].decode().split()
     identity = policy["candidate_identity"]
     if not HEX40.fullmatch(identity.get("expected_commit", "")) or \
        not HEX40.fullmatch(identity.get("expected_tree", "")):
         fail("MALFORMED_CANDIDATE_IDENTITY", "candidate identity malformed")
+    ancestry = raw_ancestry_commitment(
+        git_path, candidate, head, identity["forbidden_ancestors"])
+    tree = ancestry["head_tree"]
+    parents = ancestry["head_parents"]
     if head != identity["expected_commit"] or tree != identity["expected_tree"]:
         fail("CANDIDATE_IDENTITY_MISMATCH", "candidate commit/tree mismatch")
     if parents != [BASE_COMMIT]:
-        fail("GIT_TOPOLOGY", "candidate is not A0 single-parent")
-    for ancestor in identity["forbidden_ancestors"]:
-        code = run_git(git_path, candidate, "merge-base", "--is-ancestor",
-                       ancestor, head, allow=(0, 1))[0]
-        if code == 0:
-            fail("GIT_TOPOLOGY", f"forbidden ancestor: {ancestor}")
+        fail("GIT_TOPOLOGY", "candidate is not the required single-parent commit")
+    if ancestry != identity.get("ancestry"):
+        fail("ANCESTRY_COMMITMENT_MISMATCH",
+             "live raw full-parent closure differs from reviewer policy")
     status = run_git(git_path, candidate, "status", "--porcelain=v1",
                      "--untracked-files=all")[1]
     if status:
@@ -750,6 +907,28 @@ def consume(args: argparse.Namespace) -> int:
         if direct_paths and any(value != path.as_posix()
                                 for value in direct_paths):
             fail("TOOL_PATH_MISMATCH", f"argv[0] differs for tool: {role}")
+
+    producer_path = candidate / "scripts/verify_runtime_core_v2.py"
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("c3_r5_policy_tools", producer_path)
+    if spec is None or spec.loader is None:
+        fail("TOOL_IMPLEMENTATION_IDENTITY_MISMATCH", "cannot load sealed tool identity code")
+    producer_module = importlib.util.module_from_spec(spec)
+    sys.modules["c3_r5_policy_tools"] = producer_module
+    spec.loader.exec_module(producer_module)
+    live_tool_identity = producer_module.tool_implementation_identity(
+        {role: item["absolute_realpath"] for role, item in tools.items()})
+    if live_tool_identity != policy["tool_implementation_identity"]:
+        fail("TOOL_IMPLEMENTATION_IDENTITY_MISMATCH",
+             "actual dispatched tool or developer identity changed")
+    xbuild_closures = {}
+    for name, expected_closure in policy["xbuild_input_closures"].items():
+        observed_closure = producer_module.lstat_closure(
+            Path(expected_closure["root_realpath"]))
+        if observed_closure != expected_closure:
+            fail("XBUILD_INPUT_CLOSURE_MISMATCH",
+                 f"cross-build input changed: {name}")
+        xbuild_closures[name] = observed_closure["sha256"]
 
     commands = {item["role"]: item for item in policy["commands"]}
     invocations = exact_role_map(manifest["invocations"],
@@ -926,8 +1105,23 @@ def consume(args: argparse.Namespace) -> int:
         fail("HOST_REGRESSION_COUNT_MISMATCH", "C++ 105/105 missing")
     python_text = (artifact_data["python-stdout"] +
                    artifact_data["python-stderr"]).decode(errors="replace")
-    if not re.search(r"Ran 97 tests", python_text) or "\nOK" not in python_text:
-        fail("HOST_REGRESSION_COUNT_MISMATCH", "Python 97/97 missing")
+    python_counts = parse_unittest_counts(python_text)
+    python_skip_reasons = parse_unittest_skip_reasons(python_text)
+    expected_skips = policy["host_regression"]["expected_skipped"]
+    if python_counts["failures"] or python_counts["errors"]:
+        fail("HOST_REGRESSION_COUNT_MISMATCH", "Python failures or errors present")
+    if len(python_skip_reasons) != python_counts["skipped"]:
+        fail("HOST_REGRESSION_COUNT_MISMATCH",
+             "verbose unittest skip reasons do not match summary count")
+    allowed_skip_prefixes = tuple(
+        policy["host_regression"]["allowed_skip_reason_prefixes"])
+    unexpected_skip_reasons = [
+        reason for reason in python_skip_reasons
+        if not any(reason.startswith(prefix) for prefix in allowed_skip_prefixes)]
+    if python_counts["skipped"] != expected_skips or unexpected_skip_reasons:
+        fail("HOST_REGRESSION_SKIPPED",
+             f"unexpected Python skips: observed={python_counts['skipped']} "
+             f"expected={expected_skips} reasons={unexpected_skip_reasons}")
     for role in ("simulator-top-ppm", "simulator-bottom-ppm"):
         ppm = artifact_data[role]
         match = re.match(br"P6\s+(\d+)\s+(\d+)\s+255\s", ppm)
@@ -940,6 +1134,14 @@ def consume(args: argparse.Namespace) -> int:
     trace_json = strict_json(artifact_data["simulator-trace-json"])
     if not isinstance(trace_json, dict) or not trace_json:
         fail("SIMULATOR_OUTPUT_UNPROVEN", "simulator trace invalid")
+    observed_baseline = {
+        "top": sha_bytes(artifact_data["simulator-top-ppm"]),
+        "bottom": sha_bytes(artifact_data["simulator-bottom-ppm"]),
+        "trace": sha_bytes(artifact_data["simulator-trace-json"]),
+    }
+    if observed_baseline != policy["simulator_semantic_baseline"]:
+        fail("SIMULATOR_BASELINE_MISMATCH",
+             f"simulator semantic bytes differ: {observed_baseline}")
 
     red_cache = artifact_data["red-cmake-cache"].decode(errors="strict")
     red_commands = strict_json(artifact_data["red-compile-commands"])
@@ -1021,6 +1223,72 @@ def consume(args: argparse.Namespace) -> int:
     if not re.search(r"\bblx?\s+[0-9a-fA-F]+ <linearMemAlign>", disassembly) or \
        not re.search(r"\bblx?\s+[0-9a-fA-F]+ <memalign>", disassembly):
         fail("XBUILD_COMPILE_LINK_UNPROVEN", "allocator calls absent")
+    required_elf_symbols = (
+        "RuntimeSession::start(", "RuntimeSession::shutdown(",
+        "RuntimeSession::enter_menu(", "RuntimeSession::enter_level(",
+        "RuntimeSession::begin_save_load(", "RuntimeSession::finish_save_load(",
+        "RuntimeSession::suspend(", "RuntimeSession::resume(",
+        "BundleMount::open_bundle(", "ResourceManager::acquire(",
+        "TransitionToken::~TransitionToken(",
+    )
+    missing_symbols = [needle for needle in required_elf_symbols if needle not in symbols]
+    functions: dict[str, set[str]] = {}
+    current: str | None = None
+    for line in disassembly.splitlines():
+        header = re.match(r"^[0-9a-fA-F]+ <(.+)>:$", line)
+        if header:
+            current = header.group(1)
+            functions.setdefault(current, set())
+            continue
+        if current is not None:
+            call = re.search(r"\b(?:b|bl|blx)\b[^<]*<(.+)>", line)
+            if call and not re.search(r"\+0x[0-9a-fA-F]+$", call.group(1)):
+                functions[current].add(call.group(1))
+    production_entries = [name for name in functions
+                          if "cth3ds::runtime_initialize(" in name]
+    goals = {name for name in functions if "RuntimeSession::start(" in name}
+    queue = [(entry, [entry]) for entry in production_entries]
+    visited = set(production_entries)
+    call_path: list[str] = []
+    while queue:
+        node, path = queue.pop(0)
+        if node in goals:
+            call_path = path
+            break
+        for target in sorted(functions.get(node, ())):
+            if target not in visited:
+                visited.add(target)
+                queue.append((target, path + [target]))
+    heap_symbol = re.search(
+        r"(?m)^([0-9a-fA-F]+)\s+[0-9a-fA-F]+\s+([A-Za-z])\s+__ctru_linear_heap_size$",
+        symbols)
+    data_section = re.search(
+        r"(?m)^\s*\[\s*\d+\]\s+\.data\s+\S+\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+",
+        elf_headers)
+    heap_value = None
+    if heap_symbol and data_section:
+        symbol_address = int(heap_symbol.group(1), 16)
+        data_address = int(data_section.group(1), 16)
+        data_offset = int(data_section.group(2), 16)
+        position = data_offset + symbol_address - data_address
+        elf_bytes = artifact_data["xbuild-final-elf"]
+        if 0 <= position <= len(elf_bytes) - 4:
+            heap_value = struct.unpack_from("<I", elf_bytes, position)[0]
+    final_elf_proof = {
+        "required_symbols_present": not missing_symbols,
+        "missing_symbols": missing_symbols,
+        "production_entry": production_entries,
+        "runtime_session_call_path": call_path,
+        "whole_archive_used": "--whole-archive" in xgraph,
+        "heap_symbol_type": heap_symbol.group(2) if heap_symbol else None,
+        "heap_value_bytes": heap_value,
+        "pass": (not missing_symbols and bool(call_path) and
+                 "--whole-archive" not in xgraph and heap_symbol is not None and
+                 heap_symbol.group(2) == "D" and heap_value == 8388608),
+    }
+    if not final_elf_proof["pass"]:
+        fail("FINAL_ELF_RUNTIME_CORE_UNPROVEN",
+             f"mandatory final ELF proof failed: {final_elf_proof}")
 
     if not h1_ok:
         fail("RH09_RED_ORACLE_MISMATCH", "H1 does not exactly match frozen red oracle")
@@ -1073,9 +1341,14 @@ def consume(args: argparse.Namespace) -> int:
               "candidate_git", head)
     add_input("git-head-tree", tree, head_tree, "git_object",
               "candidate_git", tree)
+    for index, row in enumerate(ancestry["commits"]):
+        raw_commit = run_git(git_path, candidate, "--no-replace-objects",
+                             "cat-file", "commit", row["oid"])[1]
+        add_input(f"git-ancestry-{index:04d}", row["oid"], raw_commit,
+                  "git_commit_object", "candidate_git", row["oid"])
 
     run_manifest = {
-        "schema": "cth3ds.runtime-core-run-manifest/v5", "stage_id": "C3",
+        "schema": "cth3ds.runtime-core-run-manifest/v5", "stage_id": "C3-R5",
         "run_id": run_id, "policy_id": policy["policy_id"],
         "policy_sha256": args.expected_policy_sha256,
         "candidate_identity": live_identity,
@@ -1087,6 +1360,10 @@ def consume(args: argparse.Namespace) -> int:
             "h1": h1_derived, "h2": h2_derived,
             "heap_budget_bytes": 8388608,
             "runtime_core_link_proven": True,
+            "raw_ancestry_closure_sha256": ancestry["closure_sha256"],
+            "tool_implementation_identity_sha256": live_tool_identity["sha256"],
+            "xbuild_input_closures": xbuild_closures,
+            "final_elf_runtime_core_proof": final_elf_proof,
             "upstream_git_provenance": "NOT_PROVEN",
         },
     }
@@ -1098,7 +1375,7 @@ def consume(args: argparse.Namespace) -> int:
         facts_root.mkdir(parents=True, exist_ok=True)
         facts = {
             "schema": "cth3ds.runtime-core-derived-facts/v1",
-            "stage_id": "C3",
+            "stage_id": "C3-R5",
             "run_id": run_id,
             "policy_id": policy["policy_id"],
             "policy_sha256": args.expected_policy_sha256,
@@ -1110,10 +1387,17 @@ def consume(args: argparse.Namespace) -> int:
                 "policy_sha256": args.expected_policy_sha256,
                 "producer_manifest_sha256": sha_bytes(manifest_raw),
                 "input_count": len(inputs),
+                "raw_ancestry_closure_sha256": ancestry["closure_sha256"],
+                "tool_implementation_identity_sha256": live_tool_identity["sha256"],
+                "xbuild_input_closures": xbuild_closures,
+                "raw_evidence_relative_and_checksum_bound": True,
             },
-            "host_facts": {"ctest_passed": 3, "ctest_total": 3,
-                           "cpp_passed": 105, "cpp_total": 105,
-                           "python_passed": 97, "python_total": 97},
+            "host_facts": {"ctest_passed": 3, "ctest_failed": 0,
+                           "ctest_total": 3,
+                           "cpp_passed": 105, "cpp_failed": 0,
+                           "cpp_total": 105, **{"python_" + key: value
+                           for key, value in python_counts.items()},
+                           "python_unexpected_skipped": 0},
             "simulator_facts": {
                 "top_ppm_sha256": sha_bytes(artifact_data["simulator-top-ppm"]),
                 "bottom_ppm_sha256": sha_bytes(artifact_data["simulator-bottom-ppm"]),
@@ -1134,6 +1418,8 @@ def consume(args: argparse.Namespace) -> int:
             },
             "xbuild_facts": {
                 "compile_link": True,
+                "input_closures": xbuild_closures,
+                "runtime_core_final_elf_proof": final_elf_proof,
                 "elf_sha256": sha_bytes(artifact_data["xbuild-final-elf"]),
                 "three_dsx_sha256": sha_bytes(artifact_data["xbuild-final-3dsx"]),
             },
@@ -1493,7 +1779,7 @@ def deterministic_result(facts_raw: bytes, facts: dict[str, Any],
         fail("PRODUCT_VERDICT_MISMATCH", "red oracle facts do not match")
     gates = {name: "PASS" for name in REQUIRED_PROTOCOL_GATES}
     return {
-        "schema": "cth3ds.runtime-core-result/v5", "stage_id": "C3-R4",
+        "schema": "cth3ds.runtime-core-result/v5", "stage_id": "C3-R5",
         "artifact_kind": "FINAL_REVIEW_SEAL",
         "review_session_id": strict_json(receipt_raw)["review_session_id"],
         "run_id": facts["run_id"], "policy_id": facts["policy_id"],

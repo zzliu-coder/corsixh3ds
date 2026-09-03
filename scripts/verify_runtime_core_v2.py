@@ -16,20 +16,20 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker
-
 BASE = {
-    "commit": "bedf567a4810d0479fba5ebcae7b49020d2988f3",
-    "tree": "da4adfa31e556dec208d1dfd9074208a92f69b05",
-    "parent": "e4e22be7c4694bce1c1432a3ba990eab47a1b485",
-    "tracked_fingerprint_v3": "75a7d14299f875163d7e8891768831c735fa775b6066c6c8667ab2aaa1f2463b",
-    "tracked_entries": 174,
+    "commit": "116048377c458efd943cf10ceb37b57589994ad0",
+    "tree": "622a39bb3489bf4f8197cf57074b094078b9657e",
+    "parent": "06b2e3836f9beaac8860fb4ecd47f15356904215",
+    "tracked_fingerprint_v3": "7c68a659169ca5a4259f1669f56bf28d1b0f16c7f510eb752a45650c5f5e9d50",
+    "tracked_entries": 193,
 }
 FORBIDDEN = [
+    "9ff2b84114df9070d578c88fe927255369c12b6d",
     "4b3bea525923a9ba6199c7b08f36aa814863f4e4",
     "7f637a26a966e470cb250d9dba6ec55a7e834ace",
     "161fa9cbff67138aca6b1c7d22eada7293f70fac",
@@ -44,6 +44,9 @@ REQUIRED_PROTOCOL_GATES = [
     "SIMULATOR", "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS",
     "RH09_EVIDENCE", "RH07_EVIDENCE", "RH10_SYNTHETIC_PROVENANCE",
     "XBUILD_COMPILE_LINK", "UPSTREAM_SNAPSHOT_BYTES",
+    "RAW_ANCESTRY_CLOSURE", "TOOL_IMPLEMENTATION_IDENTITY",
+    "XBUILD_INPUT_CLOSURE", "SIMULATOR_SEMANTIC_BASELINE",
+    "FINAL_ELF_RUNTIME_CORE_PROOF", "RAW_EVIDENCE_CLOSURE",
 ]
 REQUIRED_PRODUCT_BASELINE = {
     "RH09_PRODUCT": "FAIL", "RH07_PRODUCT": "FAIL",
@@ -201,6 +204,97 @@ def sha_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def lstat_closure(root: Path) -> dict[str, Any]:
+    """Hash node identity without losing symlink type or target spelling."""
+    root = root.absolute()
+    if root.is_symlink():
+        raise RuntimeError(f"closure root may not be a symlink: {root}")
+    root_real = root.resolve(strict=True)
+    nodes: list[dict[str, Any]] = []
+    paths = [root_real] if root_real.is_file() else [
+        root_real, *root_real.rglob("*")]
+    for path in sorted(paths, key=lambda value: (
+            "." if value == root_real else value.relative_to(root_real).as_posix()).encode()):
+        relative = "." if path == root_real else path.relative_to(root_real).as_posix()
+        if unicodedata.normalize("NFC", relative) != relative or "\0" in relative:
+            raise RuntimeError(f"non-canonical closure path: {relative!r}")
+        info = path.lstat()
+        mode = oct(stat.S_IMODE(info.st_mode))
+        if stat.S_ISDIR(info.st_mode):
+            row = {"path": relative, "type": "directory", "mode": mode}
+        elif stat.S_ISREG(info.st_mode):
+            row = {"path": relative, "type": "regular", "mode": mode,
+                   "bytes": info.st_size, "sha256": sha_file(path)}
+        elif stat.S_ISLNK(info.st_mode):
+            target = os.readlink(path)
+            if unicodedata.normalize("NFC", target) != target or "\0" in target:
+                raise RuntimeError(f"non-canonical symlink target: {relative}")
+            resolved = path.resolve(strict=True)
+            if root_real.is_dir() and root_real not in [resolved, *resolved.parents]:
+                raise RuntimeError(f"symlink escapes closure root: {relative} -> {target}")
+            row = {"path": relative, "type": "symlink", "mode": mode,
+                   "target": target,
+                   "resolved_path": resolved.relative_to(root_real).as_posix()}
+        else:
+            raise RuntimeError(f"unsupported closure node: {relative}")
+        nodes.append(row)
+    digest = sha_bytes(canonical(nodes))
+    return {"algorithm": "lstat-tree-v1", "root_realpath": str(root_real),
+            "node_count": len(nodes), "nodes": nodes, "sha256": digest}
+
+
+def _run_identity(argv: list[str], env: dict[str, str]) -> bytes:
+    result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            env=env, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"identity command failed ({result.returncode}): {argv}")
+    return result.stdout
+
+
+def tool_implementation_identity(tools: dict[str, str]) -> dict[str, Any]:
+    env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC"}
+    developer_dir = _run_identity(["/usr/bin/xcode-select", "-p"], env).decode().strip()
+    env["DEVELOPER_DIR"] = developer_dir
+    sdk_path = _run_identity(["/usr/bin/xcrun", "--sdk", "macosx",
+                              "--show-sdk-path"], env).decode().strip()
+    apple_names = {"python": "python3", "git": "git", "cxx": "clang++",
+                   "nm": "nm"}
+    rows = []
+    for role in sorted(tools):
+        dispatch = Path(tools[role]).resolve(strict=True)
+        implementation = dispatch
+        if role in apple_names and dispatch.parent == Path("/usr/bin"):
+            implementation = Path(_run_identity(
+                ["/usr/bin/xcrun", "--find", apple_names[role]], env
+            ).decode().strip()).resolve(strict=True)
+        version = _run_identity([str(implementation), "--version"], env)
+        rows.append({"role": role, "dispatch_realpath": str(dispatch),
+                     "dispatch_sha256": sha_file(dispatch),
+                     "implementation_realpath": str(implementation),
+                     "implementation_bytes": implementation.stat().st_size,
+                     "implementation_sha256": sha_file(implementation),
+                     "version_sha256": sha_bytes(version)})
+    target = _run_identity([str(Path(tools["cxx"]).resolve(strict=True)),
+                            "-dumpmachine"], env).decode().strip()
+    body = {"algorithm": "dispatched-tool-identity-v1",
+            "developer_dir": developer_dir, "macos_sdk_realpath": sdk_path,
+            "host_target": target, "tools": rows}
+    body["sha256"] = sha_bytes(canonical(body))
+    return body
+
+
+def reviewer_ancestry_commitment(repo: Path, head: str,
+                                 git_path: str) -> dict[str, Any]:
+    module_path = repo / "scripts/consume_runtime_core_v2.py"
+    spec = importlib.util.spec_from_file_location("c3_r5_consumer", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load C3-R5 consumer")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["c3_r5_consumer"] = module
+    spec.loader.exec_module(module)
+    return module.raw_ancestry_commitment(git_path, repo, head, FORBIDDEN)
 
 
 def reject_verdict_fields(value: Any) -> None:
@@ -395,11 +489,19 @@ def prepare_sources(repo: Path, archive: Path, snapshot: Path, integrated: Path,
 
 
 def tool_paths() -> dict[str, str]:
+    identity_env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC",
+                    "DEVELOPER_DIR": subprocess.check_output(
+                        ["/usr/bin/xcode-select", "-p"], text=True).strip()}
+
+    def xcrun_find(name: str) -> str:
+        return subprocess.check_output(
+            ["/usr/bin/xcrun", "--find", name], env=identity_env,
+            text=True).strip()
+
     required = {
-        "python": "/usr/bin/python3", "cmake": shutil.which("cmake"),
-        "ctest": shutil.which("ctest"), "git": shutil.which("git"),
-        "cxx": shutil.which(os.environ.get("CXX", "c++")),
-        "nm": shutil.which("nm"),
+        "python": xcrun_find("python3"), "cmake": shutil.which("cmake"),
+        "ctest": shutil.which("ctest"), "git": xcrun_find("git"),
+        "cxx": xcrun_find("clang++"), "nm": xcrun_find("nm"),
         "cxx-linker": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-g++",
         "symbol-reader": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-nm",
         "elf-reader": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-readelf",
@@ -661,6 +763,8 @@ def command_records(repo: Path, roots: dict[str, Path], tools: dict[str, str],
 
 
 def build_policy(args: argparse.Namespace) -> int:
+    from jsonschema import Draft202012Validator, FormatChecker
+
     if not args.review_session_id or not re.fullmatch(
             r"[0-9a-f]{32}", args.review_session_id):
         raise RuntimeError("fresh-chain review session id required")
@@ -686,11 +790,12 @@ def build_policy(args: argparse.Namespace) -> int:
     if reviewer_archive.stat().st_size != 4416083 or sha_file(reviewer_archive) != ARCHIVE_SHA:
         raise RuntimeError("upstream archive identity mismatch")
 
+    tools = tool_paths()
     head = git(repo, "rev-parse", "HEAD^{commit}").decode().strip()
-    tree = git(repo, "rev-parse", "HEAD^{tree}").decode().strip()
-    parents = git(repo, "show", "-s", "--format=%P", head).decode().split()
-    if parents != [BASE["commit"]]:
-        raise RuntimeError("candidate first parent is not A0")
+    ancestry = reviewer_ancestry_commitment(repo, head, tools["git"])
+    tree = ancestry["head_tree"]
+    if ancestry["head_parents"] != [BASE["commit"]]:
+        raise RuntimeError("candidate first parent is not the remediation baseline")
     tracked_fp, tracked_entries = fingerprint(repo, head)
     product_fp, product_entries = fingerprint(
         repo, head, {"CMakeLists.txt", "tools/th3ds_convert.py",
@@ -711,7 +816,17 @@ def build_policy(args: argparse.Namespace) -> int:
     if upstream["file_count"] != 644 or upstream["tree_digest"] != UPSTREAM_DIGEST:
         raise RuntimeError("reviewer upstream tree expectation mismatch")
 
-    tools = tool_paths()
+    tool_identity = tool_implementation_identity(tools)
+    xbuild_roots = {
+        "deps_prefix": deps,
+        "devkitarm": Path("/opt/devkitpro/devkitARM"),
+        "devkitpro_tools": Path("/opt/devkitpro/tools"),
+        "libctru": Path("/opt/devkitpro/libctru"),
+        "portlibs_3ds": Path("/opt/devkitpro/portlibs/3ds"),
+        "cmake_3ds": Path("/opt/devkitpro/cmake/3DS.cmake"),
+    }
+    xbuild_closures = {name: lstat_closure(path)
+                       for name, path in sorted(xbuild_roots.items())}
     paths = {row["root_id"]: Path(row["absolute_realpath"]) for row in roots}
     commands = command_records(repo, paths, tools, run_id, deps)
     closure = []
@@ -739,16 +854,17 @@ def build_policy(args: argparse.Namespace) -> int:
     base_env = {
         "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "LC_ALL": "C", "TZ": "UTC", "PYTHONDONTWRITEBYTECODE": "1",
-        "TMPDIR": "/tmp",
+        "TMPDIR": "/tmp", "DEVELOPER_DIR": tool_identity["developer_dir"],
     }
     policy = {
-        "schema": "cth3ds.runtime-core-review-policy/v5", "stage_id": "C3",
+        "schema": "cth3ds.runtime-core-review-policy/v6", "stage_id": "C3-R5",
         "policy_id": policy_id, "created_at": now(), "base_identity": BASE,
         "candidate_identity": {
             "required_first_parent": BASE["commit"], "forbidden_ancestors": FORBIDDEN,
             "expected_commit": head, "expected_tree": tree,
             "expected_candidate_fingerprint": tracked_fp,
             "expected_candidate_entries": tracked_entries, "require_clean": True,
+            "ancestry": ancestry,
         },
         "product_boundary": {
             "fingerprint_algorithm": "v3-mode-type-path-payload-sha256-nul",
@@ -819,6 +935,21 @@ def build_policy(args: argparse.Namespace) -> int:
             "overlay_mapping": overlay, "tree_digest_algorithm": "source-tree-v1",
         },
         "closure_inputs": closure,
+        "host_regression": {
+            "expected_skipped": 3,
+            "unexpected_skipped": 0,
+            "allowed_skip_reason_prefixes": [
+                "Lua 5.4 runtime unavailable:",
+                "case-insensitive filesystem cannot create collision fixture",
+                "current devkitARM final-ELF proof was not supplied",
+            ],
+        },
+        "simulator_semantic_baseline": {
+            "top": sha_file(repo / "assets/simulator-baseline/top.ppm"),
+            "bottom": sha_file(repo / "assets/simulator-baseline/bottom.ppm"),
+            "trace": sha_file(repo / "assets/simulator-baseline/trace.json")},
+        "tool_implementation_identity": tool_identity,
+        "xbuild_input_closures": xbuild_closures,
         "fresh_chain": {
             "review_session_id": args.review_session_id,
             "session_root_realpath": str(args.session_root.resolve(strict=True))
@@ -973,6 +1104,8 @@ def freeze(root: Path) -> None:
 
 
 def produce(args: argparse.Namespace) -> int:
+    from jsonschema import Draft202012Validator, FormatChecker
+
     policy_path = args.policy.resolve(strict=True)
     raw = policy_path.read_bytes()
     if sha_bytes(raw) != args.expected_policy_sha256:
@@ -1012,6 +1145,13 @@ def produce(args: argparse.Namespace) -> int:
             path = artifact_path(role, repo, roots)
             if not path.is_file():
                 raise RuntimeError(f"{command['role']} missing output {role}")
+
+    if tool_implementation_identity(tools) != policy["tool_implementation_identity"]:
+        raise RuntimeError("TOOL_IMPLEMENTATION_IDENTITY_MISMATCH")
+    for name, expected in policy["xbuild_input_closures"].items():
+        observed = lstat_closure(Path(expected["root_realpath"]))
+        if observed != expected:
+            raise RuntimeError(f"XBUILD_INPUT_CLOSURE_MISMATCH: {name}")
 
     tool_rows = []
     deps = python_dependencies()

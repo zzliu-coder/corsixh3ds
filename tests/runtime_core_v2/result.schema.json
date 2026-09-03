@@ -11,9 +11,9 @@
       "properties": {
         "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "first_parent": {"const": "bedf567a4810d0479fba5ebcae7b49020d2988f3"},
+        "first_parent": {"const": "116048377c458efd943cf10ceb37b57589994ad0"},
         "tracked_fingerprint_v3": {"$ref": "#/$defs/sha256"},
-        "tracked_entries": {"type": "integer", "minimum": 190}
+        "tracked_entries": {"type": "integer", "minimum": 193}
       },
       "additionalProperties": false
     },
@@ -44,7 +44,7 @@
       "required": ["schema", "stage_id", "fixture_kind", "fixture_id", "review_session_id", "created_at", "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256", "producer_manifest_sha256", "run_manifest_sha256", "derived_facts_sha256", "matrix_sha256", "runner_sha256", "fact_consumer_sha256", "source_input_count", "single_use", "final_acceptance_eligible"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-closure-test-fixture-manifest/v1"},
-        "stage_id": {"const": "C3-R4"},
+        "stage_id": {"const": "C3-R5"},
         "fixture_kind": {"const": "CLOSURE_TEST_ONLY"},
         "fixture_id": {"$ref": "#/$defs/id32"},
         "review_session_id": {"$ref": "#/$defs/id32"},
@@ -70,7 +70,7 @@
       "required": ["schema", "stage_id", "artifact_kind", "fixture_id", "review_session_id", "canonical_run_id", "candidate_identity", "policy_sha256", "run_manifest_sha256", "derived_facts_sha256", "fixture_verdict", "c3", "matrix_gate_status", "review_verdict", "final_acceptance_eligible", "failure_codes"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-closure-test-result/v1"},
-        "stage_id": {"const": "C3-R4"},
+        "stage_id": {"const": "C3-R5"},
         "artifact_kind": {"const": "CLOSURE_TEST_ONLY"},
         "fixture_id": {"$ref": "#/$defs/id32"},
         "review_session_id": {"$ref": "#/$defs/id32"},
@@ -93,7 +93,7 @@
       "required": ["schema", "stage_id", "review_session_id", "created_at", "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256", "producer_manifest_sha256", "run_manifest_sha256", "facts_sha256", "matrix_sha256", "runner_sha256", "fact_consumer_sha256", "summary_sha256", "case_set_sha256", "case_count", "case_id_set", "passed", "failed", "cases", "closure_fixture", "matrix"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-matrix-receipt/v1"},
-        "stage_id": {"const": "C3-R4"},
+        "stage_id": {"const": "C3-R5"},
         "review_session_id": {"$ref": "#/$defs/id32"},
         "created_at": {"type": "string", "format": "date-time"},
         "canonical_run_id": {"$ref": "#/$defs/id32"},
@@ -142,7 +142,7 @@
       "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "candidate_identity", "producer_manifest_sha256", "inputs", "source_trees", "derived"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-run-manifest/v5"},
-        "stage_id": {"const": "C3"},
+        "stage_id": {"const": "C3-R5"},
         "run_id": {"$ref": "#/$defs/id32"},
         "policy_id": {"type": "string"},
         "policy_sha256": {"$ref": "#/$defs/sha256"},
@@ -159,7 +159,7 @@
       "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "candidate_identity_live", "producer_manifest_sha256", "run_manifest_sha256", "closure_facts", "host_facts", "simulator_facts", "sanitizer_facts", "rh09_facts", "rh07_facts", "rh10_facts", "xbuild_facts", "upstream_snapshot_facts", "product_boundary_facts"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-derived-facts/v1"},
-        "stage_id": {"const": "C3"},
+        "stage_id": {"const": "C3-R5"},
         "run_id": {"$ref": "#/$defs/id32"},
         "policy_id": {"type": "string"},
         "policy_sha256": {"$ref": "#/$defs/sha256"},
@@ -167,7 +167,20 @@
         "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "closure_facts": {"type": "object"},
-        "host_facts": {"type": "object"},
+        "host_facts": {
+          "type": "object",
+          "required": ["ctest_passed", "ctest_failed", "ctest_total", "cpp_passed", "cpp_failed", "cpp_total", "python_executed", "python_passed", "python_failures", "python_errors", "python_skipped", "python_unexpected_skipped"],
+          "properties": {
+            "ctest_passed": {"const": 3}, "ctest_failed": {"const": 0}, "ctest_total": {"const": 3},
+            "cpp_passed": {"const": 105}, "cpp_failed": {"const": 0}, "cpp_total": {"const": 105},
+            "python_executed": {"type": "integer", "minimum": 1},
+            "python_passed": {"type": "integer", "minimum": 1},
+            "python_failures": {"const": 0}, "python_errors": {"const": 0},
+            "python_skipped": {"type": "integer", "minimum": 0},
+            "python_unexpected_skipped": {"const": 0}
+          },
+          "additionalProperties": false
+        },
         "simulator_facts": {"type": "object"},
         "sanitizer_facts": {"type": "object"},
         "rh09_facts": {"type": "object"},
@@ -184,7 +197,7 @@
   "required": ["schema", "stage_id", "artifact_kind", "review_session_id", "run_id", "policy_id", "policy_sha256", "candidate_identity", "protocol_gates", "product_verdicts", "review_verdict", "matrix_gate_status", "matrix_passed", "matrix_failed", "final_acceptance_eligible", "failure_codes", "run_manifest_sha256", "derived_facts_sha256", "matrix_receipt_sha256"],
   "properties": {
     "schema": {"const": "cth3ds.runtime-core-result/v5"},
-    "stage_id": {"const": "C3-R4"},
+    "stage_id": {"const": "C3-R5"},
     "artifact_kind": {"const": "FINAL_REVIEW_SEAL"},
     "review_session_id": {"$ref": "#/$defs/id32"},
     "run_id": {"$ref": "#/$defs/id32"},
@@ -193,9 +206,9 @@
     "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
     "protocol_gates": {
       "type": "object",
-      "required": ["GIT_TOPOLOGY", "ALLOWLIST", "PRODUCT_DIFF_ZERO", "POLICY_SCHEMA", "EVIDENCE_SCHEMA", "NAMESPACE_CLOSURE", "REFERENCE_GRAPH_CLOSURE", "SAFE_PATH_AND_TOCTOU", "PROCESS_STREAM_BINDING", "TOOL_IDENTITY", "SEALED_INPUT_CLOSURE", "ADVERSARIAL_60_OF_60", "HOST_REGRESSION", "SIMULATOR", "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS", "RH09_EVIDENCE", "RH07_EVIDENCE", "RH10_SYNTHETIC_PROVENANCE", "XBUILD_COMPILE_LINK", "UPSTREAM_SNAPSHOT_BYTES"],
+      "required": ["GIT_TOPOLOGY", "ALLOWLIST", "PRODUCT_DIFF_ZERO", "POLICY_SCHEMA", "EVIDENCE_SCHEMA", "NAMESPACE_CLOSURE", "REFERENCE_GRAPH_CLOSURE", "SAFE_PATH_AND_TOCTOU", "PROCESS_STREAM_BINDING", "TOOL_IDENTITY", "SEALED_INPUT_CLOSURE", "ADVERSARIAL_60_OF_60", "HOST_REGRESSION", "SIMULATOR", "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS", "RH09_EVIDENCE", "RH07_EVIDENCE", "RH10_SYNTHETIC_PROVENANCE", "XBUILD_COMPILE_LINK", "UPSTREAM_SNAPSHOT_BYTES", "RAW_ANCESTRY_CLOSURE", "TOOL_IMPLEMENTATION_IDENTITY", "XBUILD_INPUT_CLOSURE", "SIMULATOR_SEMANTIC_BASELINE", "FINAL_ELF_RUNTIME_CORE_PROOF", "RAW_EVIDENCE_CLOSURE"],
       "properties": {
-        "GIT_TOPOLOGY": {"$ref": "#/$defs/status"}, "ALLOWLIST": {"$ref": "#/$defs/status"}, "PRODUCT_DIFF_ZERO": {"$ref": "#/$defs/status"}, "POLICY_SCHEMA": {"$ref": "#/$defs/status"}, "EVIDENCE_SCHEMA": {"$ref": "#/$defs/status"}, "NAMESPACE_CLOSURE": {"$ref": "#/$defs/status"}, "REFERENCE_GRAPH_CLOSURE": {"$ref": "#/$defs/status"}, "SAFE_PATH_AND_TOCTOU": {"$ref": "#/$defs/status"}, "PROCESS_STREAM_BINDING": {"$ref": "#/$defs/status"}, "TOOL_IDENTITY": {"$ref": "#/$defs/status"}, "SEALED_INPUT_CLOSURE": {"$ref": "#/$defs/status"}, "ADVERSARIAL_60_OF_60": {"$ref": "#/$defs/status"}, "HOST_REGRESSION": {"$ref": "#/$defs/status"}, "SIMULATOR": {"$ref": "#/$defs/status"}, "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS": {"$ref": "#/$defs/status"}, "RH09_EVIDENCE": {"$ref": "#/$defs/status"}, "RH07_EVIDENCE": {"$ref": "#/$defs/status"}, "RH10_SYNTHETIC_PROVENANCE": {"$ref": "#/$defs/status"}, "XBUILD_COMPILE_LINK": {"$ref": "#/$defs/status"}, "UPSTREAM_SNAPSHOT_BYTES": {"$ref": "#/$defs/status"}
+        "GIT_TOPOLOGY": {"$ref": "#/$defs/status"}, "ALLOWLIST": {"$ref": "#/$defs/status"}, "PRODUCT_DIFF_ZERO": {"$ref": "#/$defs/status"}, "POLICY_SCHEMA": {"$ref": "#/$defs/status"}, "EVIDENCE_SCHEMA": {"$ref": "#/$defs/status"}, "NAMESPACE_CLOSURE": {"$ref": "#/$defs/status"}, "REFERENCE_GRAPH_CLOSURE": {"$ref": "#/$defs/status"}, "SAFE_PATH_AND_TOCTOU": {"$ref": "#/$defs/status"}, "PROCESS_STREAM_BINDING": {"$ref": "#/$defs/status"}, "TOOL_IDENTITY": {"$ref": "#/$defs/status"}, "SEALED_INPUT_CLOSURE": {"$ref": "#/$defs/status"}, "ADVERSARIAL_60_OF_60": {"$ref": "#/$defs/status"}, "HOST_REGRESSION": {"$ref": "#/$defs/status"}, "SIMULATOR": {"$ref": "#/$defs/status"}, "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS": {"$ref": "#/$defs/status"}, "RH09_EVIDENCE": {"$ref": "#/$defs/status"}, "RH07_EVIDENCE": {"$ref": "#/$defs/status"}, "RH10_SYNTHETIC_PROVENANCE": {"$ref": "#/$defs/status"}, "XBUILD_COMPILE_LINK": {"$ref": "#/$defs/status"}, "UPSTREAM_SNAPSHOT_BYTES": {"$ref": "#/$defs/status"}, "RAW_ANCESTRY_CLOSURE": {"$ref": "#/$defs/status"}, "TOOL_IMPLEMENTATION_IDENTITY": {"$ref": "#/$defs/status"}, "XBUILD_INPUT_CLOSURE": {"$ref": "#/$defs/status"}, "SIMULATOR_SEMANTIC_BASELINE": {"$ref": "#/$defs/status"}, "FINAL_ELF_RUNTIME_CORE_PROOF": {"$ref": "#/$defs/status"}, "RAW_EVIDENCE_CLOSURE": {"$ref": "#/$defs/status"}
       },
       "additionalProperties": false
     },

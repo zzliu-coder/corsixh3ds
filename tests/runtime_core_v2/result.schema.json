@@ -11,9 +11,9 @@
       "properties": {
         "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "first_parent": {"const": "116048377c458efd943cf10ceb37b57589994ad0"},
+        "first_parent": {"const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"},
         "tracked_fingerprint_v3": {"$ref": "#/$defs/sha256"},
-        "tracked_entries": {"type": "integer", "minimum": 193}
+        "tracked_entries": {"type": "integer", "minimum": 199}
       },
       "additionalProperties": false
     },

@@ -76,19 +76,19 @@
       ],
       "properties": {
         "commit": {
-          "const": "116048377c458efd943cf10ceb37b57589994ad0"
+          "const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
         },
         "tree": {
-          "const": "622a39bb3489bf4f8197cf57074b094078b9657e"
+          "const": "b62f968430e266dc0b5b53df44cfb029d999d332"
         },
         "parent": {
-          "const": "06b2e3836f9beaac8860fb4ecd47f15356904215"
+          "const": "e486e5f05f25492ea4d7b109d5c74b078e855476"
         },
         "tracked_fingerprint_v3": {
-          "const": "7c68a659169ca5a4259f1669f56bf28d1b0f16c7f510eb752a45650c5f5e9d50"
+          "const": "2dddab9ff327dc7e3804f0a912cb54ac1648b13b625138141c02b3a332176ec0"
         },
         "tracked_entries": {
-          "const": 193
+          "const": 199
         }
       },
       "additionalProperties": false
@@ -107,7 +107,7 @@
       ],
       "properties": {
         "required_first_parent": {
-          "const": "116048377c458efd943cf10ceb37b57589994ad0"
+          "const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
         },
         "forbidden_ancestors": {
           "type": "array",
@@ -160,7 +160,7 @@
             "object_format": {"const": "sha1"},
             "head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
             "head_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-            "head_parents": {"type": "array", "prefixItems": [{"const": "116048377c458efd943cf10ceb37b57589994ad0"}], "items": false, "minItems": 1, "maxItems": 1},
+            "head_parents": {"type": "array", "prefixItems": [{"const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"}], "items": false, "minItems": 1, "maxItems": 1},
             "first_parent_chain": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 2, "uniqueItems": true},
             "roots": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 1, "uniqueItems": true},
             "commit_count": {"type": "integer", "minimum": 2},
@@ -233,7 +233,7 @@
           "uniqueItems": true
         },
         "expected_product_fingerprint": {
-          "const": "8793cc554948f45f08134bad22bb3a6172cb6ca97164aaf6a8a4e2b9776b8966"
+          "const": "5134c31548fcf786ddc13308f3c18489e6f09470e59c6c152e701f99076bf82f"
         },
         "expected_product_entries": {
           "const": 55

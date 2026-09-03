@@ -23,11 +23,11 @@ from jsonschema import Draft202012Validator, FormatChecker
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ID32 = re.compile(r"^[0-9a-f]{32}$")
-BASE_COMMIT = "116048377c458efd943cf10ceb37b57589994ad0"
-BASE_TREE = "622a39bb3489bf4f8197cf57074b094078b9657e"
-BASE_PARENT = "06b2e3836f9beaac8860fb4ecd47f15356904215"
-BASE_FP = "7c68a659169ca5a4259f1669f56bf28d1b0f16c7f510eb752a45650c5f5e9d50"
-PRODUCT_FP = "8793cc554948f45f08134bad22bb3a6172cb6ca97164aaf6a8a4e2b9776b8966"
+BASE_COMMIT = "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
+BASE_TREE = "b62f968430e266dc0b5b53df44cfb029d999d332"
+BASE_PARENT = "e486e5f05f25492ea4d7b109d5c74b078e855476"
+BASE_FP = "2dddab9ff327dc7e3804f0a912cb54ac1648b13b625138141c02b3a332176ec0"
+PRODUCT_FP = "5134c31548fcf786ddc13308f3c18489e6f09470e59c6c152e701f99076bf82f"
 FORBIDDEN_KEYS = {
     "assertions", "status", "gate_status", "product_status",
     "review_decision", "candidate_is_expected",

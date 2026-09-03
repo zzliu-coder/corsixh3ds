@@ -22,11 +22,11 @@ from pathlib import Path
 from typing import Any
 
 BASE = {
-    "commit": "116048377c458efd943cf10ceb37b57589994ad0",
-    "tree": "622a39bb3489bf4f8197cf57074b094078b9657e",
-    "parent": "06b2e3836f9beaac8860fb4ecd47f15356904215",
-    "tracked_fingerprint_v3": "7c68a659169ca5a4259f1669f56bf28d1b0f16c7f510eb752a45650c5f5e9d50",
-    "tracked_entries": 193,
+    "commit": "9bf6f5e64bccb2366f80d17cc426060e26664ce5",
+    "tree": "b62f968430e266dc0b5b53df44cfb029d999d332",
+    "parent": "e486e5f05f25492ea4d7b109d5c74b078e855476",
+    "tracked_fingerprint_v3": "2dddab9ff327dc7e3804f0a912cb54ac1648b13b625138141c02b3a332176ec0",
+    "tracked_entries": 199,
 }
 FORBIDDEN = [
     "9ff2b84114df9070d578c88fe927255369c12b6d",
@@ -54,7 +54,7 @@ REQUIRED_PRODUCT_BASELINE = {
     "REAL_DEVICE_RUNTIME": "NOT_PROVEN",
     "S70_REAL_DEVICE_MEMORY": "NOT_PROVEN",
 }
-PRODUCT_FP = "8793cc554948f45f08134bad22bb3a6172cb6ca97164aaf6a8a4e2b9776b8966"
+PRODUCT_FP = "5134c31548fcf786ddc13308f3c18489e6f09470e59c6c152e701f99076bf82f"
 ARCHIVE_SHA = "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
 UPSTREAM_DIGEST = "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
 ALLOWLIST = [

@@ -71,13 +71,6 @@ jobs:
           DEVKITARM: /opt/devkitpro/devkitARM
           CTH3DS_JOBS: "2"
         run: ./scripts/build_3ds.sh
-      - name: Stage redistributable runtime without proprietary game data
-        env:
-          DEVKITPRO: /opt/devkitpro
-          DEVKITARM: /opt/devkitpro/devkitARM
-        run: >-
-          ./scripts/run_ci_command.sh old3ds-package artifacts/ci/old3ds-package --
-          ./scripts/package_sd.sh
       - name: Upload cross-build diagnostics and outputs
         if: always()
         uses: actions/upload-artifact@v4
@@ -95,4 +88,3 @@ jobs:
             build-3ds/deps/cth3ds-dependencies.json
             external/CorsixTH/CorsixTH/Src/3ds/integration-manifest.json
             config/upstream-pins.json
-            dist/sd-card

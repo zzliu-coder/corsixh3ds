@@ -66,6 +66,17 @@ class BuildScriptTests(unittest.TestCase):
         self.assertRegex(script, r"devkitpro/devkitarm@sha256:[0-9a-f]{64}")
         self.assertNotIn("dkp-pacman -Syu", script)
         self.assertIn("dkp-pacman -S --needed", script)
+        self.assertIn('CTH3DS_PACKAGE_ASSET_MODE:-th3ds', script)
+        self.assertIn('--asset-mode ${PACKAGE_ASSET_MODE}', script)
+        self.assertIn('--theme-hospital /theme-hospital', script)
+        self.assertIn('loose diagnostic package only', script)
+
+    def test_public_cross_build_does_not_claim_a_package_without_game_data(self) -> None:
+        workflow = (ROOT / ".github/workflows/old3ds-validation.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("package_sd.sh", workflow)
+        self.assertNotIn("dist/sd-card", workflow)
 
     def test_dependency_build_uses_pins_and_static_lua_modules(self) -> None:
         text = (ROOT / "scripts/bootstrap_3ds_deps.sh").read_text(encoding="utf-8")

@@ -31,13 +31,30 @@ print(''.join(' ' + package for package in packages))
 PY
 )"
 ROOT_Q="$(printf '%q' "${CTH3DS_ROOT}")"
+PACKAGE_MOUNT_ARGS=()
+PACKAGE_COMMAND=""
+if [[ -n "${CTH3DS_THEME_HOSPITAL:-}" ]]; then
+  [[ -d "${CTH3DS_THEME_HOSPITAL}" ]] || \
+    die 'CTH3DS_THEME_HOSPITAL must name a directory'
+  PACKAGE_ASSET_MODE="${CTH3DS_PACKAGE_ASSET_MODE:-th3ds}"
+  case "${PACKAGE_ASSET_MODE}" in
+    th3ds) log 'container will build a TH3DS device-candidate package' ;;
+    loose) log 'container will build a loose diagnostic package only' ;;
+    *) die 'CTH3DS_PACKAGE_ASSET_MODE must be th3ds or loose' ;;
+  esac
+  PACKAGE_MOUNT_ARGS=(-v "${CTH3DS_THEME_HOSPITAL}:/theme-hospital:ro")
+  PACKAGE_COMMAND="; scripts/run_ci_command.sh old3ds-package artifacts/ci/old3ds-package -- scripts/package_sd.sh --asset-mode ${PACKAGE_ASSET_MODE} --theme-hospital /theme-hospital"
+else
+  log 'CTH3DS_THEME_HOSPITAL is unset; cross-build only, SD package remains NOT_PROVEN'
+fi
 
 log "running reproducible 3DS cross-build in ${IMAGE}"
 "${ENGINE}" run --rm \
   -e CTH3DS_JOBS="${CTH3DS_JOBS}" \
   -e CTH3DS_CONTAINER_IMAGE="${IMAGE}" \
   -v "${CTH3DS_ROOT}:/work" \
+  "${PACKAGE_MOUNT_ARGS[@]}" \
   -w /work \
   "${IMAGE}" \
-  bash -lc "set -euo pipefail; dkp-pacman -S --needed --noconfirm 3ds-dev${PACKAGE_ARGS}; export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM; scripts/build_3ds.sh; scripts/run_ci_command.sh old3ds-package artifacts/ci/old3ds-package -- scripts/package_sd.sh"
+  bash -lc "set -euo pipefail; dkp-pacman -S --needed --noconfirm 3ds-dev${PACKAGE_ARGS}; export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM; scripts/build_3ds.sh${PACKAGE_COMMAND}"
 log "containerized output is under ${ROOT_Q}/build-3ds and ${ROOT_Q}/dist"

@@ -138,7 +138,10 @@ if(CTH3DS_BUILD_TESTS)
   add_test(NAME python-integration-tests
     COMMAND ${CMAKE_COMMAND} -E env
       ${CTH3DS_PYTHON_TEST_ENV}
-      ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_SOURCE_DIR}/tests -p "test_*.py" -v)
+      ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/run_host_python_suite.py
+        --repo ${CMAKE_SOURCE_DIR}
+        --manifest ${CMAKE_SOURCE_DIR}/tests/host-python-suite.json
+        --output ${CMAKE_BINARY_DIR}/host-python-suite-result.json)
   if(CTH3DS_BUILD_SIMULATOR)
     add_test(NAME simulator-smoke
       COMMAND cth3ds-simulator ${CMAKE_BINARY_DIR}/simulator-smoke)

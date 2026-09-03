@@ -31,6 +31,8 @@
     "stage_id",
     "policy_id",
     "created_at",
+    "verified_invocation",
+    "verified_invocation_sha256",
     "base_identity",
     "candidate_identity",
     "product_boundary",
@@ -65,6 +67,13 @@
       "type": "string",
       "format": "date-time"
     },
+    "verified_invocation": {
+      "type": "object"
+    },
+    "verified_invocation_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "base_identity": {
       "type": "object",
       "required": [
@@ -76,16 +85,16 @@
       ],
       "properties": {
         "commit": {
-          "const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
+          "const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
         },
         "tree": {
-          "const": "b62f968430e266dc0b5b53df44cfb029d999d332"
+          "const": "c868f46a48055201e2e179c01f160d22d6b721dd"
         },
         "parent": {
-          "const": "e486e5f05f25492ea4d7b109d5c74b078e855476"
+          "const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
         },
         "tracked_fingerprint_v3": {
-          "const": "2dddab9ff327dc7e3804f0a912cb54ac1648b13b625138141c02b3a332176ec0"
+          "const": "6919796ca6aaf183c70ed34a9db32c73409362572ad4fe8907b2dc39c1e5ecc6"
         },
         "tracked_entries": {
           "const": 199
@@ -107,11 +116,14 @@
       ],
       "properties": {
         "required_first_parent": {
-          "const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
+          "const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
         },
         "forbidden_ancestors": {
           "type": "array",
           "prefixItems": [
+            {
+              "const": "0637cc8d64a3152ae27bee344806ae9aec58592b"
+            },
             {
               "const": "9ff2b84114df9070d578c88fe927255369c12b6d"
             },
@@ -129,8 +141,8 @@
             }
           ],
           "items": false,
-          "minItems": 5,
-          "maxItems": 5,
+          "minItems": 6,
+          "maxItems": 6,
           "uniqueItems": true
         },
         "expected_commit": {
@@ -160,7 +172,7 @@
             "object_format": {"const": "sha1"},
             "head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
             "head_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-            "head_parents": {"type": "array", "prefixItems": [{"const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"}], "items": false, "minItems": 1, "maxItems": 1},
+            "head_parents": {"type": "array", "prefixItems": [{"const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"}], "items": false, "minItems": 1, "maxItems": 1},
             "first_parent_chain": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 2, "uniqueItems": true},
             "roots": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 1, "uniqueItems": true},
             "commit_count": {"type": "integer", "minimum": 2},
@@ -194,9 +206,6 @@
           "type": "array",
           "prefixItems": [
             {
-              "const": "CMakeLists.txt"
-            },
-            {
               "const": "tools/th3ds_convert.py"
             },
             {
@@ -207,8 +216,8 @@
             }
           ],
           "items": false,
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 3,
+          "maxItems": 3,
           "uniqueItems": true
         },
         "product_prefixes": {
@@ -232,19 +241,17 @@
           "maxItems": 4,
           "uniqueItems": true
         },
-        "expected_product_fingerprint": {
-          "const": "5134c31548fcf786ddc13308f3c18489e6f09470e59c6c152e701f99076bf82f"
-        },
+        "expected_product_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "expected_product_entries": {
-          "const": 55
+          "const": 54
         },
         "allowlist_exact": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 16,
-          "maxItems": 16,
+          "minItems": 23,
+          "maxItems": 24,
           "uniqueItems": true
         },
         "forbidden_patterns": {
@@ -385,8 +392,8 @@
         },
         "additionalProperties": false
       },
-      "minItems": 110,
-      "maxItems": 110,
+      "minItems": 115,
+      "maxItems": 115,
       "uniqueItems": true
     },
     "environment_profiles": {
@@ -757,15 +764,14 @@
         },
         "additionalProperties": false
       },
-      "minItems": 9,
-      "maxItems": 9,
+      "minItems": 14,
+      "maxItems": 14,
       "uniqueItems": true
     },
     "host_regression": {
       "type": "object",
-      "required": ["expected_skipped", "unexpected_skipped", "allowed_skip_reason_prefixes"],
+      "required": ["unexpected_skipped", "allowed_skip_reason_prefixes", "runner_path", "runner_sha256", "manifest_path", "manifest_sha256", "baseline_count", "baseline_sorted_ids_sha256", "selected_count", "selected_sorted_ids_sha256", "interpreter_executable", "interpreter_version", "interpreter_implementation_sha256"],
       "properties": {
-        "expected_skipped": {"type": "integer", "minimum": 0},
         "unexpected_skipped": {"const": 0},
         "allowed_skip_reason_prefixes": {
           "const": [
@@ -773,7 +779,18 @@
             "case-insensitive filesystem cannot create collision fixture",
             "current devkitARM final-ELF proof was not supplied"
           ]
-        }
+        },
+        "runner_path": {"const": "scripts/run_host_python_suite.py"},
+        "runner_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "manifest_path": {"const": "tests/host-python-suite.json"},
+        "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "baseline_count": {"const": 143},
+        "baseline_sorted_ids_sha256": {"const": "b525c8905c59ec4193581f16781045ebc7382a35800dff9e8db28eefec1a0d2b"},
+        "selected_count": {"type": "integer", "minimum": 143},
+        "selected_sorted_ids_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "interpreter_executable": {"type": "string", "minLength": 1},
+        "interpreter_version": {"type": "string", "minLength": 1},
+        "interpreter_implementation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       },
       "additionalProperties": false
     },

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import unittest
 from pathlib import Path
@@ -9,6 +11,43 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BuildScriptTests(unittest.TestCase):
+    def test_host_python_manifest_retains_frozen_baseline(self) -> None:
+        manifest = json.loads(
+            (ROOT / "tests/host-python-suite.json").read_text(encoding="utf-8")
+        )
+        baseline = manifest["baseline"]
+        payload = ("\n".join(baseline["test_ids"]) + "\n").encode("utf-8")
+        self.assertEqual(baseline["count"], 143)
+        self.assertEqual(
+            hashlib.sha256(payload).hexdigest(),
+            "b525c8905c59ec4193581f16781045ebc7382a35800dff9e8db28eefec1a0d2b",
+        )
+        self.assertTrue(set(baseline["test_ids"]).issubset(manifest["test_ids"]))
+
+    def test_all_host_python_entries_use_one_runner_and_manifest(self) -> None:
+        runner = "scripts/run_host_python_suite.py"
+        manifest = "tests/host-python-suite.json"
+        for path in (
+            ROOT / "scripts/test_all.sh",
+            ROOT / "CMakeLists.txt",
+            ROOT / ".github/workflows/old3ds-validation.yml",
+            ROOT / "scripts/verifier_driver.py",
+        ):
+            text = path.read_text(encoding="utf-8")
+            self.assertIn(runner, text, path)
+            self.assertIn(manifest, text, path)
+
+    def test_fresh_chain_has_no_python_semantic_override_or_test_filter(self) -> None:
+        text = (ROOT / "scripts/verify_runtime_core_v2.py").read_text(encoding="utf-8")
+        for forbidden in (
+            "pathlib.Path.write_text =",
+            "subprocess.run =",
+            "_compat-embed-platform-check",
+            'if "test_verifier_python_environment." in test_id',
+            'test_id.endswith("test_cli_returns_nonzero_for_not_proven_ledger_after_writing_it")',
+        ):
+            self.assertNotIn(forbidden, text)
+
     def test_all_shell_scripts_parse_and_have_no_placeholders(self) -> None:
         scripts = sorted((ROOT / "scripts").glob("*.sh"))
         self.assertGreaterEqual(len(scripts), 8)

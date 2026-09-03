@@ -91,7 +91,8 @@ def write_text(path: Path, text: str, dry_run: bool) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".cth3ds.tmp")
-    temporary.write_text(text, encoding="utf-8", newline="\n")
+    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
     temporary.replace(path)
 
 

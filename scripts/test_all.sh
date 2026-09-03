@@ -183,8 +183,12 @@ if [[ "${RUN_COMMON}" == "1" ]]; then
     "${LOG_DIR}/python-tests.log"
   PYTHONPATH="${CTH3DS_ROOT}/tools" \
   CTH3DS_SIMULATOR="${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-simulator" \
+  CTH3DS_RUNTIME_PROBE="${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-runtime-probe" \
   PYTHONDONTWRITEBYTECODE=1 \
-    python3 -m unittest discover -s "${CTH3DS_ROOT}/tests" -p 'test_*.py' -v \
+    python3 "${CTH3DS_ROOT}/scripts/run_host_python_suite.py" \
+      --repo "${CTH3DS_ROOT}" \
+      --manifest "${CTH3DS_ROOT}/tests/host-python-suite.json" \
+      --output "${LOG_DIR}/host-python-suite-result.json" \
     >"${LOG_DIR}/python-tests.log" 2>&1
 
 # The device present path is compiled for the real CPU and inspected here: an
@@ -323,29 +327,17 @@ for name in matrix_names:
             'skipped': 0,
         })
 
-py_text = read(logs / 'python-tests.log')
-py_match = re.search(r'Ran (\d+) tests', py_text)
-
-
-def unittest_count(label: str) -> int:
-    match = re.search(rf'{label}=(\d+)', py_text)
-    return int(match.group(1)) if match else 0
-
-
-python_total = int(py_match.group(1)) if py_match else 0
-python_failed = unittest_count('failures')
-python_errors = unittest_count('errors')
-python_skipped = unittest_count('skipped')
-python_expected_failures = unittest_count('expected failures')
-python_unexpected_successes = unittest_count('unexpected successes')
-python_passed = (
-    python_total
-    - python_failed
-    - python_errors
-    - python_skipped
-    - python_expected_failures
-    - python_unexpected_successes
-)
+python_receipt = json.loads((logs / 'host-python-suite-result.json').read_text())
+if python_receipt.get('verdict') != 'PASS':
+    raise SystemExit('host Python suite receipt is not PASS')
+python_totals = python_receipt['execution']['totals']
+python_total = python_totals['selected']
+python_failed = python_totals['failed']
+python_errors = python_totals['errors']
+python_skipped = python_totals['skipped']
+python_passed = python_totals['passed']
+python_expected_failures = 0
+python_unexpected_successes = 0
 frames = {}
 for name in ('top.ppm', 'bottom.ppm', 'trace.json'):
     path = logs / 'gcc-debug-simulator' / name
@@ -382,6 +374,7 @@ summary = {
     'python_skipped': python_skipped,
     'python_expected_failures': python_expected_failures,
     'python_unexpected_successes': python_unexpected_successes,
+    'host_python_suite': python_receipt,
     'common_checks': {
         'status': 'PASS' if common_ran else 'SKIP',
         'reason': None if common_ran else 'runs in the gcc-debug CI job',

@@ -6,6 +6,105 @@ on:
   workflow_dispatch:
 
 jobs:
+  host-python:
+    name: host-python-${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9.25', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run manifest-bound host Python suite
+        run: |
+          python scripts/run_host_python_suite.py \
+            --repo "$PWD" \
+            --manifest "$PWD/tests/host-python-suite.json" \
+            --output "$PWD/artifacts/verification/host-python-${{ matrix.python }}.json"
+      - name: Upload host Python receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-python-${{ matrix.python }}-evidence
+          if-no-files-found: error
+          path: artifacts/verification/host-python-${{ matrix.python }}.json
+
+  protocol-self-test:
+    name: runtime-core-protocol-self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the minimum verifier Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.9.25'
+          cache: pip
+          cache-dependency-path: requirements/verifier.lock
+      - name: Run isolated protocol self-test
+        run: |
+          ./scripts/run_verifier_python.sh \
+            --bootstrap-python "$(command -v python3)" \
+            --evidence-dir "$PWD/artifacts/verification/protocol-self-test/environment" \
+            protocol-self-test \
+            --session-root "${{ runner.temp }}/cth3ds-protocol-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --result "$PWD/artifacts/verification/protocol-self-test/result.json"
+      - name: Record exact verifier identity
+        if: always()
+        run: |
+          mkdir -p artifacts/verification/protocol-self-test
+          {
+            echo "GITHUB_SHA=${GITHUB_SHA}"
+            git rev-parse HEAD HEAD^{tree} HEAD^
+            git hash-object .github/workflows/old3ds-validation.yml
+            python3 -c 'import pathlib,sys; print(pathlib.Path(sys.executable).absolute()); print(pathlib.Path(sys.executable).resolve()); print(sys.version)'
+            sha256sum requirements/verifier.lock scripts/verifier_driver.py
+            find artifacts/verification/protocol-self-test -type f -print0 | sort -z | xargs -0 sha256sum
+          } > artifacts/verification/protocol-self-test/exact-head-identity.txt
+      - name: Upload protocol self-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-core-protocol-self-test-evidence
+          if-no-files-found: error
+          path: |
+            artifacts/verification/protocol-self-test
+            artifacts/ci/protocol-self-test
+
+  verifier-authority-negative:
+    name: verifier-authority-negative
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.9.25'
+      - name: Execute W0-N01 through W0-N18
+        env:
+          CTH3DS_AUTHORITY_NEGATIVE_EVIDENCE: ${{ github.workspace }}/artifacts/verification/authority-negative
+        run: python3 -m unittest tests.test_verifier_python_environment -v
+      - name: Record negative-job identity
+        if: always()
+        run: |
+          mkdir -p artifacts/verification/authority-negative
+          {
+            echo "GITHUB_SHA=${GITHUB_SHA}"
+            git rev-parse HEAD HEAD^{tree} HEAD^
+            git hash-object .github/workflows/old3ds-validation.yml
+            python3 -c 'import pathlib,sys; print(pathlib.Path(sys.executable).absolute()); print(pathlib.Path(sys.executable).resolve()); print(sys.version)'
+            sha256sum requirements/verifier.lock scripts/verifier_driver.py
+            find artifacts/verification/authority-negative -type f -print0 | sort -z | xargs -0 sha256sum
+          } > artifacts/verification/authority-negative/exact-head-identity.txt
+      - name: Upload verifier authority negative evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verifier-authority-negative-evidence
+          if-no-files-found: error
+          path: artifacts/verification/authority-negative
+
   host:
     name: host-${{ matrix.name }}
     runs-on: ubuntu-latest
@@ -41,7 +140,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: host-${{ matrix.name }}-evidence
-          if-no-files-found: warn
+          if-no-files-found: error
           path: |
             artifacts/verification
             artifacts/ci
@@ -76,7 +175,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: corsixth-old3ds
-          if-no-files-found: warn
+          if-no-files-found: error
           path: |
             artifacts/verification/cross-build
             artifacts/ci

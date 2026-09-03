@@ -71,15 +71,19 @@ Old-3DS runtime, and S70 device memory remain `NOT_PROVEN` in C3.
 
 ## C3-R4 fresh-chain authority
 
-Construction and independent review use the same one-shot entry point:
+Construction and independent review use the closed shell entry. The wrapper
+accepts only `check-env`, `protocol-self-test`, and `fresh-chain`; it never
+forwards a Python script, `-c`, `-m`, or a remainder argument.
 
 ```text
-evidence_protocol_adversarial.py --fresh-chain
-  --candidate-root CANDIDATE --session-root EMPTY_SESSION
+./scripts/run_verifier_python.sh fresh-chain
+  --candidate-kind detached-repo --candidate-input CANDIDATE
+  --expected-candidate-head HEAD --expected-candidate-tree TREE
+  --session-root EMPTY_SESSION
   --archive ARCHIVE --deps-prefix DEPS
   --matrix FROZEN_60 --expected-matrix-sha256 SHA256
-  --base-acceptance-cases FROZEN_32 --expected-base-cases-sha256 SHA256
-  --cycle-acceptance-cases R4_22 --expected-cycle-cases-sha256 SHA256
+  --base-cases FROZEN_32 --expected-base-cases-sha256 SHA256
+  --r4-cases R4_22 --expected-r4-cases-sha256 SHA256
 ```
 
 The session root must be absent or empty. The entry point accepts no prior
@@ -89,3 +93,17 @@ closure fixture is `CLOSURE_TEST_ONLY`, remains `NOT_PROVEN`, and is consumed
 once by the five closure cases. The legacy `--matrix-evaluate` seal path is
 disabled. The finalizer is the sole writer of a final review seal and runs only
 after an externally anchored 60/60 receipt exists.
+
+`scripts/verifier_driver.py` is the sole executable Python authority. It
+re-audits the real interpreter, venv, marker, single-link dispatch, locked
+dependency files, Git identity, and executing source closure before creating a
+private in-process `VerifiedInvocation`. Worker modules reject every direct
+entry, including `--help`. Mutated candidate roots remain data and are never
+imported as verifier code.
+
+This closes accidental and fixture-controlled bypasses in official local and
+CI flows. A user controlling the complete machine can replace code, the
+interpreter, hashes, and results; local hashes therefore provide consistency,
+not cryptographic independence. Fresh independent review and public exact-head
+CI are required external trust boundaries. Real `.3dsx` product behavior,
+original game data, and Old 3DS device acceptance remain `NOT_PROVEN` here.

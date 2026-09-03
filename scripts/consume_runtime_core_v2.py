@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/bin/false
+# Invoke through scripts/run_verifier_python.sh.
 """Fail-closed C3 evidence consumer and write-once seal verifier."""
 
 from __future__ import annotations
@@ -16,18 +17,28 @@ import subprocess
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+
+if __name__ == "__main__":
+    print("DIRECT_ENTRY_FORBIDDEN: use scripts/run_verifier_python.sh", file=sys.stderr)
+    raise SystemExit(64)
+
+
+def require_verified_invocation(context: Any, operations: tuple[str, ...]) -> None:
+    if context is None or context.__class__.__name__ != "VerifiedInvocation":
+        raise RuntimeError("VERIFIED_INVOCATION_REQUIRED")
+    context.require(operations)
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ID32 = re.compile(r"^[0-9a-f]{32}$")
-BASE_COMMIT = "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
-BASE_TREE = "b62f968430e266dc0b5b53df44cfb029d999d332"
-BASE_PARENT = "e486e5f05f25492ea4d7b109d5c74b078e855476"
-BASE_FP = "2dddab9ff327dc7e3804f0a912cb54ac1648b13b625138141c02b3a332176ec0"
-PRODUCT_FP = "5134c31548fcf786ddc13308f3c18489e6f09470e59c6c152e701f99076bf82f"
+BASE_COMMIT = "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
+BASE_TREE = "c868f46a48055201e2e179c01f160d22d6b721dd"
+BASE_PARENT = "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
+BASE_FP = "6919796ca6aaf183c70ed34a9db32c73409362572ad4fe8907b2dc39c1e5ecc6"
+PRODUCT_FP = "20b404a5a90cf074f7f540b05e969b4e37da452047a9b30a6ca6cdd330e38d49"
 FORBIDDEN_KEYS = {
     "assertions", "status", "gate_status", "product_status",
     "review_decision", "candidate_is_expected",
@@ -77,6 +88,8 @@ CLOSURE_SEAL_IDS = {
     "result-schema": "ci-result-schema", "red-oracle": "ci-red-oracle",
     "adversarial-matrix-runner": "ci-adversarial-matrix-runner",
     "fixture-generator": "ci-fixture-generator",
+    "host-python-runner": "ci-host-python-runner",
+    "host-python-manifest": "ci-host-python-manifest",
 }
 
 
@@ -97,6 +110,10 @@ def canonical(value: Any) -> bytes:
 
 def sha_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def ids_sha256(ids: list[str]) -> str:
+    return sha_bytes(("\n".join(sorted(ids)) + "\n").encode("utf-8"))
 
 
 def strict_json(data: bytes, default_code: str = "JSON_INVALID") -> Any:
@@ -211,7 +228,7 @@ def stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int]:
 
 
 def secure_read(root: Path, relative: str, maximum: int,
-                rename_hook: Callable[[Path], None] | None = None,
+                rename_hook: Optional[Callable[[Path], None]] = None,
                 require_single_link: bool = True) -> bytes:
     parts = clean_relative(relative)
     root_real = root.resolve(strict=True)
@@ -423,6 +440,79 @@ def raw_ancestry_commitment(git_path: str, repo: Path, head: str,
     return body
 
 
+def parse_host_python_receipt(text: str, policy: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
+    prefix = "HOST_PYTHON_SUITE_RECEIPT="
+    rows = [line[len(prefix):] for line in text.splitlines() if line.startswith(prefix)]
+    if len(rows) != 1:
+        fail("HOST_PYTHON_RECEIPT_MISSING", "exactly one runner receipt is required")
+    try:
+        receipt = json.loads(rows[0])
+    except (TypeError, ValueError) as error:
+        fail("HOST_PYTHON_RECEIPT_MALFORMED", str(error))
+    expected = policy["host_regression"]
+    identity = policy["candidate_identity"]
+    invocation = policy["verified_invocation"]["python"]
+    if receipt.get("schema") != "cth3ds.host-python-suite-result/v1" or \
+            receipt.get("verdict") != "PASS":
+        fail("HOST_PYTHON_RECEIPT_VERDICT", "runner did not derive PASS")
+    candidate = receipt.get("candidate", {})
+    if candidate.get("commit") != identity["expected_commit"] or \
+            candidate.get("tree") != identity["expected_tree"] or \
+            candidate.get("parents") != [BASE_COMMIT] or \
+            candidate.get("tracked_worktree_clean") is not True:
+        fail("HOST_PYTHON_CANDIDATE_BINDING", "runner candidate identity differs")
+    interpreter = receipt.get("interpreter", {})
+    if interpreter.get("executable") != expected["interpreter_executable"] or \
+            interpreter.get("version") != expected["interpreter_version"] or \
+            interpreter.get("implementation_sha256") != expected["interpreter_implementation_sha256"] or \
+            interpreter.get("executable") != invocation["executable"]:
+        fail("HOST_PYTHON_INTERPRETER_BINDING", "runner interpreter differs")
+    manifest = receipt.get("manifest", {})
+    if manifest.get("sha256") != expected["manifest_sha256"] or \
+            manifest.get("baseline_count") != expected["baseline_count"] or \
+            manifest.get("baseline_sorted_ids_sha256") != expected["baseline_sorted_ids_sha256"]:
+        fail("HOST_PYTHON_MANIFEST_BINDING", "runner manifest differs")
+    expected_count = expected["selected_count"]
+    expected_hash = expected["selected_sorted_ids_sha256"]
+    for name in ("discovery", "selection"):
+        row = receipt.get(name, {})
+        if row.get("count") != expected_count or row.get("unique") != expected_count or \
+                row.get("sorted_ids_sha256") != expected_hash:
+            fail("HOST_PYTHON_IDENTITY_MISMATCH", name + " IDs differ from manifest")
+    execution = receipt.get("execution", {})
+    outcomes = execution.get("outcomes")
+    totals = execution.get("totals", {})
+    if not isinstance(outcomes, list) or len(outcomes) != expected_count:
+        fail("HOST_PYTHON_OUTCOMES_MALFORMED", "one outcome per selected ID required")
+    outcome_ids = [row.get("id") for row in outcomes if isinstance(row, dict)]
+    if len(outcome_ids) != expected_count or len(set(outcome_ids)) != expected_count or \
+            ids_sha256(outcome_ids) != expected_hash or \
+            execution.get("count") != expected_count or \
+            execution.get("sorted_ids_sha256") != expected_hash:
+        fail("HOST_PYTHON_EXECUTION_IDENTITY", "executed IDs differ from manifest")
+    recomputed = {name: sum(row.get("outcome") == name for row in outcomes)
+                  for name in ("passed", "failed", "errors", "skipped")}
+    recomputed["selected"] = expected_count
+    recomputed["accounted"] = sum(recomputed[name] for name in
+                                  ("passed", "failed", "errors", "skipped"))
+    if totals != recomputed or recomputed["accounted"] != expected_count:
+        fail("HOST_PYTHON_COUNT_NOT_CLOSED", "per-ID outcomes do not close")
+    mismatches = receipt.get("mismatches", {})
+    if not isinstance(mismatches, dict) or any(mismatches.get(name) for name in (
+            "missing_ids", "extra_ids", "duplicate_ids", "unstarted_ids",
+            "synthetic_events", "unexpected_skips")):
+        fail("HOST_PYTHON_MISMATCH", "runner reported an identity or skip mismatch")
+    if recomputed["failed"] or recomputed["errors"]:
+        fail("HOST_REGRESSION_COUNT_MISMATCH", "Python failures or errors present")
+    return receipt, {
+        "executed": recomputed["accounted"], "passed": recomputed["passed"],
+        "failures": recomputed["failed"], "errors": recomputed["errors"],
+        "skipped": recomputed["skipped"],
+    }
+
+
+# Retained only for the frozen R4 protocol self-test vectors.  The acceptance
+# path above never derives authority from caller-written unittest summaries.
 def parse_unittest_counts(text: str) -> dict[str, int]:
     runs = re.findall(r"Ran (\d+) tests?", text)
     if len(runs) != 1:
@@ -443,13 +533,12 @@ def parse_unittest_counts(text: str) -> dict[str, int]:
 
 
 def parse_unittest_skip_reasons(text: str) -> list[str]:
-    """Return every verbose unittest skip reason in transcript order."""
     return re.findall(r"^(?:.* \.\.\. )?skipped ['\"](.*)['\"]$", text,
                       flags=re.MULTILINE)
 
 
 def fingerprint(git_path: str, repo: Path, revision: str,
-                exact: set[str] | None = None,
+                exact: Optional[set[str]] = None,
                 prefixes: tuple[str, ...] = ()) -> tuple[str, int, list[tuple[str, bytes]]]:
     _, listing, _ = run_git(git_path, repo, "ls-tree", "-r", "-z",
                             "--full-tree", revision)
@@ -729,7 +818,8 @@ def verify_checksums(seal: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return manifest, result
 
 
-def consume(args: argparse.Namespace) -> int:
+def consume(context: Any, args: argparse.Namespace) -> int:
+    require_verified_invocation(context, ("fresh-chain", "_case-evaluate"))
     policy_path = args.policy.resolve(strict=True)
     policy_raw = bootstrap_read(policy_path)
     if sha_bytes(policy_raw) != args.expected_policy_sha256:
@@ -782,9 +872,10 @@ def consume(args: argparse.Namespace) -> int:
             fail(code, f"closure input changed: {item['role']}")
         closure_data[item["role"]] = (item, data)
     if set(closure_data) != {
-        "consumer", "producer", "review-policy-schema",
+        "wrapper", "driver", "verifier-lock", "consumer", "producer", "review-policy-schema",
         "evidence-manifest-schema", "observation-schema", "result-schema",
         "red-oracle", "adversarial-matrix-runner", "fixture-generator",
+        "host-python-runner", "host-python-manifest",
     }:
         fail("SEALED_INPUT_CLOSURE", "closure input role set mismatch")
     if sha_bytes(bootstrap_read(Path(__file__).resolve())) != \
@@ -894,9 +985,13 @@ def consume(args: argparse.Namespace) -> int:
 
     for role, item in tools.items():
         path = Path(item["absolute_realpath"])
-        if str(path.resolve(strict=True)) != path.as_posix():
+        if role != "python" and str(path.resolve(strict=True)) != path.as_posix():
             fail("TOOL_PATH_MISMATCH", f"tool not literal realpath: {role}")
-        data = bootstrap_read(path, require_single_link=False)
+        if role == "python" and path.as_posix() != \
+                policy["verified_invocation"]["python"]["executable"]:
+            fail("TOOL_PATH_MISMATCH", "python tool differs from verified invocation")
+        read_path = path.resolve(strict=True) if role == "python" else path
+        data = bootstrap_read(read_path, require_single_link=False)
         if len(data) != item["bytes_before"] or len(data) != item["bytes_after"] or \
            sha_bytes(data) != item["sha256_before"] or \
            sha_bytes(data) != item["sha256_after"]:
@@ -1105,23 +1200,7 @@ def consume(args: argparse.Namespace) -> int:
         fail("HOST_REGRESSION_COUNT_MISMATCH", "C++ 105/105 missing")
     python_text = (artifact_data["python-stdout"] +
                    artifact_data["python-stderr"]).decode(errors="replace")
-    python_counts = parse_unittest_counts(python_text)
-    python_skip_reasons = parse_unittest_skip_reasons(python_text)
-    expected_skips = policy["host_regression"]["expected_skipped"]
-    if python_counts["failures"] or python_counts["errors"]:
-        fail("HOST_REGRESSION_COUNT_MISMATCH", "Python failures or errors present")
-    if len(python_skip_reasons) != python_counts["skipped"]:
-        fail("HOST_REGRESSION_COUNT_MISMATCH",
-             "verbose unittest skip reasons do not match summary count")
-    allowed_skip_prefixes = tuple(
-        policy["host_regression"]["allowed_skip_reason_prefixes"])
-    unexpected_skip_reasons = [
-        reason for reason in python_skip_reasons
-        if not any(reason.startswith(prefix) for prefix in allowed_skip_prefixes)]
-    if python_counts["skipped"] != expected_skips or unexpected_skip_reasons:
-        fail("HOST_REGRESSION_SKIPPED",
-             f"unexpected Python skips: observed={python_counts['skipped']} "
-             f"expected={expected_skips} reasons={unexpected_skip_reasons}")
+    python_receipt, python_counts = parse_host_python_receipt(python_text, policy)
     for role in ("simulator-top-ppm", "simulator-bottom-ppm"):
         ppm = artifact_data[role]
         match = re.match(br"P6\s+(\d+)\s+(\d+)\s+255\s", ppm)
@@ -1233,7 +1312,7 @@ def consume(args: argparse.Namespace) -> int:
     )
     missing_symbols = [needle for needle in required_elf_symbols if needle not in symbols]
     functions: dict[str, set[str]] = {}
-    current: str | None = None
+    current: Optional[str] = None
     for line in disassembly.splitlines():
         header = re.match(r"^[0-9a-fA-F]+ <(.+)>:$", line)
         if header:
@@ -1320,10 +1399,11 @@ def consume(args: argparse.Namespace) -> int:
                   artifact_data[role], "artifact", item["root_id"],
                   item["relative_path"])
     for role, item in tools.items():
-        data = bootstrap_read(Path(item["absolute_realpath"]),
-                              require_single_link=False)
-        add_input("tool-" + role, Path(item["absolute_realpath"]).name, data,
-                  "tool", "system", item["absolute_realpath"])
+        tool_path = Path(item["absolute_realpath"])
+        sealed_tool_path = tool_path.resolve(strict=True) if role == "python" else tool_path
+        data = bootstrap_read(sealed_tool_path, require_single_link=False)
+        add_input("tool-" + role, sealed_tool_path.name, data,
+                  "tool", "system", str(sealed_tool_path))
         if role == "python":
             for index, dependency in enumerate(item["runtime_dependency_files"]):
                 data = bootstrap_read(Path(dependency["absolute_realpath"]),
@@ -1351,6 +1431,7 @@ def consume(args: argparse.Namespace) -> int:
         "schema": "cth3ds.runtime-core-run-manifest/v5", "stage_id": "C3-R5",
         "run_id": run_id, "policy_id": policy["policy_id"],
         "policy_sha256": args.expected_policy_sha256,
+        "verified_invocation_sha256": context.digest,
         "candidate_identity": live_identity,
         "producer_manifest_sha256": sha_bytes(manifest_raw),
         "inputs": sorted(inputs, key=lambda item: item["seal_id"]),
@@ -1379,6 +1460,7 @@ def consume(args: argparse.Namespace) -> int:
             "run_id": run_id,
             "policy_id": policy["policy_id"],
             "policy_sha256": args.expected_policy_sha256,
+            "verified_invocation_sha256": context.digest,
             "candidate_identity_live": live_identity,
             "producer_manifest_sha256": sha_bytes(manifest_raw),
             "run_manifest_sha256": sha_bytes(run_raw),
@@ -1397,7 +1479,12 @@ def consume(args: argparse.Namespace) -> int:
                            "cpp_passed": 105, "cpp_failed": 0,
                            "cpp_total": 105, **{"python_" + key: value
                            for key, value in python_counts.items()},
-                           "python_unexpected_skipped": 0},
+                           "python_unexpected_skipped": 0,
+                           "python_runner_sha256": policy["host_regression"]["runner_sha256"],
+                           "python_manifest_sha256": policy["host_regression"]["manifest_sha256"],
+                           "python_interpreter_sha256": python_receipt["interpreter"]["implementation_sha256"],
+                           "python_ids_sha256": python_receipt["execution"]["sorted_ids_sha256"],
+                           "python_outcomes": python_receipt["execution"]["outcomes"]},
             "simulator_facts": {
                 "top_ppm_sha256": sha_bytes(artifact_data["simulator-top-ppm"]),
                 "bottom_ppm_sha256": sha_bytes(artifact_data["simulator-bottom-ppm"]),
@@ -1593,6 +1680,7 @@ RECEIPT_FIELDS = {
     "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256",
     "producer_manifest_sha256", "run_manifest_sha256", "facts_sha256",
     "matrix_sha256", "runner_sha256", "fact_consumer_sha256",
+    "verified_invocation_sha256",
     "summary_sha256", "case_set_sha256", "case_count", "case_id_set",
     "passed", "failed", "cases", "closure_fixture", "matrix",
 }
@@ -1622,7 +1710,7 @@ def live_identity_from_policy(candidate: Path, policy: dict[str, Any]) -> dict[s
             "tracked_entries": tracked_count}
 
 
-def load_facts_bundle(facts_root: Path, expected_facts_sha256: str | None
+def load_facts_bundle(facts_root: Path, expected_facts_sha256: Optional[str]
                       ) -> tuple[bytes, dict[str, Any], bytes, dict[str, Any]]:
     facts_raw = bootstrap_read(facts_root / "derived-facts.json")
     if not expected_facts_sha256 or not HEX64.fullmatch(expected_facts_sha256):
@@ -1641,7 +1729,7 @@ def load_facts_bundle(facts_root: Path, expected_facts_sha256: str | None
 
 def validate_policy_acceptance(policy: dict[str, Any], candidate: Path,
                                matrix_raw: bytes,
-                               expected_matrix_sha256: str | None) -> None:
+                               expected_matrix_sha256: Optional[str]) -> None:
     if not expected_matrix_sha256 or not HEX64.fullmatch(expected_matrix_sha256):
         fail("EXPECTED_MATRIX_DIGEST_REQUIRED", "external matrix digest required")
     acceptance = policy.get("acceptance_inputs")
@@ -1679,7 +1767,7 @@ def receipt_payload(receipt_path: Path) -> tuple[bytes, dict[str, Any]]:
 
 
 def validate_receipt(receipt_raw: bytes, receipt: dict[str, Any],
-                     expected_receipt_sha256: str | None,
+                     expected_receipt_sha256: Optional[str],
                      policy: dict[str, Any], facts_raw: bytes,
                      facts: dict[str, Any], run_raw: bytes,
                      run_manifest: dict[str, Any], matrix_raw: bytes,
@@ -1692,6 +1780,9 @@ def validate_receipt(receipt_raw: bytes, receipt: dict[str, Any],
              "receipt differs from external reviewer digest")
     if receipt.get("canonical_run_id") != facts.get("run_id"):
         fail("RECEIPT_RUN_ID_MISMATCH", "receipt run differs")
+    if receipt.get("verified_invocation_sha256") != \
+            facts.get("verified_invocation_sha256"):
+        fail("RECEIPT_CANONICAL_RUN_MISMATCH", "receipt invocation binding differs")
     if receipt.get("candidate_identity") != facts.get("candidate_identity_live"):
         fail("RECEIPT_CANDIDATE_MISMATCH", "receipt candidate differs")
     if receipt.get("policy_id") != facts.get("policy_id") or \
@@ -1784,6 +1875,7 @@ def deterministic_result(facts_raw: bytes, facts: dict[str, Any],
         "review_session_id": strict_json(receipt_raw)["review_session_id"],
         "run_id": facts["run_id"], "policy_id": facts["policy_id"],
         "policy_sha256": facts["policy_sha256"],
+        "verified_invocation_sha256": facts["verified_invocation_sha256"],
         "candidate_identity": facts["candidate_identity_live"],
         "protocol_gates": gates,
         "product_verdicts": dict(REQUIRED_PRODUCT_BASELINE),
@@ -1818,7 +1910,8 @@ def source_input_bytes(item: dict[str, Any], roots: dict[str, Path],
                        require_single_link=root_id != "reviewer_bundle")
 
 
-def finalize(args: argparse.Namespace) -> int:
+def finalize(context: Any, args: argparse.Namespace) -> int:
+    require_verified_invocation(context, ("fresh-chain", "_finalize-probe"))
     if args.matrix_receipt is None:
         fail("MATRIX_RECEIPT_MISSING", "reviewer matrix receipt missing")
     if not args.expected_matrix_receipt_sha256:
@@ -1972,7 +2065,8 @@ def verify_final_file_closure(seal: Path) -> set[str]:
     return seen
 
 
-def verify_final(args: argparse.Namespace) -> int:
+def verify_final(context: Any, args: argparse.Namespace) -> int:
+    require_verified_invocation(context, ("fresh-chain", "_seal-verify-probe"))
     seal_probe = args.seal_root.resolve(strict=True)
     fixture_manifest = seal_probe / "fixture-manifest.json"
     if fixture_manifest.is_file():
@@ -2158,72 +2252,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = parser().parse_args()
-    try:
-        if args.verify_closure_fixture:
-            required = (args.closure_fixture_root,
-                        args.expected_closure_fixture_sha256,
-                        args.expected_review_session_id,
-                        args.expected_canonical_run_id,
-                        args.expected_candidate_head, args.expected_candidate_tree,
-                        args.expected_candidate_parent,
-                        args.expected_fixture_policy_id,
-                        args.expected_fixture_policy_sha256,
-                        args.expected_run_manifest_sha256,
-                        args.expected_derived_facts_sha256)
-            if not all(required):
-                fail("CLI_REQUIRED_ARGUMENT", "closure fixture arguments missing")
-            return verify_closure_fixture(args)
-        if args.finalize:
-            required = (args.candidate_root, args.facts_root, args.policy,
-                        args.expected_policy_sha256, args.matrix,
-                        args.expected_matrix_sha256, args.matrix_root)
-            if not all(required):
-                fail("CLI_REQUIRED_ARGUMENT", "finalize arguments missing")
-            return finalize(args)
-        if args.verify_matrix_seal:
-            _, result = verify_checksums(args.seal_root.resolve(strict=True))
-            if result["review_verdict"] != "ACCEPT_C3_EVIDENCE_PROTOCOL":
-                fail("FINAL_REVIEW_REJECTED", "sealed result is not accepted")
-            print(json.dumps({"verify_matrix_seal": "PASS",
-                "sha256s_sha256": sha_bytes(
-                    (args.seal_root / "SHA256SUMS").read_bytes())},
-                sort_keys=True, separators=(",", ":")))
-            return 0
-        if args.verify_seal:
-            return verify_final(args)
-        if not all((args.candidate_root, args.evidence_root, args.policy,
-                    args.expected_policy_sha256)):
-            fail("CLI_REQUIRED_ARGUMENT", "normal mode arguments missing")
-        if args.derive and not args.facts_root:
-            fail("CLI_REQUIRED_ARGUMENT", "derive requires --facts-root")
-        if args.matrix_evaluate:
-            fail("CANONICAL_SEAL_RESERVED_EMPTY",
-                 "legacy pre-matrix seal evaluator is disabled")
-        if not args.derive and not args.case_evaluate:
-            fail("CLI_REQUIRED_ARGUMENT", "select --derive or --case-evaluate")
-        return consume(args)
-    except EvidenceError as error:
-        payload = {"c3": "FAIL" if error.code in {
-            "SANITIZER_PRODUCT_FAILURE", "RH10_OUTER_PROVENANCE_FALSE"}
-            else "NOT_PROVEN",
-            "gate": "FAIL" if error.code in {
-                "SANITIZER_PRODUCT_FAILURE", "RH10_OUTER_PROVENANCE_FALSE"}
-            else "NOT_PROVEN",
-            "product": "FAIL" if error.code in {
-                "SANITIZER_PRODUCT_FAILURE", "RH10_OUTER_PROVENANCE_FALSE"}
-            else "NOT_PROVEN",
-            "review": "REJECT_C3_EVIDENCE_PROTOCOL",
-            "failure_code": error.code, "detail": str(error)}
-        print(json.dumps(payload, sort_keys=True, separators=(",", ":")),
-              file=sys.stderr)
-        return 2
-    except Exception as error:
-        print(json.dumps({"c3": "NOT_PROVEN", "gate": "NOT_PROVEN",
-            "product": "NOT_PROVEN", "review": "REJECT_C3_EVIDENCE_PROTOCOL",
-            "failure_code": "UNEXPECTED_CONSUMER_ERROR", "detail": repr(error)},
-            sort_keys=True, separators=(",", ":")), file=sys.stderr)
-        return 2
+    print("DIRECT_ENTRY_FORBIDDEN: use scripts/run_verifier_python.sh", file=sys.stderr)
+    return 64
 
 
 if __name__ == "__main__":

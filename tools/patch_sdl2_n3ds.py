@@ -439,7 +439,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         patched, changed = apply_patch_text(original)
         if changed and not args.dry_run:
             temporary = source.with_suffix(source.suffix + ".cth3ds.tmp")
-            temporary.write_text(patched, encoding="utf-8", newline="\n")
+            with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(patched)
             temporary.replace(source)
         payload = PatchResult(changed=changed, path=str(source), commit=head)
         if args.json:

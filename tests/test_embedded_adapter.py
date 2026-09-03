@@ -16,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmbeddedAdapterTests(unittest.TestCase):
+    def test_generator_uses_python39_exact_lf_write(self) -> None:
+        source = (ROOT / "tools/embed_platform_lua.py").read_text(encoding="utf-8")
+        self.assertIn('HEADER.open("w", encoding="utf-8", newline="\\n")', source)
+        self.assertNotIn("write_text(expected", source)
+
     def test_generated_header_is_current(self) -> None:
         result = subprocess.run(
             [sys.executable, str(ROOT / "tools" / "embed_platform_lua.py"), "--check"],

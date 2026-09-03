@@ -52,6 +52,12 @@ GetDestOffset(int x, int y, int dest_width)
 
 
 class Sdl2PatcherTests(unittest.TestCase):
+    def test_writer_uses_python39_exact_lf_atomic_publish(self) -> None:
+        source = (ROOT / "tools/patch_sdl2_n3ds.py").read_text(encoding="utf-8")
+        self.assertIn('temporary.open("w", encoding="utf-8", newline="\\n")', source)
+        self.assertIn("temporary.replace(source)", source)
+        self.assertNotIn("temporary.write_text(patched", source)
+
     def test_patch_is_idempotent_and_replaces_all_copy_functions(self) -> None:
         patched, changed = apply_patch_text(ORIGINAL)
         self.assertTrue(changed)

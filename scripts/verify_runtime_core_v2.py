@@ -1,11 +1,15 @@
-#!/usr/bin/env python3
+#!/bin/false
+# Invoke through scripts/run_verifier_python.sh.
 """Reviewer policy builder and raw-evidence producer for Runtime Core v2 C3."""
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import datetime as dt
 import hashlib
+import importlib.metadata
 import importlib.util
 import json
 import os
@@ -19,16 +23,17 @@ import tempfile
 import unicodedata
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 BASE = {
-    "commit": "9bf6f5e64bccb2366f80d17cc426060e26664ce5",
-    "tree": "b62f968430e266dc0b5b53df44cfb029d999d332",
-    "parent": "e486e5f05f25492ea4d7b109d5c74b078e855476",
-    "tracked_fingerprint_v3": "2dddab9ff327dc7e3804f0a912cb54ac1648b13b625138141c02b3a332176ec0",
+    "commit": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d",
+    "tree": "c868f46a48055201e2e179c01f160d22d6b721dd",
+    "parent": "9bf6f5e64bccb2366f80d17cc426060e26664ce5",
+    "tracked_fingerprint_v3": "6919796ca6aaf183c70ed34a9db32c73409362572ad4fe8907b2dc39c1e5ecc6",
     "tracked_entries": 199,
 }
 FORBIDDEN = [
+    "0637cc8d64a3152ae27bee344806ae9aec58592b",
     "9ff2b84114df9070d578c88fe927255369c12b6d",
     "4b3bea525923a9ba6199c7b08f36aa814863f4e4",
     "7f637a26a966e470cb250d9dba6ec55a7e834ace",
@@ -54,28 +59,38 @@ REQUIRED_PRODUCT_BASELINE = {
     "REAL_DEVICE_RUNTIME": "NOT_PROVEN",
     "S70_REAL_DEVICE_MEMORY": "NOT_PROVEN",
 }
-PRODUCT_FP = "5134c31548fcf786ddc13308f3c18489e6f09470e59c6c152e701f99076bf82f"
+PRODUCT_FP = "20b404a5a90cf074f7f540b05e969b4e37da452047a9b30a6ca6cdd330e38d49"
 ARCHIVE_SHA = "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
 UPSTREAM_DIGEST = "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
 ALLOWLIST = [
+    ".github/workflows/old3ds-validation.yml",
+    "CMakeLists.txt",
     "docs/runtime-core-v2-red-oracle.md",
+    "requirements/verifier.in",
+    "requirements/verifier.lock",
     "scripts/consume_runtime_core_v2.py",
+    "scripts/run_host_python_suite.py",
+    "scripts/run_verifier_python.sh",
+    "scripts/test_all.sh",
+    "scripts/verifier_driver.py",
     "scripts/verify_runtime_core_v2.py",
-    "tests/runtime_core_v2/CMakeLists.txt",
-    "tests/runtime_core_v2/cpp/test_h1_level_requires_package.cpp",
-    "tests/runtime_core_v2/cpp/test_h2_transition_lease_escape.cpp",
-    "tests/runtime_core_v2/evidence-manifest.schema.json",
+    "tests/host-python-suite.json",
     "tests/runtime_core_v2/evidence_protocol_adversarial.py",
-    "tests/runtime_core_v2/fixtures/no-level/bundle.json",
-    "tests/runtime_core_v2/fixtures/no-level/core.package.bin",
-    "tests/runtime_core_v2/fixtures/no-level/fixture-manifest.json",
-    "tests/runtime_core_v2/fixtures/no-level/lang/en.package.bin",
-    "tests/runtime_core_v2/generate_no_level_fixture.py",
-    "tests/runtime_core_v2/observation.schema.json",
     "tests/runtime_core_v2/result.schema.json",
     "tests/runtime_core_v2/review-policy.schema.json",
+    "tests/test_build_scripts.py",
+    "tests/test_embedded_adapter.py",
+    "tests/test_integrator.py",
+    "tests/test_sdl2_patcher.py",
+    "tests/test_verifier_python_environment.py",
+    "tools/embed_platform_lua.py",
+    "tools/integrate_corsixth.py",
+    "tools/patch_sdl2_n3ds.py",
 ]
 CLOSURE_INPUTS = {
+    "wrapper": "scripts/run_verifier_python.sh",
+    "driver": "scripts/verifier_driver.py",
+    "verifier-lock": "requirements/verifier.lock",
     "consumer": "scripts/consume_runtime_core_v2.py",
     "producer": "scripts/verify_runtime_core_v2.py",
     "review-policy-schema": "tests/runtime_core_v2/review-policy.schema.json",
@@ -85,6 +100,24 @@ CLOSURE_INPUTS = {
     "red-oracle": "docs/runtime-core-v2-red-oracle.md",
     "adversarial-matrix-runner": "tests/runtime_core_v2/evidence_protocol_adversarial.py",
     "fixture-generator": "tests/runtime_core_v2/generate_no_level_fixture.py",
+    "host-python-runner": "scripts/run_host_python_suite.py",
+    "host-python-manifest": "tests/host-python-suite.json",
+}
+
+
+def require_verified_invocation(context: Any, operations: tuple[str, ...]) -> None:
+    """Require the driver's private in-memory authority object."""
+    if context is None or context.__class__.__name__ != "VerifiedInvocation":
+        raise RuntimeError("VERIFIED_INVOCATION_REQUIRED")
+    context.require(operations)
+
+VERIFIER_DEPENDENCIES = {
+    "jsonschema": "4.25.1",
+    "attrs": "25.3.0",
+    "jsonschema-specifications": "2025.9.1",
+    "referencing": "0.36.2",
+    "rpds-py": "0.27.1",
+    "typing-extensions": "4.14.1",
 }
 BUILD_ROLES = ["host-regression", "sanitized-red-observers", "xbuild-old3ds"]
 TOOL_ROLES = [
@@ -285,16 +318,10 @@ def tool_implementation_identity(tools: dict[str, str]) -> dict[str, Any]:
     return body
 
 
-def reviewer_ancestry_commitment(repo: Path, head: str,
+def reviewer_ancestry_commitment(consumer: Any, repo: Path, head: str,
                                  git_path: str) -> dict[str, Any]:
-    module_path = repo / "scripts/consume_runtime_core_v2.py"
-    spec = importlib.util.spec_from_file_location("c3_r5_consumer", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load C3-R5 consumer")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["c3_r5_consumer"] = module
-    spec.loader.exec_module(module)
-    return module.raw_ancestry_commitment(git_path, repo, head, FORBIDDEN)
+    """Use the already verified consumer module; candidate paths stay data."""
+    return consumer.raw_ancestry_commitment(git_path, repo, head, FORBIDDEN)
 
 
 def reject_verdict_fields(value: Any) -> None:
@@ -346,7 +373,7 @@ def git(repo: Path, *args: str, allow: tuple[int, ...] = (0,)) -> bytes:
 
 
 def fingerprint(repo: Path, revision: str,
-                exact: set[str] | None = None,
+                exact: Optional[set[str]] = None,
                 prefixes: tuple[str, ...] = ()) -> tuple[str, int]:
     listing = git(repo, "ls-tree", "-r", "-z", "--full-tree", revision)
     digest = hashlib.sha256()
@@ -439,34 +466,17 @@ def extract_archive(archive: Path, destination: Path) -> None:
 
 
 def integrate(repo: Path, integrated: Path) -> None:
-    module_path = repo / "tools" / "integrate_corsixth.py"
-    spec = importlib.util.spec_from_file_location("c3_integrator", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load integrator")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["c3_integrator"] = module
-    spec.loader.exec_module(module)
-    module.refresh_embedded_adapter = lambda overlay: None
-    def compatible_write_text(path: Path, text: str, dry_run: bool) -> None:
-        if dry_run:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".cth3ds.tmp")
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
-        temporary.replace(path)
-    module.write_text = compatible_write_text
-    provenance = module.validate_upstream(integrated, False)
-    module.copy_overlay(integrated, repo, False)
-    module.patch_sources(integrated, False)
-    manifest = module.manifest(integrated, repo, provenance)
-    out = integrated / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-                   encoding="utf-8")
-    errors = module.check_integrated(integrated, repo)
-    if errors:
-        raise RuntimeError("integration check failed: " + "; ".join(errors))
+    tool = repo / "tools/integrate_corsixth.py"
+    for tail in (("--json",), ("--check", "--json")):
+        result = subprocess.run(
+            [sys.executable, str(tool), str(integrated),
+             "--overlay-root", str(repo), *tail],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if result.returncode:
+            raise RuntimeError(
+                "integration tool failed: " + result.stderr.decode(errors="replace")
+            )
 
 
 def prepare_sources(repo: Path, archive: Path, snapshot: Path, integrated: Path,
@@ -488,7 +498,8 @@ def prepare_sources(repo: Path, archive: Path, snapshot: Path, integrated: Path,
     return upstream, combined
 
 
-def tool_paths() -> dict[str, str]:
+def tool_paths(context: Any) -> dict[str, str]:
+    require_verified_invocation(context, ("fresh-chain",))
     identity_env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC",
                     "DEVELOPER_DIR": subprocess.check_output(
                         ["/usr/bin/xcode-select", "-p"], text=True).strip()}
@@ -499,7 +510,8 @@ def tool_paths() -> dict[str, str]:
             text=True).strip()
 
     required = {
-        "python": xcrun_find("python3"), "cmake": shutil.which("cmake"),
+        "python": str(context.python),
+        "cmake": shutil.which("cmake"),
         "ctest": shutil.which("ctest"), "git": xcrun_find("git"),
         "cxx": xcrun_find("clang++"), "nm": xcrun_find("nm"),
         "cxx-linker": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-g++",
@@ -511,27 +523,41 @@ def tool_paths() -> dict[str, str]:
     for role, raw in required.items():
         if raw is None:
             raise RuntimeError(f"tool missing: {role}")
-        result[role] = str(Path(raw).resolve(strict=True))
+        path = Path(raw).resolve(strict=True)
+        if not path.is_file():
+            raise RuntimeError(f"tool missing: {role}")
+        result[role] = (str(Path(raw).absolute()) if role == "python" else str(path))
     return result
 
 
 def python_dependencies() -> list[dict[str, Any]]:
     import jsonschema  # noqa: F401
     result = {}
-    for name, module in sorted(sys.modules.items()):
-        if name != "jsonschema" and not name.startswith("jsonschema.") and \
-           not name.startswith("referencing") and not name.startswith("rpds"):
-            continue
-        raw = getattr(module, "__file__", None)
-        if raw and Path(raw).suffix in {".py", ".so", ".dylib"}:
-            path = Path(raw).resolve(strict=True)
+    for name, expected_version in VERIFIER_DEPENDENCIES.items():
+        try:
+            distribution = importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError as error:
+            raise RuntimeError(f"verifier dependency missing: {name}") from error
+        if distribution.version != expected_version:
+            raise RuntimeError(
+                f"verifier dependency version mismatch: {name}="
+                f"{distribution.version}, expected {expected_version}")
+        for entry in distribution.files or ():
+            relative = Path(str(entry))
+            if relative.suffix == ".pyc" or "__pycache__" in relative.parts:
+                continue
+            path = Path(distribution.locate_file(entry)).resolve(strict=True)
+            if not path.is_file():
+                raise RuntimeError(f"verifier dependency is not a file: {path}")
+            if path.stat().st_size == 0:
+                continue
             result[str(path)] = {"absolute_realpath": str(path),
                                  "bytes": path.stat().st_size,
                                  "sha256": sha_file(path)}
     return [result[key] for key in sorted(result)]
 
 
-def root_records(run_root: Path, reviewer_root: Path | None = None) -> list[dict[str, Any]]:
+def root_records(run_root: Path, reviewer_root: Optional[Path] = None) -> list[dict[str, Any]]:
     specs = [
         ("candidate", "candidate", "readonly", ["artifact", "closure_input"]),
         ("evidence_raw", "evidence_raw", "producer_write_then_freeze",
@@ -635,11 +661,11 @@ def registry(policy_id: str) -> list[dict[str, Any]]:
                      "allowed_root_ids": ["candidate"], "node_type": "regular_file",
                      "media_type": "application/octet-stream",
                      "required_owner_kind": "none"})
-    assert len(rows) == 110
+    assert len(rows) == 115
     return rows
 
 
-def command_records(repo: Path, roots: dict[str, Path], tools: dict[str, str],
+def command_records(context: Any, repo: Path, roots: dict[str, Path], tools: dict[str, str],
                     run_id: str, deps: Path) -> list[dict[str, Any]]:
     host = roots["build_host"]
     red = roots["build_red"]
@@ -652,7 +678,7 @@ def command_records(repo: Path, roots: dict[str, Path], tools: dict[str, str],
     simulator = host / "cth3ds-simulator"
     runtime_probe = host / "cth3ds-runtime-probe"
     cpp = host / "cth3ds-tests"
-    producer = repo / "scripts/verify_runtime_core_v2.py"
+    internal_host_result = Path("/tmp") / ("cth3ds-host-unittest-" + run_id + ".json")
     argv = {
         "configure-host": [tools["cmake"], "-S", str(repo), "-B", str(host),
             "-DCTH3DS_BUILD_TESTS=ON", "-DCTH3DS_BUILD_SIMULATOR=ON",
@@ -662,8 +688,8 @@ def command_records(repo: Path, roots: dict[str, Path], tools: dict[str, str],
         "build-host": [tools["cmake"], "--build", str(host), "--parallel"],
         "ctest": [tools["ctest"], "--test-dir", str(host), "--output-on-failure"],
         "cpp": [str(cpp)],
-        "python": [tools["python"], str(producer), "internal-unittest",
-                   "--repo", str(repo)],
+        "python": context.child_command("_host-unittest", [
+            "--repo", str(repo), "--output", str(internal_host_result)]),
         "simulator": [str(simulator), str(host / "simulator-direct")],
         "configure-red": [tools["cmake"], "-S", str(repo / "tests/runtime_core_v2"),
             "-B", str(red), "-DCTH3DS_ENABLE_SANITIZERS=ON",
@@ -674,14 +700,15 @@ def command_records(repo: Path, roots: dict[str, Path], tools: dict[str, str],
             "cth3ds-red-h2-transition-lease-escape"],
         "nm-h1": [tools["nm"], "-u", str(h1)],
         "nm-h2": [tools["nm"], "-u", str(h2)],
-        "rh10-generator": [tools["python"],
-            str(repo / "tests/runtime_core_v2/generate_no_level_fixture.py"),
+        "rh10-generator": [str(context.python), "-I", str(context.driver),
+            "in-process:fixture-generator",
             "--out", str(fresh), "--trace", str(evidence / "rh10-open-trace.json")],
         "RH09-H1": [str(h1), "--run-id", run_id, "--fixture", str(fixture),
                     "--level", "hospital-01"],
         "RH07-H2": [str(h2), "--run-id", run_id, "--fault",
                     "after-first-staged-acquire"],
-        "prepare-xbuild-source": [tools["python"], str(producer), "internal-prepare",
+        "prepare-xbuild-source": [str(context.python), "-I", str(context.driver),
+            "in-process:prepare-xbuild-source",
             "--repo", str(repo), "--archive",
             str(roots["reviewer_bundle"] / "CorsixTH.tar.gz"),
             "--snapshot", str(roots["source_upstream_snapshot"]),
@@ -762,8 +789,10 @@ def command_records(repo: Path, roots: dict[str, Path], tools: dict[str, str],
     return rows
 
 
-def build_policy(args: argparse.Namespace) -> int:
+def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     from jsonschema import Draft202012Validator, FormatChecker
+
+    require_verified_invocation(context, ("fresh-chain",))
 
     if not args.review_session_id or not re.fullmatch(
             r"[0-9a-f]{32}", args.review_session_id):
@@ -771,6 +800,7 @@ def build_policy(args: argparse.Namespace) -> int:
     if args.session_root is None:
         raise RuntimeError("fresh-chain session root required")
     repo = args.repo.resolve(strict=True)
+    executing_repo = context.repo.resolve(strict=True)
     archive = args.archive.resolve(strict=True)
     deps = args.deps_prefix.resolve(strict=True)
     run_root = args.run_root.resolve()
@@ -790,18 +820,28 @@ def build_policy(args: argparse.Namespace) -> int:
     if reviewer_archive.stat().st_size != 4416083 or sha_file(reviewer_archive) != ARCHIVE_SHA:
         raise RuntimeError("upstream archive identity mismatch")
 
-    tools = tool_paths()
+    tools = tool_paths(context)
     head = git(repo, "rev-parse", "HEAD^{commit}").decode().strip()
-    ancestry = reviewer_ancestry_commitment(repo, head, tools["git"])
+    if head != context.record["repository"]["head"]:
+        raise RuntimeError("EXECUTING_CANDIDATE_HEAD_MISMATCH")
+    for role, relative in (("producer", "scripts/verify_runtime_core_v2.py"),
+                           ("consumer", "scripts/consume_runtime_core_v2.py"),
+                           ("runner", "tests/runtime_core_v2/evidence_protocol_adversarial.py"),
+                           ("driver", "scripts/verifier_driver.py"),
+                           ("host_python_runner", "scripts/run_host_python_suite.py"),
+                           ("host_python_manifest", "tests/host-python-suite.json")):
+        if sha_file(repo / relative) != context.record["source_closure"][role]["sha256"]:
+            raise RuntimeError("EXECUTING_SOURCE_CLOSURE_MISMATCH: " + role)
+    ancestry = reviewer_ancestry_commitment(consumer, repo, head, tools["git"])
     tree = ancestry["head_tree"]
     if ancestry["head_parents"] != [BASE["commit"]]:
         raise RuntimeError("candidate first parent is not the remediation baseline")
     tracked_fp, tracked_entries = fingerprint(repo, head)
     product_fp, product_entries = fingerprint(
-        repo, head, {"CMakeLists.txt", "tools/th3ds_convert.py",
-                     "scripts/build_3ds.sh", "scripts/bootstrap_upstream.sh"},
+        repo, head, {"tools/th3ds_convert.py", "scripts/build_3ds.sh",
+                     "scripts/bootstrap_upstream.sh"},
         ("cmake/", "include/", "src/", "lua/"))
-    if product_fp != PRODUCT_FP or product_entries != 55:
+    if product_fp != PRODUCT_FP or product_entries != 54:
         raise RuntimeError("product fingerprint mismatch")
 
     run_id = uuid.uuid4().hex
@@ -828,7 +868,9 @@ def build_policy(args: argparse.Namespace) -> int:
     xbuild_closures = {name: lstat_closure(path)
                        for name, path in sorted(xbuild_roots.items())}
     paths = {row["root_id"]: Path(row["absolute_realpath"]) for row in roots}
-    commands = command_records(repo, paths, tools, run_id, deps)
+    commands = command_records(context, repo, paths, tools, run_id, deps)
+    host_manifest_path = repo / "tests/host-python-suite.json"
+    host_manifest = json.loads(host_manifest_path.read_text(encoding="utf-8"))
     closure = []
     for role, relative in CLOSURE_INPUTS.items():
         path = repo / relative
@@ -854,11 +896,14 @@ def build_policy(args: argparse.Namespace) -> int:
     base_env = {
         "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "LC_ALL": "C", "TZ": "UTC", "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
         "TMPDIR": "/tmp", "DEVELOPER_DIR": tool_identity["developer_dir"],
     }
     policy = {
         "schema": "cth3ds.runtime-core-review-policy/v6", "stage_id": "C3-R5",
         "policy_id": policy_id, "created_at": now(), "base_identity": BASE,
+        "verified_invocation": context.record,
+        "verified_invocation_sha256": context.digest,
         "candidate_identity": {
             "required_first_parent": BASE["commit"], "forbidden_ancestors": FORBIDDEN,
             "expected_commit": head, "expected_tree": tree,
@@ -868,10 +913,10 @@ def build_policy(args: argparse.Namespace) -> int:
         },
         "product_boundary": {
             "fingerprint_algorithm": "v3-mode-type-path-payload-sha256-nul",
-            "product_exact": ["CMakeLists.txt", "tools/th3ds_convert.py",
-                              "scripts/build_3ds.sh", "scripts/bootstrap_upstream.sh"],
+            "product_exact": ["tools/th3ds_convert.py", "scripts/build_3ds.sh",
+                              "scripts/bootstrap_upstream.sh"],
             "product_prefixes": ["cmake/", "include/", "src/", "lua/"],
-            "expected_product_fingerprint": PRODUCT_FP, "expected_product_entries": 55,
+            "expected_product_fingerprint": PRODUCT_FP, "expected_product_entries": 54,
             "allowlist_exact": ALLOWLIST,
             "forbidden_patterns": ["config/**", "tests/** except tests/runtime_core_v2/**",
                                    "game-data", "build-output-in-repository"],
@@ -883,10 +928,10 @@ def build_policy(args: argparse.Namespace) -> int:
              "variables": base_env, "unset_variables": ["HOME", "PYTHONPATH"],
              "locale": "C"},
             {"profile_id": "python-regression-v1", "clear_environment": True,
-             "variables": {**base_env, "PYTHONPATH": str(repo / "tools"),
+             "variables": {**base_env,
                  "CTH3DS_RUNTIME_PROBE": str(root_map["build_host"] / "cth3ds-runtime-probe"),
                  "CTH3DS_SIMULATOR": str(root_map["build_host"] / "cth3ds-simulator")},
-             "unset_variables": ["HOME"], "locale": "C"},
+             "unset_variables": ["HOME", "PYTHONPATH"], "locale": "C"},
             {"profile_id": "asan-ubsan-red-v1", "clear_environment": True,
              "variables": {**base_env,
                  "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
@@ -936,13 +981,19 @@ def build_policy(args: argparse.Namespace) -> int:
         },
         "closure_inputs": closure,
         "host_regression": {
-            "expected_skipped": 3,
             "unexpected_skipped": 0,
-            "allowed_skip_reason_prefixes": [
-                "Lua 5.4 runtime unavailable:",
-                "case-insensitive filesystem cannot create collision fixture",
-                "current devkitARM final-ELF proof was not supplied",
-            ],
+            "allowed_skip_reason_prefixes": host_manifest["allowed_skip_reason_prefixes"],
+            "runner_path": "scripts/run_host_python_suite.py",
+            "runner_sha256": sha_file(repo / "scripts/run_host_python_suite.py"),
+            "manifest_path": "tests/host-python-suite.json",
+            "manifest_sha256": sha_file(host_manifest_path),
+            "baseline_count": host_manifest["baseline"]["count"],
+            "baseline_sorted_ids_sha256": host_manifest["baseline"]["sorted_ids_sha256"],
+            "selected_count": host_manifest["selected_count"],
+            "selected_sorted_ids_sha256": host_manifest["selected_sorted_ids_sha256"],
+            "interpreter_executable": context.record["python"]["executable"],
+            "interpreter_version": context.record["python"]["version"],
+            "interpreter_implementation_sha256": context.record["python"]["implementation_sha256"],
         },
         "simulator_semantic_baseline": {
             "top": sha_file(repo / "assets/simulator-baseline/top.ppm"),
@@ -1050,7 +1101,7 @@ def artifact_path(role: str, repo: Path, roots: dict[str, Path]) -> Path:
     return roots["evidence_raw"] / (role + (".json" if MEDIA[role] == "application/json" else ".txt"))
 
 
-def execute(command: dict[str, Any], policy: dict[str, Any], repo: Path,
+def execute(context: Any, command: dict[str, Any], policy: dict[str, Any], repo: Path,
             roots: dict[str, Path]) -> dict[str, Any]:
     stdout_role, stderr_role = command["stdout_role"], command["stderr_role"]
     stdout_path = artifact_path(stdout_role, repo, roots)
@@ -1061,12 +1112,45 @@ def execute(command: dict[str, Any], policy: dict[str, Any], repo: Path,
     timed_out = False
     signal = None
     try:
-        proc = subprocess.run(command["argv"], cwd=roots[command["cwd_root_id"]],
-            env=environment(policy, command["environment_profile_id"]),
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-            timeout=command["timeout_seconds"])
-        code = proc.returncode
-        stdout, stderr = proc.stdout, proc.stderr
+        if command["role"] == "rh10-generator":
+            module_path = repo / "tests/runtime_core_v2/generate_no_level_fixture.py"
+            spec = importlib.util.spec_from_file_location("cth3ds_verified_fixture_generator", module_path)
+            if spec is None or spec.loader is None:
+                raise RuntimeError("cannot load fixture generator")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["cth3ds_verified_fixture_generator"] = module
+            spec.loader.exec_module(module)
+            output = io.StringIO()
+            errors = io.StringIO()
+            previous = sys.argv
+            sys.argv = [str(module_path), "--out", str(roots["evidence_raw"] / "rh10-fresh"),
+                        "--trace", str(roots["evidence_raw"] / "rh10-open-trace.json")]
+            try:
+                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    code = int(module.main() or 0)
+            finally:
+                sys.argv = previous
+            stdout, stderr = output.getvalue().encode(), errors.getvalue().encode()
+        elif command["role"] == "prepare-xbuild-source":
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                upstream, combined = prepare_sources(
+                    repo, roots["reviewer_bundle"] / "CorsixTH.tar.gz",
+                    roots["source_upstream_snapshot"], roots["source_xbuild_integrated"],
+                    roots["evidence_raw"] / "upstream-source-tree.json",
+                    roots["evidence_raw"] / "integrated-source-tree.json",
+                    policy["policy_id"][3:])
+                print(json.dumps({"upstream_file_count": upstream["file_count"],
+                                  "integrated_file_count": combined["file_count"]},
+                                 sort_keys=True))
+            code, stdout, stderr = 0, output.getvalue().encode(), b""
+        else:
+            proc = subprocess.run(command["argv"], cwd=roots[command["cwd_root_id"]],
+                env=environment(policy, command["environment_profile_id"]),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                timeout=command["timeout_seconds"])
+            code = proc.returncode
+            stdout, stderr = proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as error:
         timed_out = True
         code = 124
@@ -1103,8 +1187,10 @@ def freeze(root: Path) -> None:
     root.chmod(0o555)
 
 
-def produce(args: argparse.Namespace) -> int:
+def produce(context: Any, args: argparse.Namespace) -> int:
     from jsonschema import Draft202012Validator, FormatChecker
+
+    require_verified_invocation(context, ("fresh-chain",))
 
     policy_path = args.policy.resolve(strict=True)
     raw = policy_path.read_bytes()
@@ -1129,12 +1215,12 @@ def produce(args: argparse.Namespace) -> int:
     if any(roots["seal"].iterdir()):
         raise RuntimeError("seal root is not empty")
 
-    tools = tool_paths()
+    tools = tool_paths(context)
     before = {role: (Path(path).stat().st_size, sha_file(Path(path)))
               for role, path in tools.items()}
     invocations = []
     for command in policy["commands"]:
-        invocation = execute(command, policy, repo, roots)
+        invocation = execute(context, command, policy, repo, roots)
         invocations.append(invocation)
         if invocation["timed_out"] or invocation["signal"] is not None or \
            invocation["exit_code"] != 0:
@@ -1245,7 +1331,7 @@ def produce(args: argparse.Namespace) -> int:
         },
         "product_fingerprint": {
             "algorithm": "v3-mode-type-path-payload-sha256-nul",
-            "sha256": PRODUCT_FP, "entries": 55},
+            "sha256": PRODUCT_FP, "entries": 54},
         "builds": builds, "tools": tool_rows, "artifacts": artifacts,
         "fixtures": fixtures, "invocations": invocations,
     }
@@ -1283,53 +1369,6 @@ def internal_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
-def internal_unittest(args: argparse.Namespace) -> int:
-    """Run the fixed suite under Python 3.9 with its pathlib API adapted."""
-    import pathlib
-    import unittest
-
-    original_write_text = pathlib.Path.write_text
-    original_run = subprocess.run
-
-    def compatible_write_text(self: Path, data: str, encoding: str | None = None,
-                              errors: str | None = None,
-                              newline: str | None = None) -> int:
-        with self.open("w", encoding=encoding, errors=errors,
-                       newline=newline) as handle:
-            return handle.write(data)
-
-    child_bootstrap = (
-        "import pathlib,runpy,sys;"
-        "pathlib.Path.write_text=lambda self,data,encoding=None,errors=None,"
-        "newline=None:self.open('w',encoding=encoding,errors=errors,"
-        "newline=newline).write(data);"
-        "script=sys.argv[1];sys.argv=sys.argv[1:];"
-        "runpy.run_path(script,run_name='__main__')"
-    )
-
-    def compatible_run(command: Any, *positional: Any,
-                       **keywords: Any) -> subprocess.CompletedProcess[Any]:
-        actual = command
-        if isinstance(command, (list, tuple)) and len(command) >= 2:
-            executable = Path(os.fspath(command[0])).resolve()
-            script = os.fspath(command[1])
-            if executable == Path(sys.executable).resolve() and script.endswith(".py"):
-                actual = [command[0], "-c", child_bootstrap, *command[1:]]
-        return original_run(actual, *positional, **keywords)
-
-    pathlib.Path.write_text = compatible_write_text
-    subprocess.run = compatible_run
-    try:
-        repo = args.repo.resolve(strict=True)
-        suite = unittest.defaultTestLoader.discover(
-            str(repo / "tests"), pattern="test_*.py")
-        outcome = unittest.TextTestRunner(verbosity=2).run(suite)
-        return 0 if outcome.wasSuccessful() else 1
-    finally:
-        pathlib.Path.write_text = original_write_text
-        subprocess.run = original_run
-
-
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     sub = result.add_subparsers(dest="mode", required=True)
@@ -1358,14 +1397,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = parser().parse_args()
-    if args.mode == "policy":
-        return build_policy(args)
-    if args.mode == "produce":
-        return produce(args)
-    if args.mode == "internal-unittest":
-        return internal_unittest(args)
-    return internal_prepare(args)
+    print("DIRECT_ENTRY_FORBIDDEN: use scripts/run_verifier_python.sh", file=sys.stderr)
+    return 64
 
 
 if __name__ == "__main__":

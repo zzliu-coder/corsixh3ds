@@ -11,7 +11,7 @@
       "properties": {
         "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "first_parent": {"const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"},
+        "first_parent": {"const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"},
         "tracked_fingerprint_v3": {"$ref": "#/$defs/sha256"},
         "tracked_entries": {"type": "integer", "minimum": 199}
       },
@@ -90,7 +90,7 @@
     },
     "matrix_receipt": {
       "type": "object",
-      "required": ["schema", "stage_id", "review_session_id", "created_at", "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256", "producer_manifest_sha256", "run_manifest_sha256", "facts_sha256", "matrix_sha256", "runner_sha256", "fact_consumer_sha256", "summary_sha256", "case_set_sha256", "case_count", "case_id_set", "passed", "failed", "cases", "closure_fixture", "matrix"],
+      "required": ["schema", "stage_id", "review_session_id", "created_at", "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256", "verified_invocation_sha256", "producer_manifest_sha256", "run_manifest_sha256", "facts_sha256", "matrix_sha256", "runner_sha256", "fact_consumer_sha256", "summary_sha256", "case_set_sha256", "case_count", "case_id_set", "passed", "failed", "cases", "closure_fixture", "matrix"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-matrix-receipt/v1"},
         "stage_id": {"const": "C3-R5"},
@@ -100,6 +100,7 @@
         "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
         "policy_id": {"type": "string", "pattern": "^c3-[0-9a-f]{32}$"},
         "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "verified_invocation_sha256": {"$ref": "#/$defs/sha256"},
         "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "facts_sha256": {"$ref": "#/$defs/sha256"},
@@ -139,13 +140,14 @@
     },
     "run_manifest": {
       "type": "object",
-      "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "candidate_identity", "producer_manifest_sha256", "inputs", "source_trees", "derived"],
+      "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "verified_invocation_sha256", "candidate_identity", "producer_manifest_sha256", "inputs", "source_trees", "derived"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-run-manifest/v5"},
         "stage_id": {"const": "C3-R5"},
         "run_id": {"$ref": "#/$defs/id32"},
         "policy_id": {"type": "string"},
         "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "verified_invocation_sha256": {"$ref": "#/$defs/sha256"},
         "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
         "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "inputs": {"type": "array"},
@@ -156,20 +158,21 @@
     },
     "derived_facts": {
       "type": "object",
-      "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "candidate_identity_live", "producer_manifest_sha256", "run_manifest_sha256", "closure_facts", "host_facts", "simulator_facts", "sanitizer_facts", "rh09_facts", "rh07_facts", "rh10_facts", "xbuild_facts", "upstream_snapshot_facts", "product_boundary_facts"],
+      "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "verified_invocation_sha256", "candidate_identity_live", "producer_manifest_sha256", "run_manifest_sha256", "closure_facts", "host_facts", "simulator_facts", "sanitizer_facts", "rh09_facts", "rh07_facts", "rh10_facts", "xbuild_facts", "upstream_snapshot_facts", "product_boundary_facts"],
       "properties": {
         "schema": {"const": "cth3ds.runtime-core-derived-facts/v1"},
         "stage_id": {"const": "C3-R5"},
         "run_id": {"$ref": "#/$defs/id32"},
         "policy_id": {"type": "string"},
         "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "verified_invocation_sha256": {"$ref": "#/$defs/sha256"},
         "candidate_identity_live": {"$ref": "#/$defs/candidate_identity"},
         "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "closure_facts": {"type": "object"},
         "host_facts": {
           "type": "object",
-          "required": ["ctest_passed", "ctest_failed", "ctest_total", "cpp_passed", "cpp_failed", "cpp_total", "python_executed", "python_passed", "python_failures", "python_errors", "python_skipped", "python_unexpected_skipped"],
+          "required": ["ctest_passed", "ctest_failed", "ctest_total", "cpp_passed", "cpp_failed", "cpp_total", "python_executed", "python_passed", "python_failures", "python_errors", "python_skipped", "python_unexpected_skipped", "python_runner_sha256", "python_manifest_sha256", "python_interpreter_sha256", "python_ids_sha256", "python_outcomes"],
           "properties": {
             "ctest_passed": {"const": 3}, "ctest_failed": {"const": 0}, "ctest_total": {"const": 3},
             "cpp_passed": {"const": 105}, "cpp_failed": {"const": 0}, "cpp_total": {"const": 105},
@@ -177,7 +180,25 @@
             "python_passed": {"type": "integer", "minimum": 1},
             "python_failures": {"const": 0}, "python_errors": {"const": 0},
             "python_skipped": {"type": "integer", "minimum": 0},
-            "python_unexpected_skipped": {"const": 0}
+            "python_unexpected_skipped": {"const": 0},
+            "python_runner_sha256": {"$ref": "#/$defs/sha256"},
+            "python_manifest_sha256": {"$ref": "#/$defs/sha256"},
+            "python_interpreter_sha256": {"$ref": "#/$defs/sha256"},
+            "python_ids_sha256": {"$ref": "#/$defs/sha256"},
+            "python_outcomes": {
+              "type": "array",
+              "minItems": 143,
+              "items": {
+                "type": "object",
+                "required": ["id", "outcome"],
+                "properties": {
+                  "id": {"type": "string", "minLength": 1},
+                  "outcome": {"enum": ["passed", "failed", "errors", "skipped"]},
+                  "detail": {"type": "string"}
+                },
+                "additionalProperties": false
+              }
+            }
           },
           "additionalProperties": false
         },
@@ -194,7 +215,7 @@
     }
   },
   "type": "object",
-  "required": ["schema", "stage_id", "artifact_kind", "review_session_id", "run_id", "policy_id", "policy_sha256", "candidate_identity", "protocol_gates", "product_verdicts", "review_verdict", "matrix_gate_status", "matrix_passed", "matrix_failed", "final_acceptance_eligible", "failure_codes", "run_manifest_sha256", "derived_facts_sha256", "matrix_receipt_sha256"],
+  "required": ["schema", "stage_id", "artifact_kind", "review_session_id", "run_id", "policy_id", "policy_sha256", "verified_invocation_sha256", "candidate_identity", "protocol_gates", "product_verdicts", "review_verdict", "matrix_gate_status", "matrix_passed", "matrix_failed", "final_acceptance_eligible", "failure_codes", "run_manifest_sha256", "derived_facts_sha256", "matrix_receipt_sha256"],
   "properties": {
     "schema": {"const": "cth3ds.runtime-core-result/v5"},
     "stage_id": {"const": "C3-R5"},
@@ -203,6 +224,7 @@
     "run_id": {"$ref": "#/$defs/id32"},
     "policy_id": {"type": "string", "pattern": "^c3-[0-9a-f]{32}$"},
     "policy_sha256": {"$ref": "#/$defs/sha256"},
+    "verified_invocation_sha256": {"$ref": "#/$defs/sha256"},
     "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
     "protocol_gates": {
       "type": "object",

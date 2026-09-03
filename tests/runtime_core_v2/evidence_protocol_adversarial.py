@@ -1,14 +1,18 @@
-#!/usr/bin/env python3
+#!/bin/false
+# Invoke protocol self-test and Fresh Chain through scripts/run_verifier_python.sh.
 """Run the frozen 60-case C3 adversarial evidence-protocol matrix."""
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
+import io
 import importlib.util
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -18,14 +22,20 @@ import tempfile
 import unicodedata
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+
+def require_verified_invocation(context: Any, operations: tuple[str, ...]) -> None:
+    if context is None or context.__class__.__name__ != "VerifiedInvocation":
+        raise RuntimeError("VERIFIED_INVOCATION_REQUIRED")
+    context.require(operations)
 
 MATRIX_SHA256 = "8b7cf0d8e3b3702e9aa3c32aff9d1ed3e363ceab52699539251975a61985060f"
 BASE_CASES_SHA256 = "45f7bda680a10c159e70ce15b9389eb7cafc419001af542583fdd5353d319d7f"
 R4_CASES_SHA256 = "a4a7160e0dc762599d13a4df721d0d156e2daeea6ce6b8b4226c16f3a4d5dc64"
 DAG_SHA256 = "b9be4ec34c97cdb10138354df740ad24143b0e202cc96383006f6ef9ca9b52fa"
 CLOSURE_CASES = {"E48", "E49", "E50", "E51", "E60"}
-ACTIVE_JOURNAL: Path | None = None
+ACTIVE_JOURNAL: Optional[Path] = None
+ACTIVE_INVOCATION: Any = None
 
 
 def sha(data: bytes) -> str:
@@ -150,23 +160,15 @@ def commit_fixture_mutation(candidate_source: Path, temp: Path,
     return clone
 
 
-def module_from(path: Path):
-    spec = importlib.util.spec_from_file_location("c3_verify_for_matrix", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load verifier helpers")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def update_candidate_identity(policy: dict[str, Any], manifest: dict[str, Any],
-                              candidate: Path, verifier) -> None:
+                              candidate: Path, verifier, consumer_module) -> None:
     head = verifier.git(candidate, "rev-parse", "HEAD^{commit}").decode().strip()
     tree = verifier.git(candidate, "rev-parse", "HEAD^{tree}").decode().strip()
     fp, entries = verifier.fingerprint(candidate, head)
     git_path = next(row["absolute_realpath"] for row in manifest["tools"]
                     if row["role"] == "git")
-    ancestry = verifier.reviewer_ancestry_commitment(candidate, head, git_path)
+    ancestry = verifier.reviewer_ancestry_commitment(
+        consumer_module, candidate, head, git_path)
     policy["candidate_identity"].update({
         "expected_commit": head, "expected_tree": tree,
         "expected_candidate_fingerprint": fp,
@@ -179,7 +181,7 @@ def update_candidate_identity(policy: dict[str, Any], manifest: dict[str, Any],
     })
 
 
-def mutate_observation(policy, manifest, role, fn, raw: bytes | None = None):
+def mutate_observation(policy, manifest, role, fn, raw: Optional[bytes] = None):
     path = artifact_path(policy, manifest, role)
     if raw is None:
         value = load(path)
@@ -192,7 +194,7 @@ def mutate_observation(policy, manifest, role, fn, raw: bytes | None = None):
 
 def mutate(case_id: str, policy: dict[str, Any], manifest: dict[str, Any],
            policy_path: Path, candidate: Path, case_root: Path, verifier,
-           temp: Path) -> tuple[Path, str | None, str | None]:
+           consumer_module, temp: Path) -> tuple[Path, Optional[str], Optional[str]]:
     test_hook = None
     pass_hash = None
     artifacts = artifact_map(manifest)
@@ -239,7 +241,7 @@ def mutate(case_id: str, policy: dict[str, Any], manifest: dict[str, Any],
         for row in policy["roots"]:
             if row["root_id"] == "candidate":
                 row["absolute_realpath"] = str(clone)
-        update_candidate_identity(policy, manifest, clone, verifier)
+        update_candidate_identity(policy, manifest, clone, verifier, consumer_module)
         candidate = clone
     elif case_id == "E12":
         path = artifact_path(policy, manifest, "xbuild-upstream-snapshot-archive")
@@ -436,12 +438,17 @@ def mutate(case_id: str, policy: dict[str, Any], manifest: dict[str, Any],
                              "fixture-fresh-fixture-manifest")
         path.write_bytes(path.read_bytes() + b" ")
     elif case_id == "E54":
+        fixture_relative = \
+            "tests/runtime_core_v2/fixtures/no-level/fixture-manifest.json"
+
         def outer_true(root: Path) -> None:
-            path = root / "tests/runtime_core_v2/fixtures/no-level/fixture-manifest.json"
+            path = root / fixture_relative
             value = load(path)
             value["contains_original_theme_hospital_data"] = True
             path.write_bytes(canonical(value))
         clone = commit_fixture_mutation(candidate, temp, outer_true)
+        if fixture_relative not in policy["product_boundary"]["allowlist_exact"]:
+            policy["product_boundary"]["allowlist_exact"].append(fixture_relative)
         for row in policy["roots"]:
             if row["root_id"] == "candidate":
                 row["absolute_realpath"] = str(clone)
@@ -455,7 +462,7 @@ def mutate(case_id: str, policy: dict[str, Any], manifest: dict[str, Any],
         artifacts["fixture-tracked-fixture-manifest"]["sha256"] = \
             sha(tracked_path.read_bytes())
         refresh(policy, manifest, "fixture-fresh-fixture-manifest")
-        update_candidate_identity(policy, manifest, clone, verifier)
+        update_candidate_identity(policy, manifest, clone, verifier, consumer_module)
         digest = verifier.fixture_digest(
             clone / "tests/runtime_core_v2/fixtures/no-level")
         manifest["fixtures"][0]["tracked_directory_digest"] = digest
@@ -597,9 +604,9 @@ def prepare_closure_fixture(argv: list[str]) -> int:
 def closure_verify_command(candidate: Path, fixture: Path, digest: str,
                            review_session_id: str, facts: dict[str, Any],
                            run_sha: str, facts_sha: str, policy_sha: str,
-                           consume_state: Path | None = None) -> list[str]:
+                           consume_state: Optional[Path] = None) -> list[str]:
     identity = facts["candidate_identity_live"]
-    command = [sys.executable, str(candidate / "scripts/consume_runtime_core_v2.py"),
+    command = ["IN_PROCESS", str(candidate / "scripts/consume_runtime_core_v2.py"),
         "--verify-closure-fixture", "--seal-root", str(fixture),
         "--closure-fixture-root", str(fixture),
         "--expected-closure-fixture-sha256", digest,
@@ -802,8 +809,11 @@ def mutate_result_case(case_id: str, seal: Path) -> None:
         replace_file(receipt_path, canonical(receipt))
 
 
-def result_provenance_cases(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser()
+def result_provenance_cases(invocation: Any, consumer_module: Any,
+                            argv: list[str]) -> int:
+    require_verified_invocation(invocation, ("fresh-chain", "_finalize-probe",
+                                              "_seal-verify-probe"))
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--result-provenance-cases", action="store_true")
     parser.add_argument("--candidate-root", type=Path, required=True)
     parser.add_argument("--canonical-run-root", type=Path, required=True)
@@ -828,7 +838,7 @@ def result_provenance_cases(argv: list[str]) -> int:
         raise RuntimeError("R3 acceptance output must be empty")
     output.mkdir(parents=True, exist_ok=True)
     consumer = args.candidate_root.resolve(strict=True) / "scripts/consume_runtime_core_v2.py"
-    base_finalize = [sys.executable, str(consumer), "--finalize",
+    base_finalize = ["IN_PROCESS", str(consumer), "--finalize",
         "--candidate-root", str(args.candidate_root), "--facts-root",
         str(args.canonical_facts.parent), "--expected-facts-sha256",
         args.expected_facts_sha256, "--policy", str(args.policy),
@@ -860,17 +870,21 @@ def result_provenance_cases(argv: list[str]) -> int:
                 expected_seal = (args.expected_seal_sha256
                                  if case_id in {"R3P28", "R3P29"}
                                  else mutated_seal_sha)
-                command = [sys.executable, str(consumer), "--verify-seal",
+                command = ["IN_PROCESS", str(consumer), "--verify-seal",
                            "--seal-root", str(fixture),
                            "--expected-matrix-receipt-sha256", expected_receipt]
                 if case_id != "R3P27":
                     command += ["--expected-seal-root-sha256", expected_seal]
             started = utc_now()
-            process = subprocess.run(command, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE, check=False,
-                                     env={"PATH": "/usr/bin:/bin",
-                                          "PYTHONDONTWRITEBYTECODE": "1",
-                                          "LC_ALL": "C", "TZ": "UTC"})
+            if "--finalize" in command:
+                process = run_child_probe(invocation, "_finalize-probe", {
+                    "schema": "cth3ds.verifier-internal-request/v1",
+                    "argv": command[2:]}, case_dir)
+            else:
+                process = run_child_probe(invocation, "_seal-verify-probe", {
+                    "schema": "cth3ds.verifier-internal-request/v1",
+                    "argv": command[2:]}, case_dir)
+            command = list(process.args)
             (case_dir / "stdout").write_bytes(process.stdout)
             (case_dir / "stderr").write_bytes(process.stderr)
             if args.execution_journal:
@@ -967,7 +981,7 @@ def paths_overlap(left: Path, right: Path) -> bool:
 
 
 def normalize_candidate_transport(kind: str, source: Path, destination: Path,
-                                  expected_sha256: str | None) -> dict[str, Any]:
+                                  expected_sha256: Optional[str]) -> dict[str, Any]:
     source = source.resolve(strict=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
     bundle = destination.parent / "candidate-head.bundle"
@@ -1066,15 +1080,26 @@ def exact_observed_dag(entries: list[dict[str, Any]],
 
 def append_journal(path: Path, stage_id: str, dependencies: list[str],
                    command: list[str], started: str, ended: str, exit_code: int,
-                   stdout: bytes, stderr: bytes, output_root: Path | None) -> None:
-    executable = Path(command[0]) if command else Path(__file__)
+                   stdout: bytes, stderr: bytes, output_root: Optional[Path]) -> None:
+    driver_child = len(command) > 2 and command[0] == sys.executable and \
+        command[1] == "-I"
+    executable = (Path(command[2]) if driver_child else
+                  Path(command[0]) if command else Path(__file__))
     executable_sha = sha(executable.read_bytes()) if executable.is_file() else None
+    invocation_digest = (ACTIVE_INVOCATION.digest
+                         if ACTIVE_INVOCATION is not None else None)
+    if output_root is not None:
+        internal = output_root / "internal-result.json"
+        if internal.is_file():
+            try:
+                invocation_digest = load(internal)["verified_invocation_sha256"]
+            except (KeyError, TypeError, json.JSONDecodeError):
+                raise RuntimeError("INTERNAL_RESULT_BINDING_INVALID")
     record = {
         "schema": "cth3ds.runtime-core-execution-journal-entry/v1",
         "stage_id": stage_id, "dependency_ids": dependencies,
         "started_at": started, "ended_at": ended,
-        "executable_relative_path": (command[1] if len(command) > 1 and
-                                     command[0] == sys.executable else
+        "executable_relative_path": (command[2] if driver_child else
                                      str(command[0]) if command else
                                      "tests/runtime_core_v2/evidence_protocol_adversarial.py"),
         "executable_sha256": executable_sha,
@@ -1084,18 +1109,26 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
         "stderr_sha256": sha(stderr),
         "output_root": str(output_root) if output_root else None,
         "output_digest": tree_digest(output_root) if output_root else sha(b""),
+        "verified_invocation_sha256": invocation_digest,
+        "verified_driver": (str(ACTIVE_INVOCATION.driver)
+                            if ACTIVE_INVOCATION is not None else None),
+        "verified_driver_sha256": (sha(ACTIVE_INVOCATION.driver.read_bytes())
+                                    if ACTIVE_INVOCATION is not None else None),
+        "verified_python": (str(ACTIVE_INVOCATION.python)
+                            if ACTIVE_INVOCATION is not None else None),
     }
     with path.open("ab") as handle:
         handle.write(canonical(record))
 
 
 def run_journaled(journal: Path, stage_id: str, dependencies: list[str],
-                  command: list[str], output_root: Path | None = None) -> subprocess.CompletedProcess:
+                  command: list[str], output_root: Optional[Path] = None) -> subprocess.CompletedProcess:
     started = utc_now()
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              check=False, cwd=Path.cwd(),
                              env={"PATH": "/opt/devkitpro/devkitARM/bin:/opt/devkitpro/tools/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
                                   "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C",
+                                  "PYTHONNOUSERSITE": "1",
                                   "TZ": "UTC", "DEVKITPRO": "/opt/devkitpro",
                                   "DEVKITARM": "/opt/devkitpro/devkitARM",
                                   "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
@@ -1109,7 +1142,125 @@ def run_journaled(journal: Path, stage_id: str, dependencies: list[str],
     return process
 
 
-def failure_code(process: subprocess.CompletedProcess) -> str | None:
+def run_in_process_journaled(journal: Path, stage_id: str, dependencies: list[str],
+                             label: str, callback, output_root: Optional[Path] = None):
+    started = utc_now()
+    stdout_text = io.StringIO()
+    stderr_text = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout_text), contextlib.redirect_stderr(stderr_text):
+            code = int(callback() or 0)
+    except Exception as error:
+        code = 2
+        print(repr(error), file=stderr_text)
+    stdout = stdout_text.getvalue().encode()
+    stderr = stderr_text.getvalue().encode()
+    command = [str(ACTIVE_INVOCATION.driver), "in-process:" + label]
+    append_journal(journal, stage_id, dependencies, command, started, utc_now(),
+                   code, stdout, stderr, output_root)
+    if code != 0:
+        raise FreshChainError("STAGE_FAILED", "%s: %s" %
+                              (stage_id, stderr.decode(errors="replace")))
+    return subprocess.CompletedProcess(command, code, stdout, stderr)
+
+
+def call_closed(command: list[str], callback) -> subprocess.CompletedProcess:
+    stdout_text = io.StringIO()
+    stderr_text = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout_text), contextlib.redirect_stderr(stderr_text):
+            code = int(callback() or 0)
+    except Exception as error:
+        code = 2
+        failure = getattr(error, "code", "UNEXPECTED_CONSUMER_ERROR")
+        product_failure = failure in {
+            "SANITIZER_PRODUCT_FAILURE", "RH10_OUTER_PROVENANCE_FALSE"}
+        payload = {"c3": "FAIL" if product_failure else "NOT_PROVEN",
+                   "gate": "FAIL" if product_failure else "NOT_PROVEN",
+                   "product": "FAIL" if product_failure else "NOT_PROVEN",
+                   "review": "REJECT_C3_EVIDENCE_PROTOCOL",
+                   "failure_code": failure, "detail": str(error)}
+        print(json.dumps(payload, sort_keys=True, separators=(",", ":")),
+              file=stderr_text)
+    return subprocess.CompletedProcess(command, code, stdout_text.getvalue().encode(),
+                                       stderr_text.getvalue().encode())
+
+
+def child_environment() -> dict[str, str]:
+    return {
+        "PATH": "/opt/devkitpro/devkitARM/bin:/opt/devkitpro/tools/bin:"
+                "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1",
+        "LC_ALL": "C", "TZ": "UTC", "TMPDIR": "/private/tmp",
+        "DEVKITPRO": "/opt/devkitpro", "DEVKITARM": "/opt/devkitpro/devkitARM",
+    }
+
+
+def run_child_probe(invocation: Any, verb: str, request: dict[str, Any],
+                    evidence_root: Path) -> subprocess.CompletedProcess:
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    request_path = evidence_root / "internal-request.json"
+    result_path = evidence_root / "internal-result.json"
+    if request_path.exists() or result_path.exists():
+        raise RuntimeError("INTERNAL_PROBE_OUTPUT_PREEXISTS")
+    request_path.write_bytes(canonical(request))
+    child_args = ["--request", str(request_path), "--output", str(result_path)]
+    command = invocation.child_command(verb, child_args)
+    invocation.validate_child_command(command, verb, child_args)
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             check=False, cwd=Path.cwd(), env=child_environment())
+    if not result_path.is_file():
+        raise RuntimeError("INTERNAL_PROBE_RESULT_MISSING")
+    result = load(result_path)
+    if result.get("schema") != "cth3ds.verifier-internal-result/v1" or \
+            result.get("scope") != "INTERNAL_NON_FINAL" or \
+            result.get("verb") != verb or \
+            result.get("final_acceptance_eligible") is not False or \
+            not re.fullmatch(r"[0-9a-f]{64}",
+                             result.get("verified_invocation_sha256", "")):
+        raise RuntimeError("INTERNAL_PROBE_RESULT_INVALID")
+    return process
+
+
+def internal_probe_closed(invocation: Any, producer_module: Any,
+                          consumer_module: Any, verb: str,
+                          request: dict[str, Any]) -> dict[str, Any]:
+    require_verified_invocation(invocation, (verb,))
+    if verb == "_fresh-probe":
+        if set(request) != {"schema", "fresh_request"} or \
+                not isinstance(request["fresh_request"], dict):
+            raise RuntimeError("INTERNAL_REQUEST_SHAPE_MISMATCH")
+        fresh = dict(request["fresh_request"])
+        for key in ("candidate_input", "session_root", "archive", "deps_prefix",
+                    "matrix", "base_cases", "r4_cases"):
+            if not isinstance(fresh.get(key), str):
+                raise RuntimeError("INTERNAL_REQUEST_PATH_MISMATCH")
+            fresh[key] = Path(fresh[key])
+        code = fresh_chain_closed(invocation, producer_module, consumer_module, fresh)
+        return {"status": "PASS" if code == 0 else "FAIL", "_exit_code": code}
+    if set(request) != {"schema", "argv"} or \
+            not isinstance(request["argv"], list) or \
+            not all(isinstance(value, str) for value in request["argv"]):
+        raise RuntimeError("INTERNAL_REQUEST_SHAPE_MISMATCH")
+    parsed = consumer_module.parser().parse_args(request["argv"])
+    if verb == "_case-evaluate":
+        code = consumer_module.consume(invocation, parsed)
+    elif verb == "_closure-verify":
+        code = consumer_module.verify_closure_fixture(parsed)
+    elif verb == "_finalize-probe":
+        code = consumer_module.finalize(invocation, parsed)
+    elif verb == "_seal-verify-probe":
+        if parsed.matrix_evaluate:
+            consumer_module.fail(
+                "CANONICAL_SEAL_RESERVED_EMPTY",
+                "legacy pre-matrix seal evaluator is disabled")
+        code = consumer_module.verify_final(invocation, parsed)
+    else:
+        raise RuntimeError("INTERNAL_VERB_NOT_IMPLEMENTED")
+    return {"status": "PASS", "_exit_code": int(code or 0)}
+
+
+def failure_code(process: subprocess.CompletedProcess) -> Optional[str]:
     for raw in reversed(process.stderr.decode(errors="replace").splitlines()):
         try:
             value = json.loads(raw)
@@ -1120,30 +1271,14 @@ def failure_code(process: subprocess.CompletedProcess) -> str | None:
     return None
 
 
-def run_expected(command: list[str], expected_exit: int,
-                 expected_code: str | None) -> tuple[bool, dict[str, Any]]:
-    started = utc_now()
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             check=False, env={"PATH": "/usr/bin:/bin",
-                                               "PYTHONDONTWRITEBYTECODE": "1",
-                                               "LC_ALL": "C", "TZ": "UTC"})
-    if ACTIVE_JOURNAL:
-        append_journal(ACTIVE_JOURNAL, "r4.n81_cycle_acceptance.case",
-            ["r4.n80_base_acceptance"], command, started, utc_now(),
-            process.returncode, process.stdout, process.stderr, None)
-    code = failure_code(process)
-    return (process.returncode == expected_exit and code == expected_code,
-            {"actual_exit": process.returncode, "actual_failure_code": code,
-             "stdout_sha256": sha(process.stdout), "stderr_sha256": sha(process.stderr)})
-
-
 def replace_argument(command: list[str], flag: str, value: str) -> list[str]:
     result = list(command)
     result[result.index(flag) + 1] = value
     return result
 
 
-def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
+def run_r4_acceptance(invocation: Any, producer_module: Any, consumer_module: Any,
+                      args: argparse.Namespace, context: dict[str, Any],
                       output: Path) -> dict[str, Any]:
     global ACTIVE_JOURNAL
     ACTIVE_JOURNAL = context["journal"]
@@ -1159,6 +1294,46 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
         facts, context["run_sha"], context["facts_sha"], context["policy_sha"])
     observed = {row["id"]: row for row in context["matrix_summary"]["cases"]}
     results: list[dict[str, Any]] = []
+    probe_index = 0
+
+    def probe_root() -> Path:
+        nonlocal probe_index
+        probe_index += 1
+        return output / "probes" / ("probe-%03d" % probe_index)
+
+    def expected_consumer(command: list[str], expected_exit: int,
+                          expected_code: Optional[str]) -> tuple[bool, dict[str, Any]]:
+        parsed = consumer_module.parser().parse_args(command[2:])
+        if parsed.verify_closure_fixture:
+            verb = "_closure-verify"
+        elif parsed.finalize:
+            verb = "_finalize-probe"
+        elif parsed.verify_seal or parsed.matrix_evaluate:
+            verb = "_seal-verify-probe"
+        else:
+            verb = "_case-evaluate"
+        process = run_child_probe(invocation, verb, {
+            "schema": "cth3ds.verifier-internal-request/v1",
+            "argv": command[2:]}, probe_root())
+        code = failure_code(process)
+        return (process.returncode == expected_exit and code == expected_code,
+                {"actual_exit": process.returncode, "actual_failure_code": code,
+                 "stdout_sha256": sha(process.stdout),
+                 "stderr_sha256": sha(process.stderr)})
+
+    def expected_fresh(session_root: Path, expected_code: str):
+        request = dict(context["fresh_request"])
+        request["session_root"] = session_root
+        serializable = {key: str(value) if isinstance(value, Path) else value
+                        for key, value in request.items()}
+        process = run_child_probe(invocation, "_fresh-probe", {
+            "schema": "cth3ds.verifier-internal-request/v1",
+            "fresh_request": serializable}, probe_root())
+        code = failure_code(process)
+        return (process.returncode == 2 and code == expected_code,
+                {"actual_exit": process.returncode, "actual_failure_code": code,
+                 "stdout_sha256": sha(process.stdout),
+                 "stderr_sha256": sha(process.stderr)})
 
     def add(case_id: str, passed: bool, code: str, evidence: Any) -> None:
         case_dir = output / case_id
@@ -1176,9 +1351,7 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
         nonempty = temp / "nonempty"
         nonempty.mkdir()
         (nonempty / "sentinel").write_text("x", encoding="utf-8")
-        command = context["fresh_command"]
-        command = replace_argument(command, "--session-root", str(nonempty.resolve()))
-        ok, ev = run_expected(command, 2, "SESSION_ROOT_NOT_EMPTY")
+        ok, ev = expected_fresh(nonempty.resolve(), "SESSION_ROOT_NOT_EMPTY")
         add("R4C02", ok, "SESSION_ROOT_NOT_EMPTY", ev)
     seal_obs = context["seal_observations"]
     add("R4C03", len(seal_obs) == 3 and all(row["entry_count"] == 0 for row in seal_obs),
@@ -1187,21 +1360,21 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
     add("R4C04", fresh_policy["forbidden_prior_artifact_roles"] ==
         ["facts", "closure_fixture", "matrix_receipt", "final_seal"],
         "NO_PRIOR_RUN_REFERENCE", fresh_policy)
-    ok, ev = run_expected(base_verify, 0, None)
+    ok, ev = expected_consumer(base_verify, 0, None)
     add("R4C05", ok, "CLOSURE_FIXTURE_VALID", ev)
     wrong = "f" * 32 if facts["run_id"] != "f" * 32 else "e" * 32
-    ok, ev = run_expected(replace_argument(base_verify,
+    ok, ev = expected_consumer(replace_argument(base_verify,
         "--expected-canonical-run-id", wrong), 2, "CLOSURE_FIXTURE_RUN_ID_MISMATCH")
     add("R4C06", ok, "CLOSURE_FIXTURE_RUN_ID_MISMATCH", ev)
     wrong40 = "f" * 40 if facts["candidate_identity_live"]["commit"] != "f" * 40 else "e" * 40
-    ok, ev = run_expected(replace_argument(base_verify,
+    ok, ev = expected_consumer(replace_argument(base_verify,
         "--expected-candidate-head", wrong40), 2, "CLOSURE_FIXTURE_CANDIDATE_MISMATCH")
     add("R4C07", ok, "CLOSURE_FIXTURE_CANDIDATE_MISMATCH", ev)
-    ok, ev = run_expected(replace_argument(base_verify,
+    ok, ev = expected_consumer(replace_argument(base_verify,
         "--expected-fixture-policy-id", "c3-" + wrong), 2,
         "CLOSURE_FIXTURE_POLICY_MISMATCH")
     add("R4C08", ok, "CLOSURE_FIXTURE_POLICY_MISMATCH", ev)
-    ok, ev = run_expected(replace_argument(base_verify,
+    ok, ev = expected_consumer(replace_argument(base_verify,
         "--expected-derived-facts-sha256", "f" * 64), 2,
         "CLOSURE_FIXTURE_FACTS_MISMATCH")
     add("R4C09", ok, "CLOSURE_FIXTURE_FACTS_MISMATCH", ev)
@@ -1215,14 +1388,14 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
         command = closure_verify_command(candidate, mutated,
             sha((mutated / "SHA256SUMS").read_bytes()), context["review_session_id"],
             facts, context["run_sha"], context["facts_sha"], context["policy_sha"])
-        ok, ev = run_expected(command, 2, "CLOSURE_FIXTURE_SCHEMA_INVALID")
+        ok, ev = expected_consumer(command, 2, "CLOSURE_FIXTURE_SCHEMA_INVALID")
         # Schema and semantic guards are both valid fail-closed frontiers.
         if ev["actual_failure_code"] == "CLOSURE_FIXTURE_FINAL_ACCEPT_FORBIDDEN":
             ok = True
         add("R4C10", ok, "CLOSURE_FIXTURE_FINAL_ACCEPT_FORBIDDEN", ev)
     command = base_verify + ["--fixture-consumption-state",
         str(context["consumption_state"]), "--consume-closure-fixture"]
-    ok, ev = run_expected(command, 2, "CLOSURE_FIXTURE_ALREADY_CONSUMED")
+    ok, ev = expected_consumer(command, 2, "CLOSURE_FIXTURE_ALREADY_CONSUMED")
     add("R4C11", ok, "CLOSURE_FIXTURE_ALREADY_CONSUMED", ev)
     for number, matrix_id, code in ((12, "E48", "CONSUMER_NOT_SEALED"),
                                     (13, "E49", "POLICY_NOT_SEALED"),
@@ -1260,13 +1433,13 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
         command = replace_argument(command, "--expected-matrix-receipt-sha256",
                                    sha(receipt_path.read_bytes()))
         command = replace_argument(command, "--seal-root", str(reject_seal))
-        ok, ev = run_expected(command, 2, "MATRIX_CASE_FAILED")
+        ok, ev = expected_consumer(command, 2, "MATRIX_CASE_FAILED")
         ev["final_seal_entry_count"] = len(list(reject_seal.iterdir()))
         add("R4C17", ok and ev["final_seal_entry_count"] == 0,
             "MATRIX_CASE_FAILED", ev)
-    command = [sys.executable, str(candidate / "scripts/consume_runtime_core_v2.py"),
+    command = ["IN_PROCESS", str(candidate / "scripts/consume_runtime_core_v2.py"),
                "--verify-seal", "--seal-root", str(fixture)]
-    ok, ev = run_expected(command, 2, "FINAL_ACCEPTANCE_FIXTURE_FORBIDDEN")
+    ok, ev = expected_consumer(command, 2, "FINAL_ACCEPTANCE_FIXTURE_FORBIDDEN")
     add("R4C18", ok, "FINAL_ACCEPTANCE_FIXTURE_FORBIDDEN", ev)
     normalized = context["normalized_order"]
     prefix_equal = normalized == context["declared_order"][:len(normalized)]
@@ -1275,16 +1448,15 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
                                       "normalized_sha256": sha(canonical(normalized))})
     with tempfile.TemporaryDirectory(prefix="cth3ds-r4-overlap-") as temporary:
         overlap = candidate / ".r4-overlap-must-not-create"
-        command = replace_argument(context["fresh_command"], "--session-root", str(overlap))
-        ok, ev = run_expected(command, 2, "INPUT_OUTPUT_OVERLAP")
+        ok, ev = expected_fresh(overlap, "INPUT_OUTPUT_OVERLAP")
         add("R4C20", ok and not overlap.exists(), "INPUT_OUTPUT_OVERLAP", ev)
-    command = [sys.executable, str(candidate / "scripts/consume_runtime_core_v2.py"),
+    command = ["IN_PROCESS", str(candidate / "scripts/consume_runtime_core_v2.py"),
         "--matrix-evaluate", "--candidate-root", str(candidate),
         "--evidence-root", str(context["canonical_root"] / "evidence_raw"),
         "--policy", str(context["policy_path"]),
         "--expected-policy-sha256", context["policy_sha"],
         "--seal-root", str(context["canonical_seal"])]
-    ok, ev = run_expected(command, 2, "CANONICAL_SEAL_RESERVED_EMPTY")
+    ok, ev = expected_consumer(command, 2, "CANONICAL_SEAL_RESERVED_EMPTY")
     ev["canonical_seal_entry_count"] = len(list(context["canonical_seal"].iterdir()))
     add("R4C21", ok and ev["canonical_seal_entry_count"] == 0,
         "CANONICAL_SEAL_RESERVED_EMPTY", ev)
@@ -1316,24 +1488,25 @@ def run_r4_acceptance(args: argparse.Namespace, context: dict[str, Any],
     return summary
 
 
-def fresh_chain(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--fresh-chain", action="store_true")
-    parser.add_argument("--candidate-root", type=Path)
-    parser.add_argument("--candidate-input-kind", choices=["detached-repo", "head-bundle"],
-                        default="detached-repo")
-    parser.add_argument("--candidate-input-path", type=Path)
-    parser.add_argument("--expected-candidate-input-sha256")
-    parser.add_argument("--session-root", type=Path, required=True)
-    parser.add_argument("--archive", type=Path, required=True)
-    parser.add_argument("--deps-prefix", type=Path, required=True)
-    parser.add_argument("--matrix", type=Path, required=True)
-    parser.add_argument("--expected-matrix-sha256", required=True)
-    parser.add_argument("--base-acceptance-cases", type=Path, required=True)
-    parser.add_argument("--expected-base-cases-sha256", required=True)
-    parser.add_argument("--cycle-acceptance-cases", type=Path, required=True)
-    parser.add_argument("--expected-cycle-cases-sha256", required=True)
-    args = parser.parse_args(argv)
+def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
+                       request: dict[str, Any]) -> int:
+    global ACTIVE_INVOCATION
+    require_verified_invocation(invocation, ("fresh-chain", "_fresh-probe"))
+    ACTIVE_INVOCATION = invocation
+    args = argparse.Namespace(
+        candidate_root=None,
+        candidate_input_kind=request["candidate_kind"],
+        candidate_input_path=request["candidate_input"],
+        expected_candidate_input_sha256=request["expected_candidate_input_sha256"],
+        expected_candidate_head=request["expected_candidate_head"],
+        expected_candidate_tree=request["expected_candidate_tree"],
+        session_root=request["session_root"], archive=request["archive"],
+        deps_prefix=request["deps_prefix"], matrix=request["matrix"],
+        expected_matrix_sha256=request["expected_matrix_sha256"],
+        base_acceptance_cases=request["base_cases"],
+        expected_base_cases_sha256=request["expected_base_cases_sha256"],
+        cycle_acceptance_cases=request["r4_cases"],
+        expected_cycle_cases_sha256=request["expected_r4_cases_sha256"])
     try:
         candidate_input = args.candidate_input_path or args.candidate_root
         if candidate_input is None:
@@ -1381,10 +1554,21 @@ def fresh_chain(argv: list[str]) -> int:
             preflight_root / "candidate-detached",
             args.expected_candidate_input_sha256)
         candidate = Path(transport["normalized_repo_realpath"])
+        observed_head = subprocess.check_output(
+            ["/usr/bin/git", "-C", str(candidate), "rev-parse", "HEAD^{commit}"],
+            text=True).strip()
+        observed_tree = subprocess.check_output(
+            ["/usr/bin/git", "-C", str(candidate), "rev-parse", "HEAD^{tree}"],
+            text=True).strip()
+        if observed_head != args.expected_candidate_head or \
+                observed_tree != args.expected_candidate_tree:
+            raise FreshChainError("CANDIDATE_IDENTITY_MISMATCH",
+                                  "normalized candidate identity differs")
         journal = preflight_root / "execution-journal.jsonl"
         review_session_id = uuid.uuid4().hex
         input_identity = {"schema": "cth3ds.runtime-core-r5-input-identity/v1",
             "review_session_id": review_session_id, "session_root_realpath": str(session),
+            "verified_invocation_sha256": invocation.digest,
             "initial_entry_count": initial_count,
             "inputs": {role: {"realpath": str(path),
                 "sha256": sha(path.read_bytes()) if path.is_file() else tree_digest(path),
@@ -1403,46 +1587,49 @@ def fresh_chain(argv: list[str]) -> int:
         canonical_root = session / "20-canonical-run"
         verifier_script = candidate / "scripts/verify_runtime_core_v2.py"
         runner_script = candidate / "tests/runtime_core_v2/evidence_protocol_adversarial.py"
-        consumer = candidate / "scripts/consume_runtime_core_v2.py"
-        policy_command = [sys.executable, str(verifier_script), "policy",
-            "--repo", str(candidate), "--run-root", str(canonical_root),
-            "--reviewer-root", str(policy_root), "--archive", str(archive),
-            "--deps-prefix", str(deps), "--review-session-id", review_session_id,
-            "--session-root", str(session)]
-        run_journaled(journal, "r4.n10_policy", ["r4.n00_preflight"],
-                      policy_command, policy_root)
+        consumer_path = candidate / "scripts/consume_runtime_core_v2.py"
+        policy_args = argparse.Namespace(
+            repo=candidate, run_root=canonical_root, reviewer_root=policy_root,
+            archive=archive, deps_prefix=deps, review_session_id=review_session_id,
+            session_root=session)
+        run_in_process_journaled(
+            journal, "r4.n10_policy", ["r4.n00_preflight"], "policy",
+            lambda: producer.build_policy(invocation, consumer_module, policy_args),
+            policy_root)
         policy_path = policy_root / "review-policy.json"
         policy_sha = sha(policy_path.read_bytes())
         policy = load(policy_path)
-        produce_command = [sys.executable, str(verifier_script), "produce",
-                           "--policy", str(policy_path),
-                           "--expected-policy-sha256", policy_sha]
-        run_journaled(journal, "r4.n20_produce", ["r4.n10_policy"],
-                      produce_command, canonical_root / "evidence_raw")
+        produce_args = argparse.Namespace(policy=policy_path,
+                                          expected_policy_sha256=policy_sha)
+        run_in_process_journaled(
+            journal, "r4.n20_produce", ["r4.n10_policy"], "produce",
+            lambda: producer.produce(invocation, produce_args),
+            canonical_root / "evidence_raw")
         producer_manifest = load(canonical_root / "evidence_raw/producer-manifest.json")
         artifacts_by_id = {row["artifact_id"]: row
                            for row in producer_manifest["artifacts"]}
         policy_roots = roots(policy)
-        for invocation in producer_manifest["invocations"]:
-            stdout_item = artifacts_by_id[invocation["stdout_artifact_id"]]
-            stderr_item = artifacts_by_id[invocation["stderr_artifact_id"]]
+        for observed_invocation in producer_manifest["invocations"]:
+            stdout_item = artifacts_by_id[observed_invocation["stdout_artifact_id"]]
+            stderr_item = artifacts_by_id[observed_invocation["stderr_artifact_id"]]
             stdout_bytes = (policy_roots[stdout_item["root_id"]] /
                             stdout_item["relative_path"]).read_bytes()
             stderr_bytes = (policy_roots[stderr_item["root_id"]] /
                             stderr_item["relative_path"]).read_bytes()
-            append_journal(journal, "r4.n20_produce.invocation." + invocation["role"],
-                ["r4.n10_policy"], invocation["argv"], invocation["started_at"],
-                invocation["finished_at"], invocation["exit_code"], stdout_bytes,
+            append_journal(journal, "r4.n20_produce.invocation." + observed_invocation["role"],
+                ["r4.n10_policy"], observed_invocation["argv"], observed_invocation["started_at"],
+                observed_invocation["finished_at"], observed_invocation["exit_code"], stdout_bytes,
                 stderr_bytes, None)
         facts_root = session / "30-facts"
         canonical_seal = canonical_root / "seal"
-        derive_command = [sys.executable, str(consumer), "--derive",
-            "--candidate-root", str(candidate), "--evidence-root",
-            str(canonical_root / "evidence_raw"), "--policy", str(policy_path),
-            "--expected-policy-sha256", policy_sha, "--seal-root", str(canonical_seal),
-            "--facts-root", str(facts_root)]
-        run_journaled(journal, "r4.n30_derive", ["r4.n20_produce"],
-                      derive_command, facts_root)
+        derive_args = argparse.Namespace(
+            candidate_root=candidate, evidence_root=canonical_root / "evidence_raw",
+            policy=policy_path, expected_policy_sha256=policy_sha,
+            seal_root=canonical_seal, facts_root=facts_root, derive=True,
+            case_evaluate=False, matrix_evaluate=False, test_rename_artifact="")
+        run_in_process_journaled(
+            journal, "r4.n30_derive", ["r4.n20_produce"], "derive",
+            lambda: consumer_module.consume(invocation, derive_args), facts_root)
         facts_path = facts_root / "derived-facts.json"
         run_path = facts_root / "run-manifest.json"
         facts_sha = sha(facts_path.read_bytes())
@@ -1464,15 +1651,16 @@ def fresh_chain(argv: list[str]) -> int:
             [str(runner_script), "seal-empty-check"], utc_now(), utc_now(), 0,
             canonical(seal_observations[-1]), b"", canonical_seal)
         fixture = session / "40-closure-fixture"
-        fixture_command = [sys.executable, str(runner_script),
+        fixture_command = ["IN_PROCESS", str(runner_script),
             "--prepare-closure-fixture", "--candidate-root", str(candidate),
             "--canonical-facts-root", str(facts_root), "--policy", str(policy_path),
             "--expected-policy-sha256", policy_sha, "--matrix", str(matrix),
             "--expected-matrix-sha256", MATRIX_SHA256,
             "--review-session-id", review_session_id, "--out", str(fixture)]
-        run_journaled(journal, "r4.n40_fixture",
-                      ["r4.n30_derive", "r4.n35_seal_empty"],
-                      fixture_command, fixture)
+        run_in_process_journaled(
+            journal, "r4.n40_fixture", ["r4.n30_derive", "r4.n35_seal_empty"],
+            "prepare-closure-fixture",
+            lambda: prepare_closure_fixture(fixture_command[2:]), fixture)
         anchors = session / "45-anchors"
         anchors.mkdir()
         fixture_digest = sha((fixture / "SHA256SUMS").read_bytes())
@@ -1485,13 +1673,16 @@ def fresh_chain(argv: list[str]) -> int:
             canonical(fixture_anchor), b"", anchors)
         fixture_verify = closure_verify_command(candidate, fixture, fixture_digest,
             review_session_id, facts, run_sha, facts_sha, policy_sha)
-        run_journaled(journal, "r4.n42_fixture_verify", ["r4.n41_fixture_anchor"],
-                      fixture_verify, fixture)
+        closure_args = consumer_module.parser().parse_args(fixture_verify[2:])
+        run_in_process_journaled(
+            journal, "r4.n42_fixture_verify", ["r4.n41_fixture_anchor"],
+            "closure-verify", lambda: consumer_module.verify_closure_fixture(closure_args),
+            fixture)
         observe("after_fixture")
         matrix_root = session / "50-matrix"
         receipt = matrix_root / "receipt.json"
         consumption_state = matrix_root / "fixture-consumption.json"
-        matrix_command = [sys.executable, str(runner_script),
+        matrix_command = ["IN_PROCESS", str(runner_script),
             "--candidate-root", str(candidate), "--canonical-run-root", str(canonical_root),
             "--canonical-facts", str(facts_path), "--expected-facts-sha256", facts_sha,
             "--policy", str(policy_path), "--expected-policy-sha256", policy_sha,
@@ -1502,8 +1693,10 @@ def fresh_chain(argv: list[str]) -> int:
             "--expected-closure-fixture-sha256", fixture_digest,
             "--fixture-consumption-state", str(consumption_state),
             "--execution-journal", str(journal)]
-        run_journaled(journal, "r4.n50_closure_cases", ["r4.n42_fixture_verify"],
-                      matrix_command, matrix_root)
+        run_in_process_journaled(
+            journal, "r4.n50_closure_cases", ["r4.n42_fixture_verify"],
+            "matrix", lambda: matrix_closed(invocation, producer, consumer_module,
+                                              matrix_command[2:]), matrix_root)
         append_journal(journal, "r4.n50_other_cases", ["r4.n30_derive"],
             [str(runner_script), "other-55-cases"], utc_now(), utc_now(), 0,
             (matrix_root / "summary.json").read_bytes(), b"", matrix_root)
@@ -1521,7 +1714,7 @@ def fresh_chain(argv: list[str]) -> int:
             [str(runner_script), "anchor-receipt"], utc_now(), utc_now(), 0,
             canonical(receipt_anchor), b"", anchors)
         final_seal = session / "60-final-seal"
-        finalize_command = [sys.executable, str(consumer), "--finalize",
+        finalize_command = ["IN_PROCESS", str(consumer_path), "--finalize",
             "--candidate-root", str(candidate), "--facts-root", str(facts_root),
             "--expected-facts-sha256", facts_sha, "--policy", str(policy_path),
             "--expected-policy-sha256", policy_sha, "--matrix", str(matrix),
@@ -1530,9 +1723,12 @@ def fresh_chain(argv: list[str]) -> int:
             receipt_sha, "--closure-fixture-root", str(fixture),
             "--expected-closure-fixture-sha256", fixture_digest,
             "--seal-root", str(final_seal)]
-        run_journaled(journal, "r4.n60_finalize",
-                      ["r4.n52_receipt_anchor", "r4.n41_fixture_anchor"],
-                      finalize_command, final_seal)
+        finalize_args = consumer_module.parser().parse_args(finalize_command[2:])
+        run_in_process_journaled(
+            journal, "r4.n60_finalize",
+            ["r4.n52_receipt_anchor", "r4.n41_fixture_anchor"],
+            "finalize", lambda: consumer_module.finalize(invocation, finalize_args),
+            final_seal)
         final_digest = sha((final_seal / "SHA256SUMS").read_bytes())
         final_anchor = {"schema": "cth3ds.external-sha256-anchor/v1",
                         "artifact": "final_seal_sha256s", "sha256": final_digest,
@@ -1543,15 +1739,18 @@ def fresh_chain(argv: list[str]) -> int:
             canonical(final_anchor), b"", anchors)
         verification = session / "70-verification"
         verification.mkdir()
-        verify_command = [sys.executable, str(consumer), "--verify-seal",
+        verify_command = ["IN_PROCESS", str(consumer_path), "--verify-seal",
             "--seal-root", str(final_seal), "--expected-seal-root-sha256", final_digest,
             "--expected-matrix-receipt-sha256", receipt_sha]
-        verify_process = run_journaled(journal, "r4.n70_semantic_verify",
-            ["r4.n61_final_anchor"], verify_command, verification)
+        verify_args = consumer_module.parser().parse_args(verify_command[2:])
+        verify_process = run_in_process_journaled(
+            journal, "r4.n70_semantic_verify", ["r4.n61_final_anchor"],
+            "verify-seal", lambda: consumer_module.verify_final(invocation, verify_args),
+            verification)
         (verification / "stdout.jsonl").write_bytes(verify_process.stdout)
         acceptance_root = session / "80-acceptance"
         base_output = acceptance_root / "base32"
-        base_command = [sys.executable, str(runner_script),
+        base_command = ["IN_PROCESS", str(runner_script),
             "--result-provenance-cases", "--candidate-root", str(candidate),
             "--canonical-run-root", str(canonical_root), "--canonical-facts", str(facts_path),
             "--expected-facts-sha256", facts_sha, "--policy", str(policy_path),
@@ -1561,8 +1760,11 @@ def fresh_chain(argv: list[str]) -> int:
             "--seal-root", str(final_seal), "--expected-seal-sha256", final_digest,
             "--cases", str(base_cases), "--out", str(base_output),
             "--execution-journal", str(journal)]
-        run_journaled(journal, "r4.n80_base_acceptance", ["r4.n70_semantic_verify"],
-                      base_command, base_output)
+        run_in_process_journaled(
+            journal, "r4.n80_base_acceptance", ["r4.n70_semantic_verify"],
+            "result-provenance",
+            lambda: result_provenance_cases(invocation, consumer_module,
+                                             base_command[2:]), base_output)
         dag = load(dag_path)
         graph = dag["r4_proposed"]
         declared_order = graph["declared_topological_order"]
@@ -1580,7 +1782,9 @@ def fresh_chain(argv: list[str]) -> int:
                         observed_edges_set.add((dependency, stage))
         normalized_order = observed_order
         observed_edges = sorted(observed_edges_set)
-        context = {"candidate": candidate, "fixture": fixture, "facts": facts,
+        probe_request = dict(request)
+        probe_request["candidate_input"] = candidate
+        acceptance_context = {"candidate": candidate, "fixture": fixture, "facts": facts,
             "fixture_digest": fixture_digest, "review_session_id": review_session_id,
             "run_sha": run_sha, "facts_sha": facts_sha, "policy_sha": policy_sha,
             "preflight": input_identity, "seal_observations": seal_observations,
@@ -1590,10 +1794,10 @@ def fresh_chain(argv: list[str]) -> int:
             "dag": dag, "matrix_root": matrix_root, "receipt": receipt,
             "finalize_command": finalize_command, "canonical_root": canonical_root,
             "canonical_seal": canonical_seal, "policy_path": policy_path,
-            "journal": journal,
-            "fresh_command": [sys.executable, str(runner_script), *argv]}
+            "journal": journal, "fresh_request": probe_request}
         r4_output = acceptance_root / "r4-additive22"
-        r4_summary = run_r4_acceptance(args, context, r4_output)
+        r4_summary = run_r4_acceptance(invocation, producer, consumer_module,
+                                        args, acceptance_context, r4_output)
         if r4_summary["passed"] != 22:
             raise FreshChainError("R4_ACCEPTANCE_FAILED",
                                   f"R4 additive {r4_summary['passed']}/22")
@@ -1663,6 +1867,7 @@ def fresh_chain(argv: list[str]) -> int:
         base_summary = load(base_output / "summary.json")
         result = {"schema": "cth3ds.runtime-core-c3-r5-fresh-chain-result/v1",
             "stage_id": "C3-R5", "review_session_id": review_session_id,
+            "verified_invocation_sha256": invocation.digest,
             "candidate_identity": facts["candidate_identity_live"],
             "initial_entry_count": 0, "facts_checks": {"passed": 18, "total": 18},
             "matrix": {"passed": 60, "total": 60},
@@ -1708,22 +1913,16 @@ def fresh_chain(argv: list[str]) -> int:
         return 2
 
 
-def protocol_self_test(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--protocol-self-test", action="store_true")
-    parser.add_argument("--repo", type=Path, required=True)
-    parser.add_argument("--session-root", type=Path, required=True)
-    parser.add_argument("--out", type=Path, required=True)
-    args = parser.parse_args(argv)
-    repo = args.repo.resolve(strict=True)
-    session = args.session_root.absolute()
+def protocol_self_test_closed(context: Any, producer: Any, consumer: Any,
+                              session_root: Path, out_path: Path) -> int:
+    require_verified_invocation(context, ("protocol-self-test",))
+    repo = context.repo.resolve(strict=True)
+    session = session_root.absolute()
     if session.exists() and (not session.is_dir() or any(session.iterdir())):
         raise RuntimeError("self-test session must be new and empty")
     if not no_symlink_chain(session):
         raise RuntimeError("self-test session path contains symlink")
     session.mkdir(parents=True, exist_ok=True)
-    consumer = module_from(repo / "scripts/consume_runtime_core_v2.py")
-    producer = module_from(repo / "scripts/verify_runtime_core_v2.py")
     results: list[dict[str, Any]] = []
 
     def result_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
@@ -1750,7 +1949,7 @@ def protocol_self_test(argv: list[str]) -> int:
         results.append({"id": case_id, "pass": passed,
                         "expected": expected, "detail": detail})
 
-    def raw_payload(parents: list[str] | None = None, duplicate_tree: bool = False,
+    def raw_payload(parents: Optional[list[str]] = None, duplicate_tree: bool = False,
                     malformed_parent: bool = False, terminator: bool = True) -> tuple[str, bytes]:
         lines = [b"tree " + b"1" * 40]
         if duplicate_tree:
@@ -1915,8 +2114,10 @@ def protocol_self_test(argv: list[str]) -> int:
 
     counts = result_counts(results)
     summary = {"schema": "cth3ds.runtime-core-c3-r5-self-test/v1",
-               "session_root": str(session), **counts, "cases": results}
-    out = args.out.absolute()
+               "session_root": str(session),
+               "verified_invocation_sha256": context.digest,
+               **counts, "cases": results}
+    out = out_path.absolute()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(canonical(summary))
     persisted = json.loads(out.read_bytes())
@@ -1931,16 +2132,10 @@ def protocol_self_test(argv: list[str]) -> int:
     return 0 if counts["failed"] == 0 else 2
 
 
-def main() -> int:
-    if "--protocol-self-test" in sys.argv:
-        return protocol_self_test(sys.argv[1:])
-    if "--fresh-chain" in sys.argv:
-        return fresh_chain(sys.argv[1:])
-    if "--prepare-closure-fixture" in sys.argv:
-        return prepare_closure_fixture(sys.argv[1:])
-    if "--result-provenance-cases" in sys.argv:
-        return result_provenance_cases(sys.argv[1:])
-    parser = argparse.ArgumentParser()
+def matrix_closed(invocation: Any, producer_module: Any, consumer_module: Any,
+                  argv: list[str]) -> int:
+    require_verified_invocation(invocation, ("fresh-chain", "_case-evaluate"))
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--candidate-root", type=Path, required=True)
     parser.add_argument("--canonical-run-root", type=Path, required=True)
     parser.add_argument("--canonical-facts", type=Path, required=True)
@@ -1956,7 +2151,7 @@ def main() -> int:
     parser.add_argument("--expected-closure-fixture-sha256", required=True)
     parser.add_argument("--fixture-consumption-state", type=Path, required=True)
     parser.add_argument("--execution-journal", type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     matrix_raw = args.matrix.resolve(strict=True).read_bytes()
     if args.expected_matrix_sha256 != MATRIX_SHA256 or sha(matrix_raw) != MATRIX_SHA256:
         raise RuntimeError("matrix hash mismatch")
@@ -2000,7 +2195,7 @@ def main() -> int:
     if receipt_path.exists():
         raise RuntimeError("receipt output already exists")
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    verifier = module_from(candidate / "scripts/verify_runtime_core_v2.py")
+    verifier = producer_module
     consumer = candidate / "scripts/consume_runtime_core_v2.py"
     fixture_root = args.closure_fixture_root.resolve(strict=True)
     fixture_manifest = load(fixture_root / "fixture-manifest.json")
@@ -2009,15 +2204,15 @@ def main() -> int:
         args.review_session_id, facts, sha(run_manifest_raw), sha(facts_raw),
         args.expected_policy_sha256, args.fixture_consumption_state)
     baseline_started = utc_now()
-    baseline_process = subprocess.run(
-        baseline_fixture_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        check=False, env={"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1",
-                          "LC_ALL": "C", "TZ": "UTC"})
+    baseline_probe = output / "fixture-consume-probe"
+    baseline_process = run_child_probe(invocation, "_closure-verify", {
+        "schema": "cth3ds.verifier-internal-request/v1",
+        "argv": baseline_fixture_command[2:]}, baseline_probe)
     if args.execution_journal:
         append_journal(args.execution_journal, "r4.n50_closure_cases.fixture-consume",
-            ["r4.n42_fixture_verify"], baseline_fixture_command, baseline_started,
+            ["r4.n42_fixture_verify"], list(baseline_process.args), baseline_started,
             utc_now(), baseline_process.returncode, baseline_process.stdout,
-            baseline_process.stderr, fixture_root)
+            baseline_process.stderr, baseline_probe)
     if baseline_process.returncode != 0:
         raise RuntimeError("baseline fixture consumption failed: " +
                            baseline_process.stderr.decode(errors="replace"))
@@ -2041,9 +2236,9 @@ def main() -> int:
                     case_temp / "run", candidate, False)
                 case_candidate, cleanup_marker, stale_hash = mutate(
                     case_id, policy, manifest, policy_path, candidate,
-                    case_temp / "run", verifier, case_temp)
+                    case_temp / "run", verifier, consumer_module, case_temp)
                 policy_hash = stale_hash or sha(policy_path.read_bytes())
-                command = [sys.executable, str(consumer),
+                command = ["IN_PROCESS", str(consumer),
                     "--case-evaluate",
                     "--candidate-root", str(case_candidate),
                     "--evidence-root", str(case_temp / "run/evidence_raw"),
@@ -2053,15 +2248,19 @@ def main() -> int:
                 if case_id == "E40":
                     command += ["--test-rename-artifact", "cpp-stdout"]
             started = utc_now()
-            process = subprocess.run(command, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE, check=False,
-                                     env={"PATH": "/usr/bin:/bin",
-                                          "PYTHONDONTWRITEBYTECODE": "1",
-                                          "LC_ALL": "C", "TZ": "UTC"})
-            if cleanup_marker:
-                Path(cleanup_marker).unlink(missing_ok=True)
             case_output = output / "cases" / case_id
             case_output.mkdir(parents=True)
+            if case_id in CLOSURE_CASES:
+                process = run_child_probe(invocation, "_closure-verify", {
+                    "schema": "cth3ds.verifier-internal-request/v1",
+                    "argv": command[2:]}, case_output)
+            else:
+                process = run_child_probe(invocation, "_case-evaluate", {
+                    "schema": "cth3ds.verifier-internal-request/v1",
+                    "argv": command[2:]}, case_output)
+            command = list(process.args)
+            if cleanup_marker:
+                Path(cleanup_marker).unlink(missing_ok=True)
             stdout_path = case_output / "stdout"
             stderr_path = case_output / "stderr"
             stdout_path.write_bytes(process.stdout)
@@ -2108,6 +2307,9 @@ def main() -> int:
                 "mutation_sha256": sha(mutation_raw),
                 "stdout_sha256": sha(process.stdout),
                 "stderr_sha256": sha(process.stderr)})
+            if case_temp.exists():
+                writable(case_temp)
+                shutil.rmtree(case_temp)
     passed = sum(item["pass"] for item in results)
     case_set = {"schema": "cth3ds.runtime-core-matrix-case-set/v1",
                 "cases": results}
@@ -2120,6 +2322,7 @@ def main() -> int:
         "candidate_identity": facts["candidate_identity_live"],
         "policy_id": facts["policy_id"],
         "policy_sha256": args.expected_policy_sha256,
+        "verified_invocation_sha256": invocation.digest,
         "producer_manifest_sha256": facts["producer_manifest_sha256"],
         "run_manifest_sha256": sha(run_manifest_raw),
         "facts_sha256": sha(facts_raw),
@@ -2152,6 +2355,7 @@ def main() -> int:
         "candidate_identity": facts["candidate_identity_live"],
         "policy_id": facts["policy_id"],
         "policy_sha256": args.expected_policy_sha256,
+        "verified_invocation_sha256": invocation.digest,
         "producer_manifest_sha256": facts["producer_manifest_sha256"],
         "run_manifest_sha256": sha(run_manifest_raw),
         "facts_sha256": sha(facts_raw),
@@ -2183,6 +2387,11 @@ def main() -> int:
                       "receipt_sha256": sha(receipt_raw)},
                      sort_keys=True, separators=(",", ":")))
     return 0 if passed == 60 else 2
+
+
+def main() -> int:
+    print("DIRECT_ENTRY_FORBIDDEN: use scripts/run_verifier_python.sh", file=sys.stderr)
+    return 64
 
 
 if __name__ == "__main__":

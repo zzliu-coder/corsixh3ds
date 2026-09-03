@@ -1,0 +1,664 @@
+#!/usr/bin/env python3
+"""Sole executable Python authority for Runtime Core verification.
+
+The shell wrapper only creates or rechecks the locked environment and starts
+this fixed file.  Worker modules are loaded from this verified source closure
+and receive a private, in-memory VerifiedInvocation instance.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import importlib.metadata
+import importlib.util
+import json
+import os
+import pathlib
+import re
+import site
+import stat
+import subprocess
+import sys
+import tempfile
+import uuid
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+
+EXIT_REJECTED = 2
+EXIT_CLI = 64
+LOCK_SHA256 = "0bec73ce08a019ea3b7a78429f75d03e074d25c0599c8e5a770f25cbbe93bf37"
+BASE_COMMIT = "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
+BASE_TREE = "c868f46a48055201e2e179c01f160d22d6b721dd"
+REJECTED_CANDIDATE = "0637cc8d64a3152ae27bee344806ae9aec58592b"
+DEPENDENCIES = {
+    "attrs": "25.3.0",
+    "jsonschema": "4.25.1",
+    "jsonschema-specifications": "2025.9.1",
+    "referencing": "0.36.2",
+    "rpds-py": "0.27.1",
+    "typing-extensions": "4.14.1",
+}
+FORBIDDEN_ENV = (
+    "PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE", "PYTHONSTARTUP",
+    "PYTHONINSPECT", "VIRTUAL_ENV", "CTH3DS_VERIFIER_CANONICAL",
+    "CTH3DS_VERIFIER_LOCK_SHA256", "CTH3DS_VERIFIER_PYTHON_DISPATCH",
+)
+SOURCE_FILES = {
+    "wrapper": "scripts/run_verifier_python.sh",
+    "driver": "scripts/verifier_driver.py",
+    "producer": "scripts/verify_runtime_core_v2.py",
+    "consumer": "scripts/consume_runtime_core_v2.py",
+    "runner": "tests/runtime_core_v2/evidence_protocol_adversarial.py",
+    "review_policy_schema": "tests/runtime_core_v2/review-policy.schema.json",
+    "result_schema": "tests/runtime_core_v2/result.schema.json",
+    "manifest_schema": "tests/runtime_core_v2/evidence-manifest.schema.json",
+    "observation_schema": "tests/runtime_core_v2/observation.schema.json",
+    "generator": "tests/runtime_core_v2/generate_no_level_fixture.py",
+    "integrator": "tools/integrate_corsixth.py",
+    "embed_platform": "tools/embed_platform_lua.py",
+    "host_python_runner": "scripts/run_host_python_suite.py",
+    "host_python_manifest": "tests/host-python-suite.json",
+    "lock": "requirements/verifier.lock",
+}
+PUBLIC_VERBS = ("check-env", "protocol-self-test", "fresh-chain")
+INTERNAL_VERBS = (
+    "_host-unittest", "_case-evaluate",
+    "_closure-verify", "_finalize-probe", "_seal-verify-probe",
+    "_fresh-probe",
+)
+_SENTINEL = object()
+
+
+def canonical(value: Any) -> bytes:
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=True) + "\n").encode("utf-8")
+
+
+def sha_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def metadata(path: pathlib.Path) -> Dict[str, Any]:
+    lexical = path.absolute()
+    resolved = lexical.resolve(strict=True)
+    info = lexical.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("SOURCE_NOT_REGULAR: %s" % lexical)
+    return {
+        "path": str(lexical), "realpath": str(resolved),
+        "device": info.st_dev, "inode": info.st_ino,
+        "mode": stat.S_IMODE(info.st_mode), "nlink": info.st_nlink,
+        "bytes": info.st_size, "sha256": sha_file(resolved),
+    }
+
+
+def run_git(repo: pathlib.Path, *args: str) -> str:
+    result = subprocess.run(
+        ["/usr/bin/git", "-C", str(repo), *args],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC"},
+    )
+    if result.returncode != 0:
+        raise RuntimeError("GIT_IDENTITY_FAILED: %s" % result.stderr.decode(errors="replace"))
+    return result.stdout.decode("utf-8", errors="strict").strip()
+
+
+def installed_dependencies(env_root: pathlib.Path) -> List[Dict[str, Any]]:
+    rows = []
+    root = env_root.resolve(strict=True)
+    for name, expected in sorted(DEPENDENCIES.items()):
+        try:
+            distribution = importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError as error:
+            raise RuntimeError("DEPENDENCY_MISSING: %s" % name) from error
+        if distribution.version != expected:
+            raise RuntimeError(
+                "DEPENDENCY_VERSION_MISMATCH: %s=%s expected=%s" %
+                (name, distribution.version, expected))
+        files = []
+        for entry in distribution.files or ():
+            relative = pathlib.PurePosixPath(str(entry))
+            if relative.suffix == ".pyc" or "__pycache__" in relative.parts:
+                continue
+            path = pathlib.Path(distribution.locate_file(entry)).resolve(strict=True)
+            try:
+                env_relative = path.relative_to(root).as_posix()
+            except ValueError as error:
+                raise RuntimeError("DEPENDENCY_PATH_ESCAPE: %s" % path) from error
+            if not path.is_file():
+                raise RuntimeError("DEPENDENCY_FILE_NOT_REGULAR: %s" % path)
+            files.append({"path": env_relative, "bytes": path.stat().st_size,
+                          "sha256": sha_file(path)})
+        files.sort(key=lambda row: row["path"].encode("utf-8"))
+        rows.append({
+            "name": name, "version": expected, "file_count": len(files),
+            "installed_files_sha256": sha_bytes(canonical(files)),
+        })
+    return rows
+
+
+def tracked_closure(repo: pathlib.Path) -> Dict[str, Any]:
+    raw = subprocess.run(
+        ["/usr/bin/git", "-C", str(repo), "ls-files", "-s", "-z"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC"},
+    )
+    if raw.returncode != 0:
+        raise RuntimeError("TRACKED_CLOSURE_FAILED")
+    entries = raw.stdout.split(b"\0")
+    return {"algorithm": "git-ls-files-stage-z-sha256/v1",
+            "entry_count": sum(bool(item) for item in entries),
+            "sha256": sha_bytes(raw.stdout)}
+
+
+def marker_basis(repo: pathlib.Path, env_root: pathlib.Path) -> Dict[str, Any]:
+    lock = repo / "requirements/verifier.lock"
+    driver = repo / "scripts/verifier_driver.py"
+    wrapper = repo / "scripts/run_verifier_python.sh"
+    dispatch = env_root / "bin/cth3ds-verifier-python"
+    cfg = env_root / "pyvenv.cfg"
+    exe = pathlib.Path(sys.executable).absolute()
+    implementation = exe.resolve(strict=True)
+    dispatch_info = dispatch.lstat()
+    return {
+        "schema": "cth3ds.verifier-environment-marker-basis/v2",
+        "environment_realpath": str(env_root.resolve(strict=True)),
+        "lock": {"path": str(lock.resolve(strict=True)), "sha256": sha_file(lock)},
+        "driver": {"path": str(driver.absolute()),
+                   "realpath": str(driver.resolve(strict=True)),
+                   "sha256": sha_file(driver)},
+        "wrapper": {"path": str(wrapper.resolve(strict=True)),
+                    "sha256": sha_file(wrapper)},
+        "dispatch": {
+            "path": str(dispatch.absolute()), "realpath": str(dispatch.resolve(strict=True)),
+            "sha256": sha_file(dispatch), "device": dispatch_info.st_dev,
+            "inode": dispatch_info.st_ino, "mode": stat.S_IMODE(dispatch_info.st_mode),
+            "nlink": dispatch_info.st_nlink, "bytes": dispatch_info.st_size,
+        },
+        "python": {
+            "executable": str(exe), "implementation_realpath": str(implementation),
+            "sha256": sha_file(implementation), "version": sys.version,
+            "cache_tag": sys.implementation.cache_tag,
+            "prefix": str(pathlib.Path(sys.prefix).resolve(strict=True)),
+            "base_prefix": str(pathlib.Path(sys.base_prefix).resolve(strict=True)),
+            "isolated": sys.flags.isolated,
+            "user_site_enabled": bool(site.ENABLE_USER_SITE),
+        },
+        "pyvenv_cfg_sha256": sha_file(cfg),
+        "dependencies": installed_dependencies(env_root),
+    }
+
+
+class VerifiedInvocation:
+    __slots__ = ("_record", "_digest", "_sentinel")
+
+    def __init__(self, record: Mapping[str, Any], sentinel: object) -> None:
+        if sentinel is not _SENTINEL:
+            raise TypeError("VerifiedInvocation is constructed only by audit_invocation")
+        self._record = dict(record)
+        self._digest = sha_bytes(canonical(self._record))
+        self._sentinel = sentinel
+
+    @property
+    def record(self) -> Dict[str, Any]:
+        return json.loads(canonical(self._record))
+
+    @property
+    def digest(self) -> str:
+        return self._digest
+
+    @property
+    def repo(self) -> pathlib.Path:
+        return pathlib.Path(self._record["repository"]["realpath"])
+
+    @property
+    def driver(self) -> pathlib.Path:
+        return pathlib.Path(self._record["source_closure"]["driver"]["path"])
+
+    @property
+    def python(self) -> pathlib.Path:
+        return pathlib.Path(self._record["python"]["executable"])
+
+    def require(self, operations: Iterable[str]) -> None:
+        if self._sentinel is not _SENTINEL:
+            raise RuntimeError("VERIFIED_INVOCATION_INVALID")
+        if self._record["operation"] not in set(operations):
+            raise RuntimeError("VERIFIED_INVOCATION_OPERATION_FORBIDDEN")
+
+    def child_command(self, verb: str, args: Sequence[str]) -> List[str]:
+        if verb not in INTERNAL_VERBS:
+            raise RuntimeError("INTERNAL_VERB_NOT_ALLOWLISTED")
+        if any(item in ("-c", "-m", "--") for item in args):
+            raise RuntimeError("INTERNAL_ARGUMENT_SHAPE_FORBIDDEN")
+        evidence = self.repo / "artifacts/verification/verifier-python/internal"
+        return [str(self.python), "-I", str(self.driver), "--evidence-dir",
+                str(evidence), verb, *list(args)]
+
+    def validate_child_command(self, command: Sequence[str], verb: str,
+                               args: Sequence[str]) -> None:
+        if list(command) != self.child_command(verb, args):
+            raise RuntimeError("INTERNAL_CHILD_COMMAND_MISMATCH")
+
+
+def audit_invocation(operation: str) -> VerifiedInvocation:
+    driver_lexical = pathlib.Path(sys.argv[0]).absolute()
+    driver_real = pathlib.Path(__file__).resolve(strict=True)
+    repo = driver_real.parents[1]
+    if driver_lexical.resolve(strict=True) != driver_real:
+        raise RuntimeError("DRIVER_PATH_MISMATCH")
+    env_root = pathlib.Path(sys.prefix).resolve(strict=True)
+    expected_executable = (env_root / "bin/python").absolute()
+    if pathlib.Path(sys.executable).absolute() != expected_executable:
+        raise RuntimeError("PYTHON_LEXICAL_PATH_MISMATCH")
+    if sys.prefix == sys.base_prefix or not sys.flags.isolated:
+        raise RuntimeError("PREFIX_OR_ISOLATION_MISMATCH")
+    if site.ENABLE_USER_SITE:
+        raise RuntimeError("USER_SITE_ENABLED")
+    present = [name for name in FORBIDDEN_ENV if name in os.environ]
+    if present:
+        raise RuntimeError("FORBIDDEN_PYTHON_ENV: %s" % ",".join(present))
+    lock = repo / "requirements/verifier.lock"
+    if sha_file(lock) != LOCK_SHA256:
+        raise RuntimeError("LOCK_DIGEST_MISMATCH")
+    dispatch = env_root / "bin/cth3ds-verifier-python"
+    info = dispatch.lstat()
+    if not stat.S_ISREG(info.st_mode) or dispatch.is_symlink() or info.st_nlink != 1:
+        raise RuntimeError("DISPATCH_SHAPE_MISMATCH")
+    marker = env_root / ".cth3ds-verifier-environment.json"
+    if not marker.is_file() or marker.is_symlink():
+        raise RuntimeError("PREFIX_OR_MARKER_MISMATCH")
+    marker_bytes = marker.read_bytes()
+    recorded_basis = json.loads(marker_bytes.decode("utf-8"))
+    canonical_marker = (json.dumps(recorded_basis, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    if marker_bytes != canonical_marker:
+        raise RuntimeError("MARKER_BYTE_CANONICALIZATION_MISMATCH")
+    current_basis = marker_basis(repo, env_root)
+    if recorded_basis != current_basis:
+        raise RuntimeError("MARKER_OR_INSTALLED_FILE_MISMATCH")
+    head = run_git(repo, "rev-parse", "HEAD^{commit}")
+    tree = run_git(repo, "rev-parse", "HEAD^{tree}")
+    parents = run_git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+    status_text = run_git(repo, "status", "--porcelain=v1", "--untracked-files=all")
+    if status_text:
+        raise RuntimeError("EXECUTING_REPOSITORY_NOT_CLEAN")
+    ancestry = run_git(repo, "rev-list", "HEAD").splitlines()
+    if REJECTED_CANDIDATE in ancestry:
+        raise RuntimeError("REJECTED_CANDIDATE_IN_ANCESTRY")
+    sources = {role: metadata(repo / relative)
+               for role, relative in sorted(SOURCE_FILES.items())}
+    sys_path = [str(pathlib.Path(value).resolve()) if value else value
+                for value in sys.path]
+    python_lexical = pathlib.Path(sys.executable).absolute()
+    python_lstat = python_lexical.lstat()
+    python_implementation = python_lexical.resolve(strict=True)
+    implementation_stat = python_implementation.stat()
+    record = {
+        "schema": "cth3ds.verified-invocation/v1",
+        "security_scope": "fail-closed official flow; no same-process hostile-code claim",
+        "operation": operation, "invocation_id": uuid.uuid4().hex,
+        "repository": {
+            "path": str(repo.absolute()), "realpath": str(repo.resolve(strict=True)),
+            "clean": True, "head": head, "tree": tree, "parents": parents,
+            "tracked_closure": tracked_closure(repo),
+        },
+        "source_closure": sources,
+        "python": {
+            "executable": str(python_lexical),
+            "lexical_lstat_type": ("symlink" if stat.S_ISLNK(python_lstat.st_mode)
+                                    else "regular" if stat.S_ISREG(python_lstat.st_mode)
+                                    else "other"),
+            "lexical_device": python_lstat.st_dev, "lexical_inode": python_lstat.st_ino,
+            "implementation_realpath": str(python_implementation),
+            "implementation_device": implementation_stat.st_dev,
+            "implementation_inode": implementation_stat.st_ino,
+            "implementation_bytes": implementation_stat.st_size,
+            "implementation_sha256": sha_file(python_implementation),
+            "version": sys.version, "cache_tag": sys.implementation.cache_tag,
+            "prefix": str(env_root),
+            "base_prefix": str(pathlib.Path(sys.base_prefix).resolve(strict=True)),
+            "isolated": sys.flags.isolated, "user_site_enabled": bool(site.ENABLE_USER_SITE),
+            "sys_path": sys_path, "sys_path_sha256": sha_bytes(canonical(sys_path)),
+        },
+        "environment": {"forbidden_present": [], "python_no_user_site": os.environ.get("PYTHONNOUSERSITE")},
+        "venv": {
+            "root": str(env_root),
+            "pyvenv_cfg_sha256": sha_file(env_root / "pyvenv.cfg"),
+            "marker": metadata(marker), "dispatch": metadata(dispatch),
+        },
+        "dependencies": current_basis["dependencies"],
+    }
+    return VerifiedInvocation(record, _SENTINEL)
+
+
+class ClosedParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        print("CLI_CONTRACT: %s" % message, file=sys.stderr)
+        raise SystemExit(EXIT_CLI)
+
+
+def add_path(parser: argparse.ArgumentParser, name: str, required: bool = True) -> None:
+    parser.add_argument(name, type=pathlib.Path, required=required)
+
+
+def parser() -> ClosedParser:
+    root = ClosedParser(allow_abbrev=False, add_help=False)
+    root.add_argument("--evidence-dir", type=pathlib.Path, required=True)
+    sub = root.add_subparsers(dest="verb", required=True, parser_class=ClosedParser)
+    check = sub.add_parser("check-env", allow_abbrev=False, add_help=False)
+    protocol = sub.add_parser("protocol-self-test", allow_abbrev=False, add_help=False)
+    add_path(protocol, "--session-root")
+    add_path(protocol, "--result")
+    fresh = sub.add_parser("fresh-chain", allow_abbrev=False, add_help=False)
+    fresh.add_argument("--candidate-kind", choices=("detached-repo", "head-bundle"), required=True)
+    add_path(fresh, "--candidate-input")
+    fresh.add_argument("--expected-candidate-input-sha256")
+    fresh.add_argument("--expected-candidate-head", required=True)
+    fresh.add_argument("--expected-candidate-tree", required=True)
+    for option in ("--session-root", "--archive", "--deps-prefix", "--matrix", "--base-cases", "--r4-cases"):
+        add_path(fresh, option)
+    for option in ("--expected-matrix-sha256", "--expected-base-cases-sha256", "--expected-r4-cases-sha256"):
+        fresh.add_argument(option, required=True)
+
+    host = sub.add_parser("_host-unittest", allow_abbrev=False, add_help=False)
+    add_path(host, "--repo")
+    add_path(host, "--output")
+    case = sub.add_parser("_case-evaluate", allow_abbrev=False, add_help=False)
+    for option in ("--request", "--output"):
+        add_path(case, option)
+    closure = sub.add_parser("_closure-verify", allow_abbrev=False, add_help=False)
+    for option in ("--request", "--output"):
+        add_path(closure, option)
+    finalize = sub.add_parser("_finalize-probe", allow_abbrev=False, add_help=False)
+    for option in ("--request", "--output"):
+        add_path(finalize, option)
+    seal = sub.add_parser("_seal-verify-probe", allow_abbrev=False, add_help=False)
+    for option in ("--request", "--output"):
+        add_path(seal, option)
+    probe = sub.add_parser("_fresh-probe", allow_abbrev=False, add_help=False)
+    for option in ("--request", "--output"):
+        add_path(probe, option)
+    return root
+
+
+def reject_argv(argv: Sequence[str]) -> None:
+    if not argv or "--" in argv:
+        raise SystemExit(EXIT_CLI)
+    seen = set()
+    value_options = {
+        "--evidence-dir", "--session-root", "--result", "--candidate-kind",
+        "--candidate-input", "--expected-candidate-input-sha256",
+        "--expected-candidate-head", "--expected-candidate-tree", "--archive",
+        "--deps-prefix", "--matrix", "--expected-matrix-sha256", "--base-cases",
+        "--expected-base-cases-sha256", "--r4-cases", "--expected-r4-cases-sha256",
+        "--repo", "--output", "--tool", "--request",
+    }
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token in ("-c", "-m") or token.startswith("--="):
+            raise SystemExit(EXIT_CLI)
+        if token.startswith("--"):
+            if "=" in token:
+                raise SystemExit(EXIT_CLI)
+            if token in seen:
+                raise SystemExit(EXIT_CLI)
+            seen.add(token)
+            if token not in value_options:
+                raise SystemExit(EXIT_CLI)
+            index += 2
+        else:
+            index += 1
+
+
+def load_module(role: str, path: pathlib.Path):
+    name = "cth3ds_verified_%s" % role
+    spec = importlib.util.spec_from_file_location(name, str(path))
+    if spec is None or spec.loader is None:
+        raise RuntimeError("SOURCE_IMPORT_FAILED: %s" % role)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def atomic_json(path: pathlib.Path, value: Any, require_absent: bool = True) -> None:
+    path = path.absolute()
+    if require_absent and path.exists():
+        raise RuntimeError("AUTHORITATIVE_OUTPUT_PREEXISTS")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".%s." % path.name,
+                                              dir=str(path.parent))
+    temp_path = pathlib.Path(temporary)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(canonical(value)); handle.flush(); os.fsync(handle.fileno())
+        reread = json.loads(temp_path.read_text(encoding="utf-8"))
+        if reread != value:
+            raise RuntimeError("AUTHORITATIVE_OUTPUT_REREAD_MISMATCH")
+        os.replace(str(temp_path), str(path))
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def write_environment_audit(evidence: pathlib.Path, invocation: Optional[VerifiedInvocation],
+                            error: Optional[BaseException] = None) -> None:
+    evidence.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "cth3ds.verifier-environment-audit/v2",
+        "scope": "ENVIRONMENT_ONLY",
+        "status": "PASS" if error is None else "FAIL",
+        "verified_invocation": invocation.record if invocation else None,
+        "verified_invocation_sha256": invocation.digest if invocation else None,
+        "failure_code": None if error is None else str(error).split(":", 1)[0],
+        "detail": None if error is None else str(error),
+        "recorded_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    target = evidence / "environment-audit.json"
+    atomic_json(target, payload, require_absent=False)
+
+
+def validate_hex(value: str, length: int, label: str) -> None:
+    if not re.fullmatch(r"[0-9a-f]{%d}" % length, value):
+        raise RuntimeError("%s_INVALID" % label)
+
+
+def run_protocol(invocation: VerifiedInvocation, args: argparse.Namespace) -> int:
+    invocation.require(("protocol-self-test",))
+    if args.result.exists():
+        raise RuntimeError("AUTHORITATIVE_OUTPUT_PREEXISTS")
+    runner = load_module("runner", invocation.repo / SOURCE_FILES["runner"])
+    producer = load_module("producer", invocation.repo / SOURCE_FILES["producer"])
+    consumer = load_module("consumer", invocation.repo / SOURCE_FILES["consumer"])
+    with tempfile.TemporaryDirectory(prefix="cth3ds-protocol-result-",
+                                     dir=str(args.result.absolute().parent)) as temporary:
+        temp_result = pathlib.Path(temporary) / "result.json"
+        code = runner.protocol_self_test_closed(
+            invocation, producer, consumer, args.session_root, temp_result)
+        if code != 0:
+            raise RuntimeError("PROTOCOL_SELF_TEST_FAILED")
+        result = json.loads(temp_result.read_text(encoding="utf-8"))
+        counts = {key: result.get(key) for key in ("total", "passed", "failed", "skipped")}
+        if counts != {"total": 30, "passed": 30, "failed": 0, "skipped": 0}:
+            raise RuntimeError("PROTOCOL_SELF_TEST_COUNT_MISMATCH")
+        if result.get("verified_invocation_sha256") != invocation.digest:
+            raise RuntimeError("VERIFIED_INVOCATION_BINDING_MISMATCH")
+        atomic_json(args.result, result)
+    return 0
+
+
+def run_fresh(invocation: VerifiedInvocation, args: argparse.Namespace) -> int:
+    invocation.require(("fresh-chain",))
+    validate_hex(args.expected_candidate_head, 40, "CANDIDATE_HEAD")
+    validate_hex(args.expected_candidate_tree, 40, "CANDIDATE_TREE")
+    for value, label in ((args.expected_matrix_sha256, "MATRIX"),
+                         (args.expected_base_cases_sha256, "BASE_CASES"),
+                         (args.expected_r4_cases_sha256, "R4_CASES")):
+        validate_hex(value, 64, label)
+    if args.candidate_kind == "head-bundle":
+        if not args.expected_candidate_input_sha256:
+            raise RuntimeError("BUNDLE_DIGEST_REQUIRED")
+        validate_hex(args.expected_candidate_input_sha256, 64, "BUNDLE")
+    elif args.expected_candidate_input_sha256:
+        raise RuntimeError("BUNDLE_DIGEST_FORBIDDEN_FOR_DETACHED_REPO")
+    if args.expected_candidate_head != invocation.record["repository"]["head"] or \
+       args.expected_candidate_tree != invocation.record["repository"]["tree"]:
+        raise RuntimeError("EXECUTING_CANDIDATE_IDENTITY_MISMATCH")
+    if invocation.record["repository"]["parents"] != [BASE_COMMIT]:
+        raise RuntimeError("CANDIDATE_PARENT_MISMATCH")
+    runner = load_module("runner", invocation.repo / SOURCE_FILES["runner"])
+    producer = load_module("producer", invocation.repo / SOURCE_FILES["producer"])
+    consumer = load_module("consumer", invocation.repo / SOURCE_FILES["consumer"])
+    request = {
+        "candidate_kind": args.candidate_kind,
+        "candidate_input": args.candidate_input,
+        "expected_candidate_input_sha256": args.expected_candidate_input_sha256,
+        "expected_candidate_head": args.expected_candidate_head,
+        "expected_candidate_tree": args.expected_candidate_tree,
+        "session_root": args.session_root, "archive": args.archive,
+        "deps_prefix": args.deps_prefix, "matrix": args.matrix,
+        "expected_matrix_sha256": args.expected_matrix_sha256,
+        "base_cases": args.base_cases,
+        "expected_base_cases_sha256": args.expected_base_cases_sha256,
+        "r4_cases": args.r4_cases,
+        "expected_r4_cases_sha256": args.expected_r4_cases_sha256,
+    }
+    code = runner.fresh_chain_closed(invocation, producer, consumer, request)
+    if code != 0:
+        raise RuntimeError("FRESH_CHAIN_FAILED")
+    result_path = args.session_root / "90-final-audit/fresh-chain-result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    required = {
+        "initial_entry_count": 0, "semantic_verify": "PASS",
+        "construction_self_verification": "PASS",
+    }
+    if any(result.get(key) != value for key, value in required.items()):
+        raise RuntimeError("FRESH_CHAIN_RESULT_MISMATCH")
+    for key, expected in (("matrix", (60, 60)), ("base_acceptance", (32, 32)),
+                          ("r4_acceptance", (22, 22)),
+                          ("composed_acceptance", (54, 54))):
+        row = result.get(key, {})
+        if (row.get("passed"), row.get("total")) != expected:
+            raise RuntimeError("FRESH_CHAIN_COUNT_MISMATCH: %s" % key)
+    if result.get("verified_invocation_sha256") != invocation.digest:
+        raise RuntimeError("VERIFIED_INVOCATION_BINDING_MISMATCH")
+    return 0
+
+
+def internal_result(invocation: VerifiedInvocation, verb: str,
+                    output: pathlib.Path, body: Mapping[str, Any]) -> int:
+    payload = {"schema": "cth3ds.verifier-internal-result/v1",
+               "scope": "INTERNAL_NON_FINAL", "verb": verb,
+               "final_acceptance_eligible": False,
+               "verified_invocation_sha256": invocation.digest,
+               "body": dict(body)}
+    atomic_json(output, payload)
+    return 0
+
+
+def run_internal(invocation: VerifiedInvocation, args: argparse.Namespace) -> int:
+    invocation.require((args.verb,))
+    if args.verb == "_host-unittest":
+        repo = args.repo.resolve(strict=True)
+        expected_repo = invocation.record["repository"]
+        if run_git(repo, "rev-parse", "HEAD^{commit}") != expected_repo["head"] or \
+                run_git(repo, "rev-parse", "HEAD^{tree}") != expected_repo["tree"] or \
+                run_git(repo, "status", "--porcelain=v1", "--untracked-files=no"):
+            raise RuntimeError("HOST_UNITTEST_REPO_IDENTITY_MISMATCH")
+        runner = repo / SOURCE_FILES["host_python_runner"]
+        manifest = repo / SOURCE_FILES["host_python_manifest"]
+        if sha_file(runner) != invocation.record["source_closure"]["host_python_runner"]["sha256"] or \
+                sha_file(manifest) != invocation.record["source_closure"]["host_python_manifest"]["sha256"]:
+            raise RuntimeError("HOST_UNITTEST_SOURCE_CLOSURE_MISMATCH")
+        suite_output = args.output.with_suffix(args.output.suffix + ".suite.json")
+        process = subprocess.run(
+            [str(invocation.python), "-I", str(runner),
+             "--repo", str(repo), "--manifest", str(manifest),
+             "--output", str(suite_output)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        sys.stdout.buffer.write(process.stdout)
+        sys.stderr.buffer.write(process.stderr)
+        if process.returncode != 0 or not suite_output.is_file():
+            raise RuntimeError("HOST_UNITTEST_FAILED")
+        summary = json.loads(suite_output.read_text(encoding="utf-8"))
+        expected = invocation.record
+        if summary.get("verdict") != "PASS" or \
+                summary.get("candidate", {}).get("commit") != expected["repository"]["head"] or \
+                summary.get("candidate", {}).get("tree") != expected["repository"]["tree"] or \
+                summary.get("interpreter", {}).get("implementation_sha256") != expected["python"]["implementation_sha256"] or \
+                summary.get("manifest", {}).get("sha256") != expected["source_closure"]["host_python_manifest"]["sha256"]:
+            raise RuntimeError("HOST_UNITTEST_RECEIPT_BINDING_MISMATCH")
+        return internal_result(invocation, args.verb, args.output, summary)
+    request = json.loads(args.request.read_text(encoding="utf-8"))
+    if request.get("schema") != "cth3ds.verifier-internal-request/v1":
+        raise RuntimeError("INTERNAL_REQUEST_SCHEMA_MISMATCH")
+    runner = load_module("runner", invocation.repo / SOURCE_FILES["runner"])
+    producer = load_module("producer", invocation.repo / SOURCE_FILES["producer"])
+    consumer = load_module("consumer", invocation.repo / SOURCE_FILES["consumer"])
+    try:
+        body = runner.internal_probe_closed(invocation, producer, consumer,
+                                            args.verb, request)
+        code = int(body.pop("_exit_code", 0))
+        internal_result(invocation, args.verb, args.output, body)
+        return code
+    except Exception as error:
+        failure = getattr(error, "code", "UNEXPECTED_CONSUMER_ERROR")
+        product_failure = failure in {
+            "SANITIZER_PRODUCT_FAILURE", "RH10_OUTER_PROVENANCE_FALSE"}
+        payload = {
+            "c3": "FAIL" if product_failure else "NOT_PROVEN",
+            "gate": "FAIL" if product_failure else "NOT_PROVEN",
+            "product": "FAIL" if product_failure else "NOT_PROVEN",
+            "review": "REJECT_C3_EVIDENCE_PROTOCOL",
+            "failure_code": failure, "detail": str(error),
+        }
+        internal_result(invocation, args.verb, args.output, {
+            "status": "FAIL", "failure": payload})
+        print(json.dumps(payload, sort_keys=True, separators=(",", ":")),
+              file=sys.stderr)
+        return EXIT_REJECTED
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    actual = list(sys.argv[1:] if argv is None else argv)
+    reject_argv(actual)
+    args = parser().parse_args(actual)
+    evidence = args.evidence_dir.absolute()
+    invocation = None
+    try:
+        invocation = audit_invocation(args.verb)
+        write_environment_audit(evidence, invocation)
+        if args.verb == "check-env":
+            print(json.dumps({"environment": "PASS", "scope": "ENVIRONMENT_ONLY",
+                              "verified_invocation_sha256": invocation.digest}, sort_keys=True))
+            return 0
+        if args.verb == "protocol-self-test":
+            return run_protocol(invocation, args)
+        if args.verb == "fresh-chain":
+            return run_fresh(invocation, args)
+        return run_internal(invocation, args)
+    except SystemExit:
+        raise
+    except Exception as error:
+        try:
+            write_environment_audit(evidence, invocation, error)
+        except Exception:
+            pass
+        print("VERIFIER_REJECTED: %s" % error, file=sys.stderr)
+        return EXIT_REJECTED
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

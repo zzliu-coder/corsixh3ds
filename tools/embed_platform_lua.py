@@ -68,7 +68,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     HEADER.parent.mkdir(parents=True, exist_ok=True)
-    HEADER.write_text(expected, encoding="utf-8", newline="\n")
+    with HEADER.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(expected)
     print(f"wrote {HEADER.relative_to(ROOT)}")
     return 0
 

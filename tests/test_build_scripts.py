@@ -82,7 +82,9 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('theme_hospital_install = "sdmc:/3ds/corsixth/game"', text)
         self.assertIn('player_name = "PLAYER"', text)
         self.assertNotIn('"${PACK_ARGS[@]}"', text)
-        self.assertIn('"${CTH3DS_DIST_DIR}/sd-card" --no-pack', text)
+        self.assertIn('--asset-mode must be th3ds or loose', text)
+        self.assertIn('tools/validate_sd_tree.py', text)
+        self.assertIn('--require-mode "${ASSET_MODE}"', text)
 
     def test_cycle_captures_deploy_and_debug_evidence(self) -> None:
         text = (ROOT / "scripts/old3ds_cycle.sh").read_text(encoding="utf-8")

@@ -34,7 +34,10 @@ ENTRY = struct.Struct("<HHIQQ")
 MAX_FILES = 200_000
 MAX_PATH_BYTES = 4096
 REQUIRED_DIRECTORIES = ("DATA", "LEVELS", "QDATA", "SOUND")
-OPTIONAL_DIRECTORIES = ("ANIMS", "MUSIC", "INTRO", "SAVE")
+# User saves are mutable state and never belong in a package assembled from
+# original game media. Keeping SAVE out also prevents a local diagnostic build
+# from copying a player's state into distributable package evidence.
+OPTIONAL_DIRECTORIES = ("ANIMS", "MUSIC", "INTRO")
 SKIPPED_NAMES = {"thumbs.db", ".ds_store"}
 
 

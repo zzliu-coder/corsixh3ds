@@ -23,6 +23,8 @@ class PackerTests(unittest.TestCase):
             (directory / f"{name.lower()}.bin").write_bytes((name + " payload").encode())
         (source / "ANIMS").mkdir()
         (source / "ANIMS" / "anim.dat").write_bytes(b"animation")
+        (source / "SAVE").mkdir()
+        (source / "SAVE" / "player.sav").write_bytes(b"private mutable state")
         return source
 
     def test_collect_validates_required_directories(self) -> None:
@@ -77,6 +79,8 @@ class PackerTests(unittest.TestCase):
             self.assertEqual(on_disk["file_count"], manifest["file_count"])
             self.assertFalse(on_disk["pack_runtime_mounted"])
             self.assertEqual(on_disk["runtime_data_path"], "game")
+            self.assertFalse((staged / "game" / "SAVE").exists())
+            self.assertNotIn(b"private mutable state", (staged / "theme-hospital.thp").read_bytes())
 
     def test_case_insensitive_collision_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

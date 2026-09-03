@@ -1,0 +1,10 @@
+/build*/
+/external/
+/dist/
+/artifacts/verification/
+/local-devkitpro/
+/local-portlibs/
+/work/
+__pycache__/
+*.pyc
+.DS_Store

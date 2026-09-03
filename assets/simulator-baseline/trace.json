@@ -1,0 +1,8 @@
+{
+  "actions": [
+    {"type": "OpenBuild"},
+    {"type": "BuildRoomRectangle", "rect": [2, 1, 7, 5]}
+  ],
+  "top": [400, 240],
+  "bottom": [320, 240]
+}

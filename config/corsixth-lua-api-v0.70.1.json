@@ -1,0 +1,54 @@
+{
+  "format": 1,
+  "upstream_tag": "v0.70.1",
+  "upstream_commit": "56bd5d00f76331c7f76d7b696726a7926303ca0c",
+  "contracts": [
+    {
+      "path": "CorsixTH/Lua/world.lua",
+      "required_literals": [
+        "function World:setSpeed",
+        "function World:pauseOrUnpause"
+      ]
+    },
+    {
+      "path": "CorsixTH/Lua/app.lua",
+      "required_literals": [
+        "function App:quickSave",
+        "function App:quickLoad"
+      ]
+    },
+    {
+      "path": "CorsixTH/Lua/game_ui.lua",
+      "required_literals": [
+        "function GameUI:scrollMap",
+        "function GameUI:setZoom",
+        "function GameUI:toggleTransparent",
+        "function GameUI:showMenuBar"
+      ]
+    },
+    {
+      "path": "CorsixTH/Lua/dialogs/edit_room.lua",
+      "required_literals": [
+        "function UIEditRoom:setBlueprintRect"
+      ]
+    },
+    {
+      "path": "CorsixTH/Lua/dialogs/bottom_panel.lua",
+      "required_literals": [
+        "function UIBottomPanel:dialogBankManager",
+        "function UIBottomPanel:dialogBuildRoom",
+        "function UIBottomPanel:dialogFurnishCorridor",
+        "function UIBottomPanel:editRoom",
+        "function UIBottomPanel:dialogHireStaff",
+        "function UIBottomPanel:dialogStaffManagement",
+        "function UIBottomPanel:dialogTownMap",
+        "function UIBottomPanel:dialogDrugCasebook",
+        "function UIBottomPanel:dialogResearch",
+        "function UIBottomPanel:dialogStatus",
+        "function UIBottomPanel:dialogCharts",
+        "function UIBottomPanel:dialogPolicy",
+        "function UIBottomPanel:openFirstMessage"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+name: Old 3DS validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang liblua5.4-0
+      - name: Run full host verification
+        run: CTH3DS_JOBS=2 ./scripts/test_all.sh
+      - name: Upload VM evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-evidence
+          path: |
+            artifacts/verification
+            artifacts/preview
+
+  old3ds-cross-build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:20260610
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nintendo 3DS libraries and host tools
+        run: |
+          dkp-pacman -Syu --noconfirm
+          dkp-pacman -S --needed --noconfirm 3ds-dev 3ds-zlib 3ds-libpng 3ds-freetype git cmake ninja python curl tar
+      - name: Build CorsixTH for Nintendo 3DS
+        env:
+          DEVKITPRO: /opt/devkitpro
+          DEVKITARM: /opt/devkitpro/devkitARM
+          CTH3DS_JOBS: "2"
+        run: ./scripts/build_3ds.sh
+      - name: Stage redistributable runtime without proprietary game data
+        env:
+          DEVKITPRO: /opt/devkitpro
+          DEVKITARM: /opt/devkitpro/devkitARM
+        run: ./scripts/package_sd.sh
+      - name: Upload 3DSX and SD layout
+        uses: actions/upload-artifact@v4
+        with:
+          name: corsixth-old3ds
+          path: |
+            build-3ds/CorsixTH/CorsixTH-3DS.3dsx
+            build-3ds/CorsixTH/CorsixTH-3DS.3dsx.sha256
+            dist/sd-card

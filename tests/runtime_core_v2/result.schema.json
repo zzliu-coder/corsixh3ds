@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corsixth.example/schemas/runtime-core-result-v5.json",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "id32": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "status": {"enum": ["PASS", "FAIL", "NOT_PROVEN"]},
+    "candidate_identity": {
+      "type": "object",
+      "required": ["commit", "tree", "first_parent", "tracked_fingerprint_v3", "tracked_entries"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "first_parent": {"const": "bedf567a4810d0479fba5ebcae7b49020d2988f3"},
+        "tracked_fingerprint_v3": {"$ref": "#/$defs/sha256"},
+        "tracked_entries": {"type": "integer", "minimum": 190}
+      },
+      "additionalProperties": false
+    },
+    "case": {
+      "type": "object",
+      "required": ["id", "mutation_sha256", "stdout_sha256", "stderr_sha256", "actual_exit", "actual_gate", "actual_product", "actual_review", "actual_failure_code", "expected_exit", "expected_gate", "expected_product", "expected_review", "expected_failure_code", "pass"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^E(?:0[1-9]|[1-5][0-9]|60)$"},
+        "mutation_sha256": {"$ref": "#/$defs/sha256"},
+        "stdout_sha256": {"$ref": "#/$defs/sha256"},
+        "stderr_sha256": {"$ref": "#/$defs/sha256"},
+        "actual_exit": {"type": "integer"},
+        "actual_gate": {"type": ["string", "null"]},
+        "actual_product": {"type": ["string", "null"]},
+        "actual_review": {"type": ["string", "null"]},
+        "actual_failure_code": {"type": ["string", "null"]},
+        "expected_exit": {"type": "integer"},
+        "expected_gate": {"type": "string"},
+        "expected_product": {"type": "string"},
+        "expected_review": {"type": "string"},
+        "expected_failure_code": {"type": ["string", "null"]},
+        "pass": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "closure_fixture_manifest": {
+      "type": "object",
+      "required": ["schema", "stage_id", "fixture_kind", "fixture_id", "review_session_id", "created_at", "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256", "producer_manifest_sha256", "run_manifest_sha256", "derived_facts_sha256", "matrix_sha256", "runner_sha256", "fact_consumer_sha256", "source_input_count", "single_use", "final_acceptance_eligible"],
+      "properties": {
+        "schema": {"const": "cth3ds.runtime-core-closure-test-fixture-manifest/v1"},
+        "stage_id": {"const": "C3-R4"},
+        "fixture_kind": {"const": "CLOSURE_TEST_ONLY"},
+        "fixture_id": {"$ref": "#/$defs/id32"},
+        "review_session_id": {"$ref": "#/$defs/id32"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "canonical_run_id": {"$ref": "#/$defs/id32"},
+        "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
+        "policy_id": {"type": "string", "pattern": "^c3-[0-9a-f]{32}$"},
+        "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "derived_facts_sha256": {"$ref": "#/$defs/sha256"},
+        "matrix_sha256": {"$ref": "#/$defs/sha256"},
+        "runner_sha256": {"$ref": "#/$defs/sha256"},
+        "fact_consumer_sha256": {"$ref": "#/$defs/sha256"},
+        "source_input_count": {"type": "integer", "minimum": 1},
+        "single_use": {"const": true},
+        "final_acceptance_eligible": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "closure_fixture_result": {
+      "type": "object",
+      "required": ["schema", "stage_id", "artifact_kind", "fixture_id", "review_session_id", "canonical_run_id", "candidate_identity", "policy_sha256", "run_manifest_sha256", "derived_facts_sha256", "fixture_verdict", "c3", "matrix_gate_status", "review_verdict", "final_acceptance_eligible", "failure_codes"],
+      "properties": {
+        "schema": {"const": "cth3ds.runtime-core-closure-test-result/v1"},
+        "stage_id": {"const": "C3-R4"},
+        "artifact_kind": {"const": "CLOSURE_TEST_ONLY"},
+        "fixture_id": {"$ref": "#/$defs/id32"},
+        "review_session_id": {"$ref": "#/$defs/id32"},
+        "canonical_run_id": {"$ref": "#/$defs/id32"},
+        "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
+        "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "derived_facts_sha256": {"$ref": "#/$defs/sha256"},
+        "fixture_verdict": {"enum": ["PASS", "FAIL"]},
+        "c3": {"$ref": "#/$defs/status"},
+        "matrix_gate_status": {"enum": ["NOT_RUN", "PASS", "FAIL"]},
+        "review_verdict": {"enum": ["ACCEPT_C3_EVIDENCE_PROTOCOL", "REJECT_C3_EVIDENCE_PROTOCOL"]},
+        "final_acceptance_eligible": {"type": "boolean"},
+        "failure_codes": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "matrix_receipt": {
+      "type": "object",
+      "required": ["schema", "stage_id", "review_session_id", "created_at", "canonical_run_id", "candidate_identity", "policy_id", "policy_sha256", "producer_manifest_sha256", "run_manifest_sha256", "facts_sha256", "matrix_sha256", "runner_sha256", "fact_consumer_sha256", "summary_sha256", "case_set_sha256", "case_count", "case_id_set", "passed", "failed", "cases", "closure_fixture", "matrix"],
+      "properties": {
+        "schema": {"const": "cth3ds.runtime-core-matrix-receipt/v1"},
+        "stage_id": {"const": "C3-R4"},
+        "review_session_id": {"$ref": "#/$defs/id32"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "canonical_run_id": {"$ref": "#/$defs/id32"},
+        "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
+        "policy_id": {"type": "string", "pattern": "^c3-[0-9a-f]{32}$"},
+        "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "facts_sha256": {"$ref": "#/$defs/sha256"},
+        "matrix_sha256": {"$ref": "#/$defs/sha256"},
+        "runner_sha256": {"$ref": "#/$defs/sha256"},
+        "fact_consumer_sha256": {"$ref": "#/$defs/sha256"},
+        "summary_sha256": {"$ref": "#/$defs/sha256"},
+        "case_set_sha256": {"$ref": "#/$defs/sha256"},
+        "case_count": {"const": 60},
+        "case_id_set": {"const": "E01..E60"},
+        "passed": {"const": 60},
+        "failed": {"const": 0},
+        "closure_fixture": {
+          "type": "object",
+          "required": ["fixture_id", "fixture_manifest_sha256", "sha256s_sha256", "consumed_once", "final_acceptance_eligible"],
+          "properties": {
+            "fixture_id": {"$ref": "#/$defs/id32"},
+            "fixture_manifest_sha256": {"$ref": "#/$defs/sha256"},
+            "sha256s_sha256": {"$ref": "#/$defs/sha256"},
+            "consumed_once": {"const": true},
+            "final_acceptance_eligible": {"const": false}
+          },
+          "additionalProperties": false
+        },
+        "matrix": {
+          "type": "object",
+          "required": ["definition_sha256", "total", "passed", "failed"],
+          "properties": {
+            "definition_sha256": {"$ref": "#/$defs/sha256"},
+            "total": {"const": 60}, "passed": {"const": 60}, "failed": {"const": 0}
+          },
+          "additionalProperties": false
+        },
+        "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}, "minItems": 60, "maxItems": 60}
+      },
+      "additionalProperties": false
+    },
+    "run_manifest": {
+      "type": "object",
+      "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "candidate_identity", "producer_manifest_sha256", "inputs", "source_trees", "derived"],
+      "properties": {
+        "schema": {"const": "cth3ds.runtime-core-run-manifest/v5"},
+        "stage_id": {"const": "C3"},
+        "run_id": {"$ref": "#/$defs/id32"},
+        "policy_id": {"type": "string"},
+        "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
+        "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "inputs": {"type": "array"},
+        "source_trees": {"type": "object"},
+        "derived": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "derived_facts": {
+      "type": "object",
+      "required": ["schema", "stage_id", "run_id", "policy_id", "policy_sha256", "candidate_identity_live", "producer_manifest_sha256", "run_manifest_sha256", "closure_facts", "host_facts", "simulator_facts", "sanitizer_facts", "rh09_facts", "rh07_facts", "rh10_facts", "xbuild_facts", "upstream_snapshot_facts", "product_boundary_facts"],
+      "properties": {
+        "schema": {"const": "cth3ds.runtime-core-derived-facts/v1"},
+        "stage_id": {"const": "C3"},
+        "run_id": {"$ref": "#/$defs/id32"},
+        "policy_id": {"type": "string"},
+        "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_identity_live": {"$ref": "#/$defs/candidate_identity"},
+        "producer_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "closure_facts": {"type": "object"},
+        "host_facts": {"type": "object"},
+        "simulator_facts": {"type": "object"},
+        "sanitizer_facts": {"type": "object"},
+        "rh09_facts": {"type": "object"},
+        "rh07_facts": {"type": "object"},
+        "rh10_facts": {"type": "object"},
+        "xbuild_facts": {"type": "object"},
+        "upstream_snapshot_facts": {"type": "object"},
+        "product_boundary_facts": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": ["schema", "stage_id", "artifact_kind", "review_session_id", "run_id", "policy_id", "policy_sha256", "candidate_identity", "protocol_gates", "product_verdicts", "review_verdict", "matrix_gate_status", "matrix_passed", "matrix_failed", "final_acceptance_eligible", "failure_codes", "run_manifest_sha256", "derived_facts_sha256", "matrix_receipt_sha256"],
+  "properties": {
+    "schema": {"const": "cth3ds.runtime-core-result/v5"},
+    "stage_id": {"const": "C3-R4"},
+    "artifact_kind": {"const": "FINAL_REVIEW_SEAL"},
+    "review_session_id": {"$ref": "#/$defs/id32"},
+    "run_id": {"$ref": "#/$defs/id32"},
+    "policy_id": {"type": "string", "pattern": "^c3-[0-9a-f]{32}$"},
+    "policy_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_identity": {"$ref": "#/$defs/candidate_identity"},
+    "protocol_gates": {
+      "type": "object",
+      "required": ["GIT_TOPOLOGY", "ALLOWLIST", "PRODUCT_DIFF_ZERO", "POLICY_SCHEMA", "EVIDENCE_SCHEMA", "NAMESPACE_CLOSURE", "REFERENCE_GRAPH_CLOSURE", "SAFE_PATH_AND_TOCTOU", "PROCESS_STREAM_BINDING", "TOOL_IDENTITY", "SEALED_INPUT_CLOSURE", "ADVERSARIAL_60_OF_60", "HOST_REGRESSION", "SIMULATOR", "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS", "RH09_EVIDENCE", "RH07_EVIDENCE", "RH10_SYNTHETIC_PROVENANCE", "XBUILD_COMPILE_LINK", "UPSTREAM_SNAPSHOT_BYTES"],
+      "properties": {
+        "GIT_TOPOLOGY": {"$ref": "#/$defs/status"}, "ALLOWLIST": {"$ref": "#/$defs/status"}, "PRODUCT_DIFF_ZERO": {"$ref": "#/$defs/status"}, "POLICY_SCHEMA": {"$ref": "#/$defs/status"}, "EVIDENCE_SCHEMA": {"$ref": "#/$defs/status"}, "NAMESPACE_CLOSURE": {"$ref": "#/$defs/status"}, "REFERENCE_GRAPH_CLOSURE": {"$ref": "#/$defs/status"}, "SAFE_PATH_AND_TOCTOU": {"$ref": "#/$defs/status"}, "PROCESS_STREAM_BINDING": {"$ref": "#/$defs/status"}, "TOOL_IDENTITY": {"$ref": "#/$defs/status"}, "SEALED_INPUT_CLOSURE": {"$ref": "#/$defs/status"}, "ADVERSARIAL_60_OF_60": {"$ref": "#/$defs/status"}, "HOST_REGRESSION": {"$ref": "#/$defs/status"}, "SIMULATOR": {"$ref": "#/$defs/status"}, "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS": {"$ref": "#/$defs/status"}, "RH09_EVIDENCE": {"$ref": "#/$defs/status"}, "RH07_EVIDENCE": {"$ref": "#/$defs/status"}, "RH10_SYNTHETIC_PROVENANCE": {"$ref": "#/$defs/status"}, "XBUILD_COMPILE_LINK": {"$ref": "#/$defs/status"}, "UPSTREAM_SNAPSHOT_BYTES": {"$ref": "#/$defs/status"}
+      },
+      "additionalProperties": false
+    },
+    "product_verdicts": {
+      "type": "object",
+      "required": ["RH09_PRODUCT", "RH07_PRODUCT", "UPSTREAM_GIT_PROVENANCE", "REAL_DEVICE_RUNTIME", "S70_REAL_DEVICE_MEMORY"],
+      "properties": {
+        "RH09_PRODUCT": {"$ref": "#/$defs/status"}, "RH07_PRODUCT": {"$ref": "#/$defs/status"}, "UPSTREAM_GIT_PROVENANCE": {"$ref": "#/$defs/status"}, "REAL_DEVICE_RUNTIME": {"$ref": "#/$defs/status"}, "S70_REAL_DEVICE_MEMORY": {"$ref": "#/$defs/status"}
+      },
+      "additionalProperties": false
+    },
+    "review_verdict": {"enum": ["ACCEPT_C3_EVIDENCE_PROTOCOL", "REJECT_C3_EVIDENCE_PROTOCOL"]},
+    "matrix_gate_status": {"const": "PASS"},
+    "matrix_passed": {"const": 60},
+    "matrix_failed": {"const": 0},
+    "final_acceptance_eligible": {"const": true},
+    "failure_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "run_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "derived_facts_sha256": {"$ref": "#/$defs/sha256"},
+    "matrix_receipt_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "additionalProperties": false
+}

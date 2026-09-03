@@ -1,0 +1,62 @@
+{
+  "schema": "corsixh3ds.public-source-snapshot/v1",
+  "generated_at": "2026-09-03T16:57:29+08:00",
+  "source_identity": {
+    "commit": "9ff2b84114df9070d578c88fe927255369c12b6d",
+    "tree": "a0827cfe96655a2660d33752654c70de007152c3",
+    "sole_parent": "bedf567a4810d0479fba5ebcae7b49020d2988f3",
+    "commits_above_parent": 1,
+    "source_clean": true
+  },
+  "publication": {
+    "mode": "single_commit_sanitized_source_snapshot",
+    "remote": "https://github.com/zzliu-coder/corsixh3ds",
+    "branch": "main",
+    "source_files_before_publication_metadata": 190,
+    "internal_git_history_included": false,
+    "build_outputs_included": false,
+    "audit_work_directories_included": false
+  },
+  "upstream": {
+    "corsixth_vendored": false,
+    "tag": "v0.70.1",
+    "commit": "56bd5d00f76331c7f76d7b696726a7926303ca0c",
+    "reconstruction": "scripts/bootstrap_upstream.sh"
+  },
+  "privacy_redactions": [
+    {
+      "file": "docs/evidence/runtime-core-acceptance.json",
+      "field": "final_elf_proof.archive",
+      "replacement_prefix": "<LOCAL_WORKSPACE>"
+    },
+    {
+      "file": "docs/evidence/runtime-core-acceptance.json",
+      "field": "final_elf_proof.elf",
+      "replacement_prefix": "<LOCAL_WORKSPACE>"
+    }
+  ],
+  "game_data_exclusion": {
+    "status": "PASS",
+    "scope": "published_snapshot",
+    "excluded_categories": [
+      "Theme Hospital DATA",
+      "LEVELS",
+      "QDATA",
+      "SOUND",
+      "ANIMS",
+      "MUSIC",
+      "INTRO",
+      "HOSPITAL.EXE",
+      "HOSP95.EXE",
+      "VSPR and SOUND archives"
+    ]
+  },
+  "acceptance_boundaries": {
+    "evidence_protocol": "FAIL",
+    "runtime_product": "FAIL",
+    "real_resource_integration": "FAIL",
+    "cross_build_compile_link": "PASS",
+    "old_3ds_runtime": "NOT_PROVEN",
+    "old_3ds_memory_peak": "NOT_PROVEN"
+  }
+}

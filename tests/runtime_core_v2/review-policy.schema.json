@@ -1,0 +1,838 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corsixth.example/schemas/runtime-core-review-policy-v5.json",
+  "type": "object",
+  "required": [
+    "schema",
+    "stage_id",
+    "policy_id",
+    "created_at",
+    "base_identity",
+    "candidate_identity",
+    "product_boundary",
+    "roots",
+    "role_registry",
+    "environment_profiles",
+    "commands",
+    "gate_oracles",
+    "rh10_provenance",
+    "upstream_source",
+    "closure_inputs",
+    "fresh_chain",
+    "acceptance_inputs",
+    "limits"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cth3ds.runtime-core-review-policy/v5"
+    },
+    "stage_id": {
+      "const": "C3"
+    },
+    "policy_id": {
+      "type": "string",
+      "pattern": "^c3-[0-9a-f]{32}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "base_identity": {
+      "type": "object",
+      "required": [
+        "commit",
+        "tree",
+        "parent",
+        "tracked_fingerprint_v3",
+        "tracked_entries"
+      ],
+      "properties": {
+        "commit": {
+          "const": "bedf567a4810d0479fba5ebcae7b49020d2988f3"
+        },
+        "tree": {
+          "const": "da4adfa31e556dec208d1dfd9074208a92f69b05"
+        },
+        "parent": {
+          "const": "e4e22be7c4694bce1c1432a3ba990eab47a1b485"
+        },
+        "tracked_fingerprint_v3": {
+          "const": "75a7d14299f875163d7e8891768831c735fa775b6066c6c8667ab2aaa1f2463b"
+        },
+        "tracked_entries": {
+          "const": 174
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate_identity": {
+      "type": "object",
+      "required": [
+        "required_first_parent",
+        "forbidden_ancestors",
+        "expected_commit",
+        "expected_tree",
+        "expected_candidate_fingerprint",
+        "expected_candidate_entries",
+        "require_clean"
+      ],
+      "properties": {
+        "required_first_parent": {
+          "const": "bedf567a4810d0479fba5ebcae7b49020d2988f3"
+        },
+        "forbidden_ancestors": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "4b3bea525923a9ba6199c7b08f36aa814863f4e4"
+            },
+            {
+              "const": "7f637a26a966e470cb250d9dba6ec55a7e834ace"
+            },
+            {
+              "const": "161fa9cbff67138aca6b1c7d22eada7293f70fac"
+            },
+            {
+              "const": "ff919031256fd057d87d6bb8126a076164588478"
+            }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "expected_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "expected_tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "expected_candidate_fingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expected_candidate_entries": {
+          "type": "integer",
+          "minimum": 174
+        },
+        "require_clean": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "product_boundary": {
+      "type": "object",
+      "required": [
+        "fingerprint_algorithm",
+        "product_exact",
+        "product_prefixes",
+        "expected_product_fingerprint",
+        "expected_product_entries",
+        "allowlist_exact",
+        "forbidden_patterns",
+        "require_product_diff_empty"
+      ],
+      "properties": {
+        "fingerprint_algorithm": {
+          "const": "v3-mode-type-path-payload-sha256-nul"
+        },
+        "product_exact": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "CMakeLists.txt"
+            },
+            {
+              "const": "tools/th3ds_convert.py"
+            },
+            {
+              "const": "scripts/build_3ds.sh"
+            },
+            {
+              "const": "scripts/bootstrap_upstream.sh"
+            }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "product_prefixes": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "cmake/"
+            },
+            {
+              "const": "include/"
+            },
+            {
+              "const": "src/"
+            },
+            {
+              "const": "lua/"
+            }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "expected_product_fingerprint": {
+          "const": "8793cc554948f45f08134bad22bb3a6172cb6ca97164aaf6a8a4e2b9776b8966"
+        },
+        "expected_product_entries": {
+          "const": 55
+        },
+        "allowlist_exact": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 16,
+          "maxItems": 16,
+          "uniqueItems": true
+        },
+        "forbidden_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "require_product_diff_empty": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "root_id",
+          "class",
+          "absolute_realpath",
+          "node_type",
+          "access",
+          "allowed_kinds"
+        ],
+        "properties": {
+          "root_id": {
+            "type": "string"
+          },
+          "class": {
+            "enum": [
+              "candidate",
+              "evidence_raw",
+              "build",
+              "source",
+              "reviewer_bundle",
+              "seal"
+            ]
+          },
+          "absolute_realpath": {
+            "type": "string",
+            "pattern": "^/(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[~$*?\\[\\]])[^\\u0000]+$"
+          },
+          "node_type": {
+            "const": "directory"
+          },
+          "access": {
+            "enum": [
+              "readonly",
+              "producer_write_then_freeze",
+              "consumer_write_once"
+            ]
+          },
+          "allowed_kinds": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "build",
+                "tool",
+                "artifact",
+                "fixture",
+                "invocation",
+                "closure_input",
+                "source_file",
+                "seal_output"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true
+    },
+    "role_registry": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "role",
+          "count",
+          "allowed_root_ids",
+          "node_type",
+          "media_type",
+          "required_owner_kind"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "build",
+              "tool",
+              "artifact",
+              "fixture",
+              "invocation",
+              "closure_input"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "allowed_root_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "node_type": {
+            "enum": [
+              "regular_file",
+              "directory",
+              "process_record"
+            ]
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "required_owner_kind": {
+            "enum": [
+              "invocation",
+              "fixture",
+              "policy",
+              "none"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 110,
+      "maxItems": 110,
+      "uniqueItems": true
+    },
+    "environment_profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "profile_id",
+          "clear_environment",
+          "variables",
+          "unset_variables",
+          "locale"
+        ],
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "clear_environment": {
+            "const": true
+          },
+          "variables": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "unset_variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "command_id",
+          "role",
+          "gate_id",
+          "executable_kind",
+          "executable_role",
+          "argv",
+          "cwd_root_id",
+          "environment_profile_id",
+          "timeout_seconds",
+          "stdout_role",
+          "stderr_role",
+          "output_roles"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "gate_id": {
+            "type": "string"
+          },
+          "executable_kind": {
+            "enum": [
+              "tool",
+              "artifact"
+            ]
+          },
+          "executable_role": {
+            "type": "string"
+          },
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "cwd_root_id": {
+            "type": "string"
+          },
+          "environment_profile_id": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "stdout_role": {
+            "type": "string"
+          },
+          "stderr_role": {
+            "type": "string"
+          },
+          "output_roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 19,
+      "maxItems": 19,
+      "uniqueItems": true
+    },
+    "gate_oracles": {
+      "type": "object",
+      "required": [
+        "pool_order",
+        "backend_order",
+        "stable_states",
+        "h1",
+        "h2"
+      ],
+      "properties": {
+        "pool_order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 7,
+          "maxItems": 7,
+          "uniqueItems": true
+        },
+        "backend_order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "stable_states": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "uniqueItems": true
+        },
+        "h1": {
+          "type": "object",
+          "required": [
+            "oracle_id",
+            "failure_code"
+          ],
+          "properties": {
+            "oracle_id": {
+              "const": "H1_LEVEL_REQUIRES_DECLARED_PACKAGE"
+            },
+            "failure_code": {
+              "const": "H1_LEVEL_NOT_DECLARED_ACCEPTED"
+            }
+          },
+          "additionalProperties": false
+        },
+        "h2": {
+          "type": "object",
+          "required": [
+            "oracle_id",
+            "failure_code"
+          ],
+          "properties": {
+            "oracle_id": {
+              "const": "H2_TRANSITION_CAPABILITY_ROLLBACK"
+            },
+            "failure_code": {
+              "const": "H2_ESCAPED_CAPABILITY_PUBLISHED_STABLE"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "rh10_provenance": {
+      "type": "object",
+      "required": [
+        "fixture_role",
+        "payload_origin",
+        "contains_original_theme_hospital_data",
+        "container_schema_claim",
+        "container_claim_scope"
+      ],
+      "properties": {
+        "fixture_role": {
+          "const": "no-level-synthetic"
+        },
+        "payload_origin": {
+          "const": "generated_synthetic"
+        },
+        "contains_original_theme_hospital_data": {
+          "const": false
+        },
+        "container_schema_claim": {
+          "type": "object",
+          "required": [
+            "contains_user_game_data",
+            "redistributable"
+          ],
+          "properties": {
+            "contains_user_game_data": {
+              "const": true
+            },
+            "redistributable": {
+              "const": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "container_claim_scope": {
+          "const": "TH3DSR1_container_safety_classification"
+        }
+      },
+      "additionalProperties": false
+    },
+    "upstream_source": {
+      "type": "object",
+      "required": [
+        "archive_artifact_id",
+        "archive_root_id",
+        "archive_relative_path",
+        "archive_bytes",
+        "archive_sha256",
+        "archive_top_directory",
+        "snapshot_root_id",
+        "upstream_tree_manifest_artifact_id",
+        "upstream_expected_file_count",
+        "upstream_expected_tree_digest",
+        "integrated_root_id",
+        "integrated_tree_manifest_artifact_id",
+        "integrated_expected_file_count",
+        "integrated_expected_tree_digest",
+        "overlay_mapping",
+        "tree_digest_algorithm"
+      ],
+      "properties": {
+        "archive_artifact_id": {
+          "const": "a-xbuild-upstream-snapshot-archive"
+        },
+        "archive_root_id": {
+          "const": "reviewer_bundle"
+        },
+        "archive_relative_path": {
+          "type": "string"
+        },
+        "archive_bytes": {
+          "const": 4416083
+        },
+        "archive_sha256": {
+          "const": "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
+        },
+        "archive_top_directory": {
+          "const": "CorsixTH-56bd5d00f76331c7f76d7b696726a7926303ca0c/"
+        },
+        "snapshot_root_id": {
+          "const": "source_upstream_snapshot"
+        },
+        "upstream_tree_manifest_artifact_id": {
+          "const": "a-xbuild-upstream-source-tree-manifest"
+        },
+        "upstream_expected_file_count": {
+          "const": 644
+        },
+        "upstream_expected_tree_digest": {
+          "const": "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
+        },
+        "integrated_root_id": {
+          "const": "source_xbuild_integrated"
+        },
+        "integrated_tree_manifest_artifact_id": {
+          "const": "a-xbuild-integrated-source-tree-manifest"
+        },
+        "integrated_expected_file_count": {
+          "type": "integer",
+          "minimum": 644
+        },
+        "integrated_expected_tree_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "overlay_mapping": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "candidate_path",
+              "candidate_blob",
+              "integrated_path",
+              "mode"
+            ],
+            "properties": {
+              "candidate_path": {
+                "type": "string"
+              },
+              "candidate_blob": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "integrated_path": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "100644",
+                  "100755"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        },
+        "tree_digest_algorithm": {
+          "const": "source-tree-v1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "closure_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "closure_input_id",
+          "role",
+          "root_id",
+          "relative_path",
+          "bytes",
+          "sha256"
+        ],
+        "properties": {
+          "closure_input_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "root_id": {
+            "const": "candidate"
+          },
+          "relative_path": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\\\\\)[^\\u0000]+$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true
+    },
+    "fresh_chain": {
+      "type": "object",
+      "required": ["review_session_id", "session_root_realpath", "initial_entry_count", "allowed_external_input_roles", "forbidden_prior_artifact_roles", "canonical_seal_writer", "closure_fixture_owner"],
+      "properties": {
+        "review_session_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "session_root_realpath": {"type": "string", "pattern": "^/"},
+        "initial_entry_count": {"const": 0},
+        "allowed_external_input_roles": {
+          "const": ["candidate", "archive", "deps_prefix", "frozen_matrix", "base_acceptance_cases", "r4_acceptance_cases"]
+        },
+        "forbidden_prior_artifact_roles": {
+          "const": ["facts", "closure_fixture", "matrix_receipt", "final_seal"]
+        },
+        "canonical_seal_writer": {"const": "finalizer"},
+        "closure_fixture_owner": {"const": "reviewer_matrix_runner"}
+      },
+      "additionalProperties": false
+    },
+    "acceptance_inputs": {
+      "type": "object",
+      "required": [
+        "matrix_sha256",
+        "matrix_total",
+        "matrix_case_id_set",
+        "runner_relative_path",
+        "runner_sha256",
+        "fact_consumer_relative_path",
+        "fact_consumer_sha256",
+        "finalizer_relative_path",
+        "finalizer_sha256",
+        "result_schema_sha256",
+        "required_protocol_gate_ids",
+        "required_product_baseline"
+      ],
+      "properties": {
+        "matrix_sha256": {
+          "const": "8b7cf0d8e3b3702e9aa3c32aff9d1ed3e363ceab52699539251975a61985060f"
+        },
+        "matrix_total": {"const": 60},
+        "matrix_case_id_set": {"const": "E01..E60"},
+        "runner_relative_path": {
+          "const": "tests/runtime_core_v2/evidence_protocol_adversarial.py"
+        },
+        "runner_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "fact_consumer_relative_path": {
+          "const": "scripts/consume_runtime_core_v2.py"
+        },
+        "fact_consumer_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "finalizer_relative_path": {
+          "const": "scripts/consume_runtime_core_v2.py"
+        },
+        "finalizer_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "result_schema_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "required_protocol_gate_ids": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "GIT_TOPOLOGY"},
+            {"const": "ALLOWLIST"},
+            {"const": "PRODUCT_DIFF_ZERO"},
+            {"const": "POLICY_SCHEMA"},
+            {"const": "EVIDENCE_SCHEMA"},
+            {"const": "NAMESPACE_CLOSURE"},
+            {"const": "REFERENCE_GRAPH_CLOSURE"},
+            {"const": "SAFE_PATH_AND_TOCTOU"},
+            {"const": "PROCESS_STREAM_BINDING"},
+            {"const": "TOOL_IDENTITY"},
+            {"const": "SEALED_INPUT_CLOSURE"},
+            {"const": "ADVERSARIAL_60_OF_60"},
+            {"const": "HOST_REGRESSION"},
+            {"const": "SIMULATOR"},
+            {"const": "SANITIZER_INSTRUMENTATION_AND_CLEAN_STREAMS"},
+            {"const": "RH09_EVIDENCE"},
+            {"const": "RH07_EVIDENCE"},
+            {"const": "RH10_SYNTHETIC_PROVENANCE"},
+            {"const": "XBUILD_COMPILE_LINK"},
+            {"const": "UPSTREAM_SNAPSHOT_BYTES"}
+          ],
+          "items": false,
+          "minItems": 20,
+          "maxItems": 20,
+          "uniqueItems": true
+        },
+        "required_product_baseline": {
+          "type": "object",
+          "required": [
+            "RH09_PRODUCT", "RH07_PRODUCT", "UPSTREAM_GIT_PROVENANCE",
+            "REAL_DEVICE_RUNTIME", "S70_REAL_DEVICE_MEMORY"
+          ],
+          "properties": {
+            "RH09_PRODUCT": {"const": "FAIL"},
+            "RH07_PRODUCT": {"const": "FAIL"},
+            "UPSTREAM_GIT_PROVENANCE": {"const": "NOT_PROVEN"},
+            "REAL_DEVICE_RUNTIME": {"const": "NOT_PROVEN"},
+            "S70_REAL_DEVICE_MEMORY": {"const": "NOT_PROVEN"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "max_artifact_bytes",
+        "max_source_file_bytes",
+        "max_source_files"
+      ],
+      "properties": {
+        "max_artifact_bytes": {
+          "type": "integer",
+          "minimum": 4416083
+        },
+        "max_source_file_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_source_files": {
+          "type": "integer",
+          "minimum": 644
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

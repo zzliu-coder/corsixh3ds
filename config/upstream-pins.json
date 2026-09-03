@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "updated": "2026-08-29",
+  "corsixth": {
+    "repository": "https://github.com/CorsixTH/CorsixTH.git",
+    "tag": "v0.70.1",
+    "commit": "56bd5d00f76331c7f76d7b696726a7926303ca0c"
+  },
+  "sdl2": {
+    "repository": "https://github.com/libsdl-org/SDL.git",
+    "branch": "SDL2",
+    "commit": "5882a4f13d3bf374d2345280c679173f4ff324da"
+  },
+  "sdl2_mixer": {
+    "repository": "https://github.com/libsdl-org/SDL_mixer.git",
+    "branch": "SDL2",
+    "commit": "d8f32a0d4883d489f1a1b4ca71cb8a6d443401ec"
+  },
+  "lua": {
+    "repository": "https://github.com/lua/lua.git",
+    "tag": "v5.4.8",
+    "commit": "6e22fedb74cf0c9b6656e9fce8b7331db847c605"
+  },
+  "luafilesystem": {
+    "repository": "https://github.com/lunarmodules/luafilesystem.git",
+    "tag": "v1_8_0",
+    "commit": "7c6e1b013caec0602ca4796df3b1d7253a2dd258"
+  },
+  "lpeg": {
+    "version": "1.1.0",
+    "url": "https://www.inf.puc-rio.br/~roberto/lpeg/lpeg-1.1.0.tar.gz",
+    "sha256": "4b155d67d2246c1ffa7ad7bc466c1ea899bbc40fef0257cc9c03cecbaed4352a"
+  },
+  "devkitpro": {
+    "docker_image": "devkitpro/devkitarm:20260610",
+    "required_packages": [
+      "3ds-cmake",
+      "3ds-pkg-config",
+      "3ds-zlib",
+      "3ds-libpng",
+      "3ds-freetype",
+      "3ds-bzip2"
+    ]
+  }
+}

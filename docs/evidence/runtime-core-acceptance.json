@@ -1,0 +1,110 @@
+{
+  "asan_ubsan": "PASS",
+  "candidate_source_fingerprint": "095500bd278574938ef9094ddf6041cb319c46c1f44e69f56b198b055f925923",
+  "commands": [
+    "AppleClang ASan/UBSan configure, build, and CTest",
+    "10,000 generated-bundle RuntimeSession lifecycle cycles",
+    "devkitARM --skip-bootstrap final 3DSX build",
+    "final ELF symbol and production call-edge proof",
+    "git diff --check and tracked game-data scan"
+  ],
+  "cross_build": "PASS",
+  "device": "NOT_PROVEN",
+  "elf_sha256": "55fe05707129cd68edf572e2f81a721c30b19de691cdc7b214f432557a8b55f5",
+  "final_elf_proof": {
+    "archive": "<LOCAL_WORKSPACE>/runtime-core-cross-build/CorsixTH/CorsixTH/libCorsixTH_lib.a",
+    "archive_symbols": {
+      "bundle_mount": true,
+      "resource_acquire": true,
+      "runtime_session_level": true,
+      "runtime_session_menu": true,
+      "runtime_session_resume": true,
+      "runtime_session_save_begin": true,
+      "runtime_session_save_finish": true,
+      "runtime_session_shutdown": true,
+      "runtime_session_start": true,
+      "runtime_session_suspend": true,
+      "transition_rollback": true
+    },
+    "elf": "<LOCAL_WORKSPACE>/runtime-core-cross-build/CorsixTH/CorsixTH/CorsixTH-3DS.elf",
+    "elf_symbols": {
+      "bundle_mount": true,
+      "resource_acquire": true,
+      "runtime_session_level": true,
+      "runtime_session_menu": true,
+      "runtime_session_resume": true,
+      "runtime_session_save_begin": true,
+      "runtime_session_save_finish": true,
+      "runtime_session_shutdown": true,
+      "runtime_session_start": true,
+      "runtime_session_suspend": true,
+      "transition_rollback": true
+    },
+    "pass": true,
+    "production_entry": [
+      "cth3ds::runtime_initialize(lua_State*)"
+    ],
+    "runtime_session_call_path": [
+      "cth3ds::runtime_initialize(lua_State*)",
+      "cth3ds::(anonymous namespace)::Runtime::initialize(lua_State*)",
+      "cth3ds::RuntimeSession::start(std::filesystem::__cxx11::path const&, cth3ds::RuntimeSessionConfig)"
+    ],
+    "whole_archive_used": false
+  },
+  "git_head_at_run": "f9b2919650a7a9e72640c4a09a2c75b520cdc792",
+  "heap_proof": {
+    "expectedBytes": 8388608,
+    "pass": true,
+    "symbol": "__ctru_linear_heap_size",
+    "symbolAddress": "0x00366018",
+    "symbolType": "D",
+    "valueBytes": 8388608
+  },
+  "host_runtime_core": "PASS",
+  "leak_sanitizer": "UNAVAILABLE_ON_MACOS",
+  "lifecycle_cycles": 10000,
+  "owner_mount_shutdown_cycles": 10000,
+  "platform": "Darwin-arm64",
+  "rd_gates": {
+    "RD01": "NOT_PROVEN",
+    "RD02": "NOT_PROVEN",
+    "RD03": "NOT_PROVEN",
+    "RD04": "NOT_PROVEN",
+    "RD05": "NOT_PROVEN",
+    "RD06": "NOT_PROVEN",
+    "RD07": "NOT_PROVEN",
+    "RD08": "NOT_PROVEN",
+    "RD09": "NOT_PROVEN",
+    "RD10": "NOT_PROVEN",
+    "RD11": "NOT_PROVEN",
+    "RD12": "NOT_PROVEN",
+    "RD13": "NOT_PROVEN",
+    "RD14": "NOT_PROVEN"
+  },
+  "rh_evidence": {
+    "RH01": "synthetic every-kind converter and C++ mount/typed lookup tests",
+    "RH02": "two-root bundle and package SHA-256 equality tests",
+    "RH03": "mutation matrix plus AppleClang ASan/UBSan CTest",
+    "RH04": "selected-language dependency and unused-language exclusion tests",
+    "RH05": "AudioBank bounded stream spy <= 16,384 bytes and zero resident payload",
+    "RH06": "SpriteSheet bounded stream spy <= 65,536 bytes and zero unrequested pixels",
+    "RH07": "live/pin/dependency/LRU plus 10,000 owner and lifecycle cycles",
+    "RH08": "every-pool cap-1/cap/cap+1 arithmetic and atomic rejection tests",
+    "RH09": "missing/corrupt package plus save/transition/heap/linear reserve tests",
+    "RH10": "tracked-file scan and no-game package/release tests"
+  },
+  "rh_gates": {
+    "RH01": "PASS",
+    "RH02": "PASS",
+    "RH03": "PASS",
+    "RH04": "PASS",
+    "RH05": "PASS",
+    "RH06": "PASS",
+    "RH07": "PASS",
+    "RH08": "PASS",
+    "RH09": "PASS",
+    "RH10": "PASS"
+  },
+  "schema": 1,
+  "three_dsx_sha256": "027ce887bc3d6d26147e9a2f8228f2f4fe1ecce15e47c665415eba59939d2fd4"
+}

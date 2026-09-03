@@ -1,0 +1,540 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corsixth.example/schemas/runtime-core-evidence-v4.json",
+  "type": "object",
+  "required": [
+    "schema",
+    "stage_id",
+    "run_id",
+    "producer_version",
+    "policy_id",
+    "policy_sha256",
+    "created_at",
+    "base_identity",
+    "candidate_identity",
+    "product_fingerprint",
+    "builds",
+    "tools",
+    "artifacts",
+    "fixtures",
+    "invocations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cth3ds.runtime-core-evidence/v4"
+    },
+    "stage_id": {
+      "const": "C3"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "producer_version": {
+      "const": "cth3ds-runtime-core-observer/4"
+    },
+    "policy_id": {
+      "type": "string"
+    },
+    "policy_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "base_identity": {
+      "type": "object",
+      "required": [
+        "commit",
+        "tree",
+        "parent",
+        "tracked_fingerprint_v3",
+        "tracked_entries"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "parent": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tracked_fingerprint_v3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tracked_entries": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate_identity": {
+      "type": "object",
+      "required": [
+        "commit",
+        "tree",
+        "first_parent",
+        "tracked_fingerprint_v3",
+        "tracked_entries"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "first_parent": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tracked_fingerprint_v3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tracked_entries": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "product_fingerprint": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "sha256",
+        "entries"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "v3-mode-type-path-payload-sha256-nul"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "entries": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "builds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "build_id",
+          "role",
+          "source_root_id",
+          "build_root_id",
+          "configure_invocation_id",
+          "build_invocation_id",
+          "cmake_cache_artifact_id",
+          "compile_commands_artifact_id",
+          "input_artifact_ids",
+          "output_artifact_ids",
+          "sanitizer_profile_id",
+          "tool_ids"
+        ],
+        "properties": {
+          "build_id": {
+            "type": "string",
+            "pattern": "^b-[a-z0-9][a-z0-9-]{1,63}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "source_root_id": {
+            "type": "string"
+          },
+          "build_root_id": {
+            "type": "string"
+          },
+          "configure_invocation_id": {
+            "type": "string"
+          },
+          "build_invocation_id": {
+            "type": "string"
+          },
+          "cmake_cache_artifact_id": {
+            "type": "string"
+          },
+          "compile_commands_artifact_id": {
+            "type": "string"
+          },
+          "input_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "output_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "sanitizer_profile_id": {
+            "type": "string"
+          },
+          "tool_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "tool_id",
+          "role",
+          "absolute_realpath",
+          "bytes_before",
+          "sha256_before",
+          "bytes_after",
+          "sha256_after",
+          "runtime_dependency_files"
+        ],
+        "properties": {
+          "tool_id": {
+            "type": "string",
+            "pattern": "^t-[a-z0-9][a-z0-9-]{1,63}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "absolute_realpath": {
+            "type": "string",
+            "pattern": "^/"
+          },
+          "bytes_before": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256_before": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes_after": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256_after": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "runtime_dependency_files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "absolute_realpath",
+                "bytes",
+                "sha256"
+              ],
+              "properties": {
+                "absolute_realpath": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "additionalProperties": false
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "role",
+          "root_id",
+          "relative_path",
+          "media_type",
+          "bytes",
+          "sha256",
+          "canonical_owner"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^a-[a-z0-9][a-z0-9-]{1,63}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "root_id": {
+            "type": "string"
+          },
+          "relative_path": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\\\\\)[^\\u0000]+$"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "canonical_owner": {
+            "type": "object",
+            "required": [
+              "kind",
+              "id",
+              "slot"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "invocation",
+                  "fixture",
+                  "policy"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "slot": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 68,
+      "maxItems": 68,
+      "uniqueItems": true
+    },
+    "fixtures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "fixture_id",
+          "role",
+          "tracked_artifact_ids",
+          "fresh_artifact_ids",
+          "directory_digest_algorithm",
+          "tracked_directory_digest",
+          "fresh_directory_digest"
+        ],
+        "properties": {
+          "fixture_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tracked_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "uniqueItems": true
+          },
+          "fresh_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "uniqueItems": true
+          },
+          "directory_digest_algorithm": {
+            "const": "fixture-directory-v1"
+          },
+          "tracked_directory_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "fresh_directory_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true
+    },
+    "invocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "invocation_id",
+          "role",
+          "gate_id",
+          "run_id",
+          "executable_kind",
+          "executable_id",
+          "argv",
+          "cwd_root_id",
+          "environment_profile_id",
+          "started_at",
+          "finished_at",
+          "exit_code",
+          "signal",
+          "timed_out",
+          "stream_truncated",
+          "stdout_artifact_id",
+          "stderr_artifact_id",
+          "observation_artifact_id",
+          "output_artifact_ids"
+        ],
+        "properties": {
+          "invocation_id": {
+            "type": "string",
+            "pattern": "^i-[a-z0-9][a-z0-9-]{1,63}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "gate_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "executable_kind": {
+            "enum": [
+              "tool",
+              "artifact"
+            ]
+          },
+          "executable_id": {
+            "type": "string"
+          },
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "cwd_root_id": {
+            "type": "string"
+          },
+          "environment_profile_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "exit_code": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "signal": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 64
+              }
+            ]
+          },
+          "timed_out": {
+            "type": "boolean"
+          },
+          "stream_truncated": {
+            "type": "boolean"
+          },
+          "stdout_artifact_id": {
+            "type": "string"
+          },
+          "stderr_artifact_id": {
+            "type": "string"
+          },
+          "observation_artifact_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "output_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 19,
+      "maxItems": 19,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

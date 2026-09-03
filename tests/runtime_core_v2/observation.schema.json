@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corsixth.example/schemas/runtime-core-observation-v4.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "stage_id",
+        "run_id",
+        "gate_id",
+        "oracle_id",
+        "observations"
+      ],
+      "properties": {
+        "schema": {
+          "const": "cth3ds.runtime-core-raw-observation/v4"
+        },
+        "stage_id": {
+          "const": "C3"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "gate_id": {
+          "const": "RH09-H1"
+        },
+        "oracle_id": {
+          "const": "H1_LEVEL_REQUIRES_DECLARED_PACKAGE"
+        },
+        "observations": {
+          "type": "object",
+          "required": [
+            "requested_level",
+            "declared_level_count",
+            "call_result",
+            "state_before",
+            "state_after",
+            "transition_active_after",
+            "mounted_package_ids_before",
+            "mounted_package_ids_after",
+            "mount_generation_before",
+            "mount_generation_after",
+            "catalog_generation_before",
+            "catalog_generation_after",
+            "catalog_fingerprint_before",
+            "catalog_fingerprint_after",
+            "entries_before",
+            "entries_after",
+            "leases_before",
+            "leases_after",
+            "pins_before",
+            "pins_after",
+            "dependencies_before",
+            "dependencies_after",
+            "allocation_records_before",
+            "allocation_records_after",
+            "pool_bytes_before",
+            "pool_bytes_after",
+            "backend_bytes_before",
+            "backend_bytes_after",
+            "regular_reconciliation_before",
+            "regular_reconciliation_after",
+            "linear_reconciliation_before",
+            "linear_reconciliation_after"
+          ],
+          "properties": {
+            "requested_level": {
+              "type": "string"
+            },
+            "declared_level_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "call_result": {
+              "type": "string"
+            },
+            "state_before": {
+              "type": "string"
+            },
+            "state_after": {
+              "type": "string"
+            },
+            "transition_active_after": {
+              "type": "boolean"
+            },
+            "mounted_package_ids_before": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "mounted_package_ids_after": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "mount_generation_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "mount_generation_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "catalog_generation_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "catalog_generation_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "catalog_fingerprint_before": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "catalog_fingerprint_after": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "entries_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "entries_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "leases_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "leases_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "pins_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "pins_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "dependencies_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "dependencies_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "allocation_records_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "allocation_records_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "pool_bytes_before": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 7,
+              "maxItems": 7
+            },
+            "pool_bytes_after": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 7,
+              "maxItems": 7
+            },
+            "backend_bytes_before": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "backend_bytes_after": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "regular_reconciliation_before": {
+              "type": "integer"
+            },
+            "regular_reconciliation_after": {
+              "type": "integer"
+            },
+            "linear_reconciliation_before": {
+              "type": "integer"
+            },
+            "linear_reconciliation_after": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "stage_id",
+        "run_id",
+        "gate_id",
+        "oracle_id",
+        "observations"
+      ],
+      "properties": {
+        "schema": {
+          "const": "cth3ds.runtime-core-raw-observation/v4"
+        },
+        "stage_id": {
+          "const": "C3"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "gate_id": {
+          "const": "RH07-H2"
+        },
+        "oracle_id": {
+          "const": "H2_TRANSITION_CAPABILITY_ROLLBACK"
+        },
+        "observations": {
+          "type": "object",
+          "required": [
+            "fault_point",
+            "call_result",
+            "state_before",
+            "state_after",
+            "transition_active_before",
+            "transition_active_after",
+            "mounted_package_count_before",
+            "mounted_package_count_after",
+            "entries_before",
+            "entries_after",
+            "leases_before",
+            "leases_after",
+            "pins_before",
+            "pins_after",
+            "dependencies_before",
+            "dependencies_after",
+            "allocation_records_before",
+            "allocation_records_after",
+            "pool_bytes_before",
+            "pool_bytes_after",
+            "backend_bytes_before",
+            "backend_bytes_after",
+            "regular_reconciliation_before",
+            "regular_reconciliation_after",
+            "linear_reconciliation_before",
+            "linear_reconciliation_after",
+            "escaped_lease_valid_after"
+          ],
+          "properties": {
+            "fault_point": {
+              "type": "string"
+            },
+            "call_result": {
+              "type": "string"
+            },
+            "state_before": {
+              "type": "string"
+            },
+            "state_after": {
+              "type": "string"
+            },
+            "transition_active_before": {
+              "type": "boolean"
+            },
+            "transition_active_after": {
+              "type": "boolean"
+            },
+            "mounted_package_count_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "mounted_package_count_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "entries_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "entries_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "leases_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "leases_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "pins_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "pins_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "dependencies_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "dependencies_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "allocation_records_before": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "allocation_records_after": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854776000
+            },
+            "pool_bytes_before": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 7,
+              "maxItems": 7
+            },
+            "pool_bytes_after": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 7,
+              "maxItems": 7
+            },
+            "backend_bytes_before": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "backend_bytes_after": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854776000
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "regular_reconciliation_before": {
+              "type": "integer"
+            },
+            "regular_reconciliation_after": {
+              "type": "integer"
+            },
+            "linear_reconciliation_before": {
+              "type": "integer"
+            },
+            "linear_reconciliation_after": {
+              "type": "integer"
+            },
+            "escaped_lease_valid_after": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "unevaluatedProperties": false
+}

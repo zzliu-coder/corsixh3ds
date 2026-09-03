@@ -1,10 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -E
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+source "$(cd "$(dirname "$0")" && pwd)/ci_diagnostics.sh"
 
 LOG_DIR="${CTH3DS_ROOT}/artifacts/verification"
-PREVIEW_DIR="${CTH3DS_ROOT}/artifacts/preview"
+PREVIEW_DIR="${LOG_DIR}/preview"
 VERIFY_RESUME="${CTH3DS_VERIFY_RESUME:-0}"
+HOST_MATRIX="${CTH3DS_HOST_MATRIX:-all}"
+RUN_COMMON="${CTH3DS_RUN_COMMON:-}"
+case "${HOST_MATRIX}" in
+  all|gcc-debug|gcc-release|gcc-sanitized|clang-debug) ;;
+  *) die "unknown host verification matrix: ${HOST_MATRIX}" ;;
+esac
+if [[ -z "${RUN_COMMON}" ]]; then
+  if [[ "${HOST_MATRIX}" == "all" ]]; then
+    RUN_COMMON=1
+  else
+    RUN_COMMON=0
+  fi
+fi
+[[ "${RUN_COMMON}" == "0" || "${RUN_COMMON}" == "1" ]] || \
+  die 'CTH3DS_RUN_COMMON must be 0 or 1'
 require_cmd python3
 SOURCE_FINGERPRINT="$(python3 - "${CTH3DS_ROOT}" <<'PY'
 from __future__ import annotations
@@ -53,6 +70,7 @@ if [[ "${VERIFY_RESUME}" != "1" ]]; then
   rm -rf "${LOG_DIR}" "${PREVIEW_DIR}"
 fi
 mkdir -p "${LOG_DIR}" "${PREVIEW_DIR}"
+ci_diag_init "host-${HOST_MATRIX}" "${LOG_DIR}"
 printf '%s\n' "${SOURCE_FINGERPRINT}" >"${LOG_DIR}/source.sha256"
 
 CTH3DS_ASAN_LEAKS_OPTION="${CTH3DS_ASAN_LEAKS_OPTION:-}"
@@ -75,7 +93,8 @@ configure_build_test() {
   rm -rf "${build}"
   set_cmake_generator
   log "verification matrix: ${name}"
-  CC="${cc}" CXX="${cxx}" cmake -S "${CTH3DS_ROOT}" -B "${build}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
+  ci_diag_step "${name}-configure" "${LOG_DIR}/${name}-configure.log"
+  env CC="${cc}" CXX="${cxx}" cmake -S "${CTH3DS_ROOT}" -B "${build}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DCTH3DS_BUILD_TESTS=ON \
     -DCTH3DS_BUILD_SIMULATOR=ON \
@@ -83,8 +102,12 @@ configure_build_test() {
     -DCTH3DS_WARNINGS_AS_ERRORS=ON \
     -DCTH3DS_ENABLE_SANITIZERS="${sanitizers}" \
     >"${LOG_DIR}/${name}-configure.log" 2>&1
+  ci_diag_step "${name}-build" "${LOG_DIR}/${name}-configure.log" \
+    "${LOG_DIR}/${name}-build.log"
   cmake --build "${build}" --parallel "${CTH3DS_JOBS}" \
     >"${LOG_DIR}/${name}-build.log" 2>&1
+  ci_diag_step "${name}-ctest" "${LOG_DIR}/${name}-configure.log" \
+    "${LOG_DIR}/${name}-build.log" "${LOG_DIR}/${name}-ctest.log"
   if [[ "${sanitizers}" == "ON" ]]; then
     # Apple ships AddressSanitizer without LeakSanitizer support. Enabling
     # detect_leaks there aborts every sanitized test before it starts.
@@ -96,92 +119,141 @@ configure_build_test() {
     ctest --test-dir "${build}" --output-on-failure \
       >"${LOG_DIR}/${name}-ctest.log" 2>&1
   fi
+  ci_diag_step "${name}-cpp-tests" "${LOG_DIR}/${name}-ctest.log" \
+    "${LOG_DIR}/${name}-cpp-tests.log"
   "${build}/cth3ds-tests" >"${LOG_DIR}/${name}-cpp-tests.log" 2>&1
+  ci_diag_step "${name}-simulator" "${LOG_DIR}/${name}-cpp-tests.log" \
+    "${LOG_DIR}/${name}-simulator.log"
   "${build}/cth3ds-simulator" "${LOG_DIR}/${name}-simulator" \
     >"${LOG_DIR}/${name}-simulator.log" 2>&1
   printf '%s\n' "${SOURCE_FINGERPRINT}" >"${fingerprint_file}"
 }
 
 require_cmd cmake
-require_cmd gcc
-require_cmd g++
-configure_build_test gcc-debug gcc g++ Debug OFF
-configure_build_test gcc-release gcc g++ Release OFF
-configure_build_test gcc-sanitized gcc g++ Debug ON
-if command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
-  configure_build_test clang-debug clang clang++ Debug OFF
-else
-  log 'clang unavailable; clang matrix skipped'
-fi
+case "${HOST_MATRIX}" in
+  all)
+    require_cmd gcc
+    require_cmd g++
+    configure_build_test gcc-debug gcc g++ Debug OFF
+    configure_build_test gcc-release gcc g++ Release OFF
+    configure_build_test gcc-sanitized gcc g++ Debug ON
+    if command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
+      configure_build_test clang-debug clang clang++ Debug OFF
+    else
+      log 'clang unavailable; clang matrix skipped'
+    fi
+    ;;
+  gcc-debug)
+    require_cmd gcc
+    require_cmd g++
+    configure_build_test gcc-debug gcc g++ Debug OFF
+    ;;
+  gcc-release)
+    require_cmd gcc
+    require_cmd g++
+    configure_build_test gcc-release gcc g++ Release OFF
+    ;;
+  gcc-sanitized)
+    require_cmd gcc
+    require_cmd g++
+    configure_build_test gcc-sanitized gcc g++ Debug ON
+    ;;
+  clang-debug)
+    require_cmd clang
+    require_cmd clang++
+    configure_build_test clang-debug clang clang++ Debug OFF
+    ;;
+esac
 
-# Catch flaky state transitions without repeatedly starting the Python runtime.
-ctest --test-dir "${CTH3DS_ROOT}/build-verify-gcc-debug" \
-  -R '^cth3ds-tests$' --repeat until-fail:50 --output-on-failure \
-  >"${LOG_DIR}/repeat-50.log" 2>&1
+if [[ "${RUN_COMMON}" == "1" ]]; then
+  [[ -x "${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-tests" ]] || \
+    die 'common verification requires the gcc-debug matrix'
 
-PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q \
-  "${CTH3DS_ROOT}/tools" "${CTH3DS_ROOT}/tests" \
-  >"${LOG_DIR}/python-compileall.log" 2>&1
-PYTHONPATH="${CTH3DS_ROOT}/tools" \
-CTH3DS_SIMULATOR="${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-simulator" \
-PYTHONDONTWRITEBYTECODE=1 \
-  python3 -m unittest discover -s "${CTH3DS_ROOT}/tests" -p 'test_*.py' -v \
-  >"${LOG_DIR}/python-tests.log" 2>&1
+  # Catch flaky state transitions without repeatedly starting the Python runtime.
+  ci_diag_step repeat-50 "${LOG_DIR}/repeat-50.log"
+  ctest --test-dir "${CTH3DS_ROOT}/build-verify-gcc-debug" \
+    -R '^cth3ds-tests$' --repeat until-fail:50 --output-on-failure \
+    >"${LOG_DIR}/repeat-50.log" 2>&1
+
+  ci_diag_step python-compileall "${LOG_DIR}/python-compileall.log"
+  PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q \
+    "${CTH3DS_ROOT}/tools" "${CTH3DS_ROOT}/tests" \
+    >"${LOG_DIR}/python-compileall.log" 2>&1
+  ci_diag_step python-tests "${LOG_DIR}/python-compileall.log" \
+    "${LOG_DIR}/python-tests.log"
+  PYTHONPATH="${CTH3DS_ROOT}/tools" \
+  CTH3DS_SIMULATOR="${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-simulator" \
+  PYTHONDONTWRITEBYTECODE=1 \
+    python3 -m unittest discover -s "${CTH3DS_ROOT}/tests" -p 'test_*.py' -v \
+    >"${LOG_DIR}/python-tests.log" 2>&1
 
 # The device present path is compiled for the real CPU and inspected here: an
 # ARM11 has no hardware divider, so a division that creeps back into the
 # framebuffer copy would silently cost tens of milliseconds per frame again.
-ARM_CHECK_EXECUTED=0
-if "${CTH3DS_ROOT}/scripts/check_arm_codegen.sh" >"${LOG_DIR}/arm-codegen.log" 2>&1; then
-  if grep -q 'ARM codegen check passed' "${LOG_DIR}/arm-codegen.log"; then
-    ARM_CHECK_EXECUTED=1
+  ARM_CHECK_EXECUTED=0
+  ci_diag_step arm-codegen "${LOG_DIR}/arm-codegen.log"
+  if "${CTH3DS_ROOT}/scripts/check_arm_codegen.sh" >"${LOG_DIR}/arm-codegen.log" 2>&1; then
+    if grep -q 'ARM codegen check passed' "${LOG_DIR}/arm-codegen.log"; then
+      ARM_CHECK_EXECUTED=1
+    fi
+  else
+    cat "${LOG_DIR}/arm-codegen.log" >&2
+    die 'ARM codegen check failed'
+  fi
+
+  SHELL_COUNT=0
+  ci_diag_step shell-syntax "${LOG_DIR}/shell-syntax.log"
+  for script in "${CTH3DS_ROOT}"/scripts/*.sh; do
+    bash -n "${script}" >>"${LOG_DIR}/shell-syntax.log" 2>&1
+    SHELL_COUNT=$((SHELL_COUNT + 1))
+  done
+  ci_diag_step pins "${LOG_DIR}/pins.json"
+  python3 "${CTH3DS_ROOT}/tools/check_pins.py" --json \
+    >"${LOG_DIR}/pins.json"
+
+  ACTUAL_API_CHECKED=0
+  UPSTREAM_DIR="${CTH3DS_EXTERNAL_DIR}/CorsixTH"
+  if [[ -d "${UPSTREAM_DIR}" ]]; then
+    ci_diag_step upstream-lua-api "${LOG_DIR}/upstream-lua-api.json"
+    python3 "${CTH3DS_ROOT}/tools/check_upstream_lua_api.py" "${UPSTREAM_DIR}" --json \
+      >"${LOG_DIR}/upstream-lua-api.json"
+    ACTUAL_API_CHECKED=1
+  else
+    printf '{"ok": false, "skipped": true, "reason": "pinned upstream checkout is absent"}\n' \
+      >"${LOG_DIR}/upstream-lua-api.json"
+  fi
+
+  ci_diag_step preview "${LOG_DIR}/preview.log"
+  python3 "${CTH3DS_ROOT}/tools/make_preview.py" \
+    "${LOG_DIR}/gcc-debug-simulator/top.ppm" \
+    "${LOG_DIR}/gcc-debug-simulator/bottom.ppm" \
+    "${PREVIEW_DIR}/dual-screen-preview.png" \
+    >"${LOG_DIR}/preview.log" 2>&1
+  cp "${LOG_DIR}/gcc-debug-simulator/trace.json" "${PREVIEW_DIR}/trace.json"
+
+  CROSS_EXECUTED=0
+  CROSS_SKIP_REASON=""
+  VERIFY_CROSS="${CTH3DS_VERIFY_CROSS:-auto}"
+  if [[ "${VERIFY_CROSS}" == "0" || "${VERIFY_CROSS}" == "off" ]]; then
+    CROSS_SKIP_REASON="cross-build disabled by CTH3DS_VERIFY_CROSS"
+  elif [[ -z "${DEVKITPRO:-}" || ! -f "${DEVKITPRO}/cmake/3DS.cmake" ]]; then
+    CROSS_SKIP_REASON="devkitPro/devkitARM is unavailable in this environment"
+  elif [[ ! -f "${UPSTREAM_DIR}/CorsixTH/Src/3ds/integration-manifest.json" ]]; then
+    CROSS_SKIP_REASON="integrated pinned CorsixTH checkout is unavailable"
+  elif [[ ! -f "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" ]]; then
+    CROSS_SKIP_REASON="staged 3DS dependency libraries are unavailable"
+  else
+    ci_diag_step old3ds-cross-build "${LOG_DIR}/old3ds-cross-build.log"
+    "${CTH3DS_ROOT}/scripts/build_3ds.sh" --skip-bootstrap \
+      >"${LOG_DIR}/old3ds-cross-build.log" 2>&1
+    CROSS_EXECUTED=1
   fi
 else
-  cat "${LOG_DIR}/arm-codegen.log" >&2
-  die 'ARM codegen check failed'
-fi
-
-SHELL_COUNT=0
-for script in "${CTH3DS_ROOT}"/scripts/*.sh; do
-  bash -n "${script}"
-  SHELL_COUNT=$((SHELL_COUNT + 1))
-done
-python3 "${CTH3DS_ROOT}/tools/check_pins.py" --json \
-  >"${LOG_DIR}/pins.json"
-
-ACTUAL_API_CHECKED=0
-UPSTREAM_DIR="${CTH3DS_EXTERNAL_DIR}/CorsixTH"
-if [[ -d "${UPSTREAM_DIR}" ]]; then
-  python3 "${CTH3DS_ROOT}/tools/check_upstream_lua_api.py" "${UPSTREAM_DIR}" --json \
-    >"${LOG_DIR}/upstream-lua-api.json"
-  ACTUAL_API_CHECKED=1
-else
-  printf '{"ok": false, "skipped": true, "reason": "pinned upstream checkout is absent"}\n' \
-    >"${LOG_DIR}/upstream-lua-api.json"
-fi
-
-python3 "${CTH3DS_ROOT}/tools/make_preview.py" \
-  "${LOG_DIR}/gcc-debug-simulator/top.ppm" \
-  "${LOG_DIR}/gcc-debug-simulator/bottom.ppm" \
-  "${PREVIEW_DIR}/dual-screen-preview.png" \
-  >"${LOG_DIR}/preview.log" 2>&1
-cp "${LOG_DIR}/gcc-debug-simulator/trace.json" "${PREVIEW_DIR}/trace.json"
-
-CROSS_EXECUTED=0
-CROSS_SKIP_REASON=""
-VERIFY_CROSS="${CTH3DS_VERIFY_CROSS:-auto}"
-if [[ "${VERIFY_CROSS}" == "0" || "${VERIFY_CROSS}" == "off" ]]; then
-  CROSS_SKIP_REASON="cross-build disabled by CTH3DS_VERIFY_CROSS"
-elif [[ -z "${DEVKITPRO:-}" || ! -f "${DEVKITPRO}/cmake/3DS.cmake" ]]; then
-  CROSS_SKIP_REASON="devkitPro/devkitARM is unavailable in this environment"
-elif [[ ! -f "${UPSTREAM_DIR}/CorsixTH/Src/3ds/integration-manifest.json" ]]; then
-  CROSS_SKIP_REASON="integrated pinned CorsixTH checkout is unavailable"
-elif [[ ! -f "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" ]]; then
-  CROSS_SKIP_REASON="staged 3DS dependency libraries are unavailable"
-else
-  "${CTH3DS_ROOT}/scripts/build_3ds.sh" --skip-bootstrap \
-    >"${LOG_DIR}/old3ds-cross-build.log" 2>&1
-  CROSS_EXECUTED=1
+  ARM_CHECK_EXECUTED=0
+  SHELL_COUNT=0
+  ACTUAL_API_CHECKED=0
+  CROSS_EXECUTED=0
+  CROSS_SKIP_REASON="common verification runs in the gcc-debug matrix"
 fi
 
 export CTH3DS_VERIFY_ARM_CHECK="${ARM_CHECK_EXECUTED}"
@@ -189,32 +261,109 @@ export CTH3DS_VERIFY_SHELL_COUNT="${SHELL_COUNT}"
 export CTH3DS_VERIFY_ACTUAL_API="${ACTUAL_API_CHECKED}"
 export CTH3DS_VERIFY_CROSS_EXECUTED="${CROSS_EXECUTED}"
 export CTH3DS_VERIFY_CROSS_SKIP="${CROSS_SKIP_REASON}"
+export CTH3DS_VERIFY_HOST_MATRIX="${HOST_MATRIX}"
+export CTH3DS_VERIFY_RUN_COMMON="${RUN_COMMON}"
+ci_diag_step summary "${LOG_DIR}/summary.json"
 python3 - "${CTH3DS_ROOT}" "${LOG_DIR}" <<'PY'
 from __future__ import annotations
 import hashlib, json, os, pathlib, platform, re, shutil, subprocess, sys
 root = pathlib.Path(sys.argv[1])
 logs = pathlib.Path(sys.argv[2])
+
+
+def read(path: pathlib.Path) -> str:
+    return path.read_text(errors='replace') if path.is_file() else ''
+
+
+matrix_names = ('gcc-debug', 'gcc-release', 'gcc-sanitized', 'clang-debug')
+selected = os.environ['CTH3DS_VERIFY_HOST_MATRIX']
 matrices = []
-for path in sorted(logs.glob('*-ctest.log')):
-    name = path.name[:-len('-ctest.log')]
-    text = path.read_text(errors='replace')
-    match = re.search(r'(\d+)% tests passed, (\d+) tests failed out of (\d+)', text)
-    matrices.append({
-        'name': name,
-        'ctest_total': int(match.group(3)) if match else None,
-        'ctest_failed': int(match.group(2)) if match else None,
-    })
-cpp_text = (logs / 'gcc-debug-cpp-tests.log').read_text(errors='replace')
-cpp_match = re.search(r'Ran (\d+) tests; (\d+) failed', cpp_text)
-py_text = (logs / 'python-tests.log').read_text(errors='replace')
+matrix_skips = []
+cpp_suites = []
+for name in matrix_names:
+    ctest_text = read(logs / f'{name}-ctest.log')
+    ctest_match = re.search(
+        r'(\d+)% tests passed, (\d+) tests failed out of (\d+)', ctest_text
+    )
+    not_run = len(re.findall(r'\*\*\*Not Run', ctest_text))
+    if ctest_match:
+        total = int(ctest_match.group(3))
+        failed = int(ctest_match.group(2))
+        matrices.append({
+            'name': name,
+            'status': 'PASS' if failed == 0 and not_run == 0 else 'FAIL',
+            'ctest_total': total,
+            'ctest_passed': total - failed - not_run,
+            'ctest_failed': failed,
+            'ctest_skipped': not_run,
+        })
+    else:
+        reason = (
+            'compiler unavailable'
+            if selected == 'all' and name == 'clang-debug'
+            else f'isolated in the {name} CI job'
+        )
+        matrix_skips.append({
+            'name': name,
+            'status': 'SKIP',
+            'reason': reason,
+        })
+
+    cpp_text = read(logs / f'{name}-cpp-tests.log')
+    cpp_match = re.search(r'Ran (\d+) tests; (\d+) failed', cpp_text)
+    if cpp_match:
+        total = int(cpp_match.group(1))
+        failed = int(cpp_match.group(2))
+        cpp_suites.append({
+            'matrix': name,
+            'status': 'PASS' if failed == 0 else 'FAIL',
+            'total': total,
+            'passed': total - failed,
+            'failed': failed,
+            'skipped': 0,
+        })
+
+py_text = read(logs / 'python-tests.log')
 py_match = re.search(r'Ran (\d+) tests', py_text)
-skipped_match = re.search(r'OK \(skipped=(\d+)\)', py_text)
+
+
+def unittest_count(label: str) -> int:
+    match = re.search(rf'{label}=(\d+)', py_text)
+    return int(match.group(1)) if match else 0
+
+
+python_total = int(py_match.group(1)) if py_match else 0
+python_failed = unittest_count('failures')
+python_errors = unittest_count('errors')
+python_skipped = unittest_count('skipped')
+python_expected_failures = unittest_count('expected failures')
+python_unexpected_successes = unittest_count('unexpected successes')
+python_passed = (
+    python_total
+    - python_failed
+    - python_errors
+    - python_skipped
+    - python_expected_failures
+    - python_unexpected_successes
+)
 frames = {}
 for name in ('top.ppm', 'bottom.ppm', 'trace.json'):
     path = logs / 'gcc-debug-simulator' / name
-    frames[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if path.is_file():
+        frames[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+identity_path = logs / 'identity.json'
+identity = json.loads(identity_path.read_text()) if identity_path.is_file() else None
+common_ran = os.environ['CTH3DS_VERIFY_RUN_COMMON'] == '1'
+cpp_total = sum(row['total'] for row in cpp_suites)
+cpp_failed = sum(row['failed'] for row in cpp_suites)
 summary = {
-    'format': 2,
+    'format': 3,
+    'status': 'PASS',
+    'matrix': f'host-{selected}',
+    'stage': 'complete',
+    'exit_code': 0,
+    'failed_command': None,
+    'identity': identity,
     'version': (root / 'VERSION').read_text().strip(),
     'platform': platform.platform(),
     'python': platform.python_version(),
@@ -222,17 +371,28 @@ summary = {
     'gcc': subprocess.check_output(['g++', '--version'], text=True).splitlines()[0],
     'clang': subprocess.run(['clang++', '--version'], text=True, capture_output=True).stdout.splitlines()[0] if shutil.which('clang++') else None,
     'matrices': matrices,
-    'cpp_tests': int(cpp_match.group(1)) if cpp_match else None,
-    'cpp_failed': int(cpp_match.group(2)) if cpp_match else None,
-    'python_tests': int(py_match.group(1)) if py_match else None,
-    'python_skipped': int(skipped_match.group(1)) if skipped_match else 0,
-    'repeat_count': 50,
+    'matrix_skips': matrix_skips,
+    'cpp_suites': cpp_suites,
+    'cpp_tests': cpp_total,
+    'cpp_failed': cpp_failed,
+    'python_tests': python_total,
+    'python_passed': python_passed,
+    'python_failed': python_failed,
+    'python_errors': python_errors,
+    'python_skipped': python_skipped,
+    'python_expected_failures': python_expected_failures,
+    'python_unexpected_successes': python_unexpected_successes,
+    'common_checks': {
+        'status': 'PASS' if common_ran else 'SKIP',
+        'reason': None if common_ran else 'runs in the gcc-debug CI job',
+    },
+    'repeat_count': 50 if common_ran else 0,
     'shell_scripts_checked': int(os.environ['CTH3DS_VERIFY_SHELL_COUNT']),
-    'pins_validated': True,
+    'pins_validated': common_ran,
     'arm_codegen_checked': os.environ['CTH3DS_VERIFY_ARM_CHECK'] == '1',
     'actual_upstream_api_checked': os.environ['CTH3DS_VERIFY_ACTUAL_API'] == '1',
     'simulator_sha256': frames,
-    'preview': 'artifacts/preview/dual-screen-preview.png',
+    'preview': 'artifacts/verification/preview/dual-screen-preview.png' if common_ran else None,
     'true_3ds_cross_build_executed': os.environ['CTH3DS_VERIFY_CROSS_EXECUTED'] == '1',
     'cross_build_skip_reason': os.environ['CTH3DS_VERIFY_CROSS_SKIP'],
     'hardware_tests_executed': False,
@@ -240,7 +400,8 @@ summary = {
 (logs / 'summary.json').write_text(json.dumps(summary, indent=2, sort_keys=True) + '\n')
 print(json.dumps(summary, indent=2, sort_keys=True))
 PY
+ci_diag_step report "${LOG_DIR}/summary.json" "${LOG_DIR}/report.md"
 python3 "${CTH3DS_ROOT}/tools/write_verification_report.py" \
   "${LOG_DIR}/summary.json" "${LOG_DIR}/report.md"
-cp "${LOG_DIR}/report.md" "${CTH3DS_ROOT}/docs/VM_VERIFICATION.md"
+trap - ERR
 log "verification complete: ${LOG_DIR}/summary.json"

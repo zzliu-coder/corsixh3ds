@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -E
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
-
-require_devkitpro
-require_cmd python3
+source "$(cd "$(dirname "$0")" && pwd)/ci_diagnostics.sh"
 
 SKIP_BOOTSTRAP=0
 while [[ $# -gt 0 ]]; do
@@ -14,9 +13,19 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+BUILD_EVIDENCE_DIR="${CTH3DS_ROOT}/artifacts/verification/cross-build"
+ci_diag_init old3ds-cross-build "${BUILD_EVIDENCE_DIR}"
+ci_diag_step preflight
+require_devkitpro
+require_cmd python3
+
 if [[ "${SKIP_BOOTSTRAP}" -eq 0 ]]; then
-  "${CTH3DS_ROOT}/scripts/bootstrap_3ds_deps.sh"
-  "${CTH3DS_ROOT}/scripts/bootstrap_upstream.sh"
+  ci_diag_step bootstrap-dependencies "${BUILD_EVIDENCE_DIR}/bootstrap-dependencies.log"
+  "${CTH3DS_ROOT}/scripts/bootstrap_3ds_deps.sh" \
+    >"${BUILD_EVIDENCE_DIR}/bootstrap-dependencies.log" 2>&1
+  ci_diag_step bootstrap-upstream "${BUILD_EVIDENCE_DIR}/bootstrap-upstream.log"
+  "${CTH3DS_ROOT}/scripts/bootstrap_upstream.sh" \
+    >"${BUILD_EVIDENCE_DIR}/bootstrap-upstream.log" 2>&1
 fi
 
 UPSTREAM_DIR="${CTH3DS_EXTERNAL_DIR}/CorsixTH"
@@ -31,6 +40,7 @@ set_cmake_generator
 
 # CorsixTH keeps its 640x480 logical canvas. The patched SDL2 N3DS framebuffer
 # letterboxes it to 400x240 and exposes a second 320x240 window for the touch UI.
+ci_diag_step configure "${BUILD_EVIDENCE_DIR}/configure.log"
 cmake -S "${UPSTREAM_DIR}" -B "${BUILD}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
   -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \
   -DCMAKE_BUILD_TYPE=MinSizeRel \
@@ -51,9 +61,13 @@ cmake -S "${UPSTREAM_DIR}" -B "${BUILD}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
   -DFETCH_UNICODE_FONT=OFF \
   -DUSE_SOURCE_DATADIRS=OFF \
   -DSEARCH_LOCAL_DATADIRS=OFF \
-  -DWITH_FONT=""
+  -DWITH_FONT="" \
+  >"${BUILD_EVIDENCE_DIR}/configure.log" 2>&1
 
-cmake --build "${BUILD}" --parallel "${CTH3DS_JOBS}" --target corsixth_3dsx
+ci_diag_step build "${BUILD_EVIDENCE_DIR}/configure.log" \
+  "${BUILD_EVIDENCE_DIR}/build.log"
+cmake --build "${BUILD}" --parallel "${CTH3DS_JOBS}" --target corsixth_3dsx \
+  >"${BUILD_EVIDENCE_DIR}/build.log" 2>&1
 OUTPUT="${BUILD}/CorsixTH-3DS.3dsx"
 ELF="${BUILD}/CorsixTH/CorsixTH-3DS.elf"
 [[ -s "${OUTPUT}" ]] || die "3DSX output was not produced: ${OUTPUT}"
@@ -65,6 +79,7 @@ ELF="${BUILD}/CorsixTH/CorsixTH-3DS.elf"
 ARM_NM="${DEVKITARM}/bin/arm-none-eabi-nm"
 ARM_READELF="${DEVKITARM}/bin/arm-none-eabi-readelf"
 ARM_OBJDUMP="${DEVKITARM}/bin/arm-none-eabi-objdump"
+ci_diag_step final-elf-heap-proof "${BUILD}/heap-budget.json"
 SYMBOL_LINE="$("${ARM_NM}" -S --defined-only "${ELF}" | awk '$4 == "__ctru_linear_heap_size" {print $1, $3}')"
 [[ -n "${SYMBOL_LINE}" ]] || die '__ctru_linear_heap_size is missing from the final ELF'
 read -r SYMBOL_ADDRESS SYMBOL_TYPE <<<"${SYMBOL_LINE}"
@@ -95,6 +110,8 @@ PY
 ARCHIVE="$(find "${BUILD}" -name 'libCorsixTH_lib.a' -type f -print -quit)"
 [[ -n "${ARCHIVE}" && -s "${ARCHIVE}" ]] || \
   die 'CorsixTH_lib archive was not produced'
+ci_diag_step final-elf-runtime-proof "${BUILD}/heap-budget.json" \
+  "${BUILD}/runtime-core-link-proof.json"
 python3 - "${ELF}" "${ARCHIVE}" "${ARM_NM}" "${ARM_OBJDUMP}" \
   "${BUILD}/runtime-core-link-proof.json" "${BUILD}" <<'PY'
 from __future__ import annotations
@@ -182,4 +199,49 @@ if not result["pass"]:
     raise SystemExit("Runtime Core archive-to-final-ELF call-edge proof failed")
 PY
 sha256_file "${OUTPUT}" > "${OUTPUT}.sha256"
+python3 - "${CTH3DS_ROOT}" "${BUILD_EVIDENCE_DIR}/artifact-manifest.json" \
+  "${OUTPUT}" "${ELF}" "${BUILD}/heap-budget.json" \
+  "${BUILD}/runtime-core-link-proof.json" \
+  "${UPSTREAM_DIR}/CorsixTH/Src/3ds/integration-manifest.json" \
+  "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1])
+output = pathlib.Path(sys.argv[2])
+paths = [pathlib.Path(value) for value in sys.argv[3:]]
+files = []
+for path in paths:
+    payload = path.read_bytes()
+    try:
+        name = path.relative_to(root).as_posix()
+    except ValueError:
+        name = path.name
+    files.append({
+        "path": name,
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    })
+manifest = {
+    "format": 1,
+    "source_commit": subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+    ).strip(),
+    "source_tree": subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD^{tree}"], text=True
+    ).strip(),
+    "files": files,
+}
+output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+PY
+ci_diag_step complete "${BUILD_EVIDENCE_DIR}/configure.log" \
+  "${BUILD_EVIDENCE_DIR}/build.log" "${BUILD}/heap-budget.json" \
+  "${BUILD}/runtime-core-link-proof.json" "${OUTPUT}.sha256" \
+  "${BUILD_EVIDENCE_DIR}/artifact-manifest.json"
+ci_diag_mark_pass
 log "Nintendo 3DS build complete: ${OUTPUT}"

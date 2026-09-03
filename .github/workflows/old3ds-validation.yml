@@ -7,30 +7,64 @@ on:
 
 jobs:
   host:
+    name: host-${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-debug
+            run_common: "1"
+          - name: gcc-release
+            run_common: "0"
+          - name: gcc-sanitized
+            run_common: "0"
+          - name: clang-debug
+            run_common: "0"
     steps:
       - uses: actions/checkout@v4
       - name: Install host dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang liblua5.4-0
-      - name: Run full host verification
-        run: CTH3DS_JOBS=2 ./scripts/test_all.sh
-      - name: Upload VM evidence
+        run: >-
+          ./scripts/run_ci_command.sh host-${{ matrix.name }}-setup
+          artifacts/ci/host-${{ matrix.name }}-setup --
+          bash -c 'sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          cmake ninja-build clang liblua5.4-0 python3'
+      - name: Run isolated host verification
+        env:
+          CTH3DS_HOST_MATRIX: ${{ matrix.name }}
+          CTH3DS_RUN_COMMON: ${{ matrix.run_common }}
+          CTH3DS_VERIFY_CROSS: "0"
+          CTH3DS_JOBS: "2"
+        run: ./scripts/test_all.sh
+      - name: Upload host evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: vm-evidence
+          name: host-${{ matrix.name }}-evidence
+          if-no-files-found: warn
           path: |
             artifacts/verification
-            artifacts/preview
+            artifacts/ci
 
   old3ds-cross-build:
     runs-on: ubuntu-latest
-    container: devkitpro/devkitarm:20260610
+    container: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
+    env:
+      CTH3DS_CONTAINER_IMAGE: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
     steps:
       - uses: actions/checkout@v4
-      - name: Install Nintendo 3DS libraries and host tools
-        run: |
-          dkp-pacman -Syu --noconfirm
-          dkp-pacman -S --needed --noconfirm 3ds-dev 3ds-zlib 3ds-libpng 3ds-freetype git cmake ninja python curl tar
+      - name: Install host tools with apt
+        run: >-
+          ./scripts/run_ci_command.sh old3ds-host-tools
+          artifacts/ci/old3ds-host-tools --
+          bash -c 'apt-get update && apt-get install -y --no-install-recommends
+          git cmake ninja-build python3 curl ca-certificates tar'
+      - name: Install frozen Nintendo 3DS package set
+        run: >-
+          ./scripts/run_ci_command.sh old3ds-packages
+          artifacts/ci/old3ds-packages --
+          dkp-pacman -S --needed --noconfirm
+          3ds-dev 3ds-cmake 3ds-pkg-config 3ds-zlib 3ds-libpng 3ds-freetype 3ds-bzip2
       - name: Build CorsixTH for Nintendo 3DS
         env:
           DEVKITPRO: /opt/devkitpro
@@ -41,12 +75,24 @@ jobs:
         env:
           DEVKITPRO: /opt/devkitpro
           DEVKITARM: /opt/devkitpro/devkitARM
-        run: ./scripts/package_sd.sh
-      - name: Upload 3DSX and SD layout
+        run: >-
+          ./scripts/run_ci_command.sh old3ds-package artifacts/ci/old3ds-package --
+          ./scripts/package_sd.sh
+      - name: Upload cross-build diagnostics and outputs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: corsixth-old3ds
+          if-no-files-found: warn
           path: |
+            artifacts/verification/cross-build
+            artifacts/ci
             build-3ds/CorsixTH/CorsixTH-3DS.3dsx
             build-3ds/CorsixTH/CorsixTH-3DS.3dsx.sha256
+            build-3ds/CorsixTH/CorsixTH/CorsixTH-3DS.elf
+            build-3ds/CorsixTH/heap-budget.json
+            build-3ds/CorsixTH/runtime-core-link-proof.json
+            build-3ds/deps/cth3ds-dependencies.json
+            external/CorsixTH/CorsixTH/Src/3ds/integration-manifest.json
+            config/upstream-pins.json
             dist/sd-card

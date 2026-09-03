@@ -13,7 +13,8 @@ if [[ -z "${ENGINE}" ]]; then
   fi
 fi
 
-IMAGE="$(pin devkitpro.docker_image)"
+PINNED_IMAGE="devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5"
+IMAGE="${CTH3DS_CONTAINER_IMAGE:-${PINNED_IMAGE}}"
 # The package list is emitted already joined and space-prefixed. A heredoc
 # cannot be followed by a pipe on the next line, which is why the previous
 # form was a bash syntax error and this script could never run.
@@ -34,8 +35,9 @@ ROOT_Q="$(printf '%q' "${CTH3DS_ROOT}")"
 log "running reproducible 3DS cross-build in ${IMAGE}"
 "${ENGINE}" run --rm \
   -e CTH3DS_JOBS="${CTH3DS_JOBS}" \
+  -e CTH3DS_CONTAINER_IMAGE="${IMAGE}" \
   -v "${CTH3DS_ROOT}:/work" \
   -w /work \
   "${IMAGE}" \
-  bash -lc "set -euo pipefail; dkp-pacman -Syu --noconfirm; dkp-pacman -S --needed --noconfirm${PACKAGE_ARGS}; export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM; scripts/build_3ds.sh; scripts/package_sd.sh"
+  bash -lc "set -euo pipefail; dkp-pacman -S --needed --noconfirm 3ds-dev${PACKAGE_ARGS}; export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM; scripts/build_3ds.sh; scripts/run_ci_command.sh old3ds-package artifacts/ci/old3ds-package -- scripts/package_sd.sh"
 log "containerized output is under ${ROOT_Q}/build-3ds and ${ROOT_Q}/dist"

@@ -70,5 +70,8 @@ inline u64 osGetTime() { return 1000U; }
 inline u32 envGetHeapSize() { return 48U * 1024U * 1024U; }
 inline u32 envGetLinearHeapSize() { return 8U * 1024U * 1024U; }
 inline u32 linearSpaceFree() { return 8U * 1024U * 1024U; }
+void* linearMemAlign(std::size_t bytes, std::size_t alignment);
+void linearFree(void* pointer);
+std::size_t linearGetSize(void* pointer);
 inline bool aptMainLoop() { return false; }
 inline void gspWaitForVBlank() {}

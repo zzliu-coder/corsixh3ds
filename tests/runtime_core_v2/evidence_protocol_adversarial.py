@@ -32,10 +32,50 @@ def require_verified_invocation(context: Any, operations: tuple[str, ...]) -> No
 MATRIX_SHA256 = "8b7cf0d8e3b3702e9aa3c32aff9d1ed3e363ceab52699539251975a61985060f"
 BASE_CASES_SHA256 = "45f7bda680a10c159e70ce15b9389eb7cafc419001af542583fdd5353d319d7f"
 R4_CASES_SHA256 = "a4a7160e0dc762599d13a4df721d0d156e2daeea6ce6b8b4226c16f3a4d5dc64"
-DAG_SHA256 = "b9be4ec34c97cdb10138354df740ad24143b0e202cc96383006f6ef9ca9b52fa"
+DAG_SHA256 = "e5339faa3d173e8c11f157980b206447987f75727c841cdd2afc0cc5e875df76"
 CLOSURE_CASES = {"E48", "E49", "E50", "E51", "E60"}
 ACTIVE_JOURNAL: Optional[Path] = None
 ACTIVE_INVOCATION: Any = None
+ACTIVE_STAGE = "not-started"
+ACTIVE_INPUT_ROLE: Optional[str] = None
+AUTHORITY_NEGATIVE_CASES = {
+    "missing-one": ("r4.n00_validation_authority",
+                    {"VALIDATION_AUTHORITY_PATH_COUNT_MISMATCH"}),
+    "extra-one": ("r4.n00_validation_authority",
+                  {"VALIDATION_AUTHORITY_PATH_COUNT_MISMATCH"}),
+    "same-count-replacement": ("r4.n00_validation_authority",
+                               {"VALIDATION_AUTHORITY_PATH_DIGEST_MISMATCH"}),
+    "schema-cardinality": ("r4.n00_validation_authority",
+                           {"VALIDATION_AUTHORITY_SCHEMA_ROLE_MISMATCH"}),
+    "producer-projection": ("r4.n10_policy",
+                            {"VALIDATION_AUTHORITY_PRODUCER_PROJECTION_MISMATCH"}),
+    "builder-projection": ("bundle-construction",
+                           {"VALIDATION_AUTHORITY_BUILDER_PROJECTION_MISMATCH"}),
+    "old-bd-bundle-replay": ("r4.n00_validation_authority",
+                             {"VALIDATION_AUTHORITY_DAG_HASH_MISMATCH"}),
+    "candidate-dirty-or-wrong-parent": ("r4.n00_validation_authority",
+        {"CANDIDATE_DIRTY", "CANDIDATE_PARENT_MISMATCH"}),
+}
+
+
+def authority_negative_observation(case_id: str, callback,
+                                   evidence_root: Path) -> dict[str, Any]:
+    if case_id not in AUTHORITY_NEGATIVE_CASES:
+        raise RuntimeError("AUTHORITY_NEGATIVE_CASE_UNKNOWN")
+    stage, expected_codes = AUTHORITY_NEGATIVE_CASES[case_id]
+    try:
+        callback()
+        exit_code, code = 0, "PASS"
+    except Exception as error:
+        exit_code = 2
+        code = str(error).split(":", 1)[0]
+    policy = evidence_root / "10-policy"
+    journal = evidence_root / "00-preflight/execution-journal.jsonl"
+    passed = exit_code == 2 and code in expected_codes and \
+        not policy.exists() and not journal.exists()
+    return {"id": case_id, "pass": passed, "earliest_stage": stage,
+            "exit_code": exit_code, "failure_code": code,
+            "policy_created": policy.exists(), "journal_created": journal.exists()}
 
 
 def sha(data: bytes) -> str:
@@ -959,25 +999,257 @@ def tree_digest(root: Path) -> str:
 
 
 def no_symlink_chain(path: Path) -> bool:
-    current = Path(path.anchor)
-    for part in path.parts[1:]:
-        current = current / part
-        if current.exists() and current.is_symlink():
-            return False
-    return True
+    return not any(row["is_symlink"] for row in
+                   canonical_path_descriptor("path", path)["existing_ancestors"])
 
 
 def paths_overlap(left: Path, right: Path) -> bool:
+    left_descriptor = canonical_path_descriptor("left", left)
+    right_descriptor = canonical_path_descriptor("right", right)
+    return path_relation(left_descriptor, right_descriptor) is not None
+
+
+def _path_contract_error(detail: str) -> FreshChainError:
+    return FreshChainError("PATH_CONTRACT_INVALID", detail)
+
+
+def _case_variant(name: str) -> Optional[str]:
+    for index, character in enumerate(name):
+        if character.isalpha():
+            replacement = character.lower() if character.isupper() else character.upper()
+            return name[:index] + replacement + name[index + 1:]
+    return None
+
+
+def _case_insensitive_volume_key(path: Path, resolved: str,
+                                 ancestors: list[dict[str, Any]]) -> Optional[str]:
+    for row in reversed(ancestors):
+        current = Path(row["lexical_absolute_normalized"])
+        alias_name = _case_variant(current.name)
+        if not alias_name or not current.parent.is_dir():
+            continue
+        try:
+            actual_names = {entry.name for entry in os.scandir(current.parent)}
+            alias = current.parent / alias_name
+            if alias_name not in actual_names and os.path.lexists(alias) and \
+                    os.path.samefile(current, alias):
+                return unicodedata.normalize("NFC", resolved).casefold()
+        except (FileNotFoundError, NotADirectoryError, OSError):
+            continue
+    return None
+
+
+def canonical_path_descriptor(label: str, value: Any,
+                              raw_spelling: Optional[str] = None) -> dict[str, Any]:
     try:
-        left.relative_to(right)
-        return True
-    except ValueError:
-        pass
-    try:
-        right.relative_to(left)
-        return True
-    except ValueError:
-        return False
+        if not isinstance(label, str) or not label:
+            raise ValueError("path label must be non-empty")
+        if isinstance(value, Path):
+            path_text = str(value)
+        elif isinstance(value, str):
+            path_text = value
+        else:
+            raise TypeError("path must be a string or Path")
+        raw = path_text if raw_spelling is None else raw_spelling
+        if not isinstance(raw, str) or not raw or "\x00" in raw or "\x00" in path_text:
+            raise ValueError("path spelling is empty or contains NUL")
+        lexical_text = os.path.abspath(os.path.normpath(path_text))
+        lexical_nfc = unicodedata.normalize("NFC", lexical_text)
+        lexical = Path(lexical_nfc)
+        if not lexical.is_absolute() or not lexical.anchor:
+            raise ValueError("path cannot be normalized as absolute")
+
+        nearest = lexical
+        missing_parts: list[str] = []
+        while not os.path.lexists(nearest):
+            if nearest == nearest.parent:
+                raise FileNotFoundError("no existing path prefix")
+            missing_parts.insert(0, nearest.name)
+            nearest = nearest.parent
+        nearest_resolved = nearest.resolve(strict=True)
+        resolved = nearest_resolved.joinpath(*missing_parts)
+        resolved_text = unicodedata.normalize("NFC", os.path.normpath(str(resolved)))
+
+        ancestors: list[dict[str, Any]] = []
+        current = Path(lexical.anchor)
+        lexical_parts = lexical.parts[1:]
+        candidates = [current]
+        for part in lexical_parts:
+            current = current / part
+            candidates.append(current)
+        for candidate in candidates:
+            if not os.path.lexists(candidate):
+                break
+            lstat_value = candidate.lstat()
+            is_symlink = stat.S_ISLNK(lstat_value.st_mode)
+            resolved_candidate = candidate.resolve(strict=True)
+            stat_value = resolved_candidate.stat()
+            ancestors.append({
+                "lexical_absolute_normalized": str(candidate),
+                "resolved": unicodedata.normalize("NFC", str(resolved_candidate)),
+                "is_symlink": is_symlink,
+                "symlink_target": os.readlink(candidate) if is_symlink else None,
+                "lstat_device": lstat_value.st_dev,
+                "lstat_inode": lstat_value.st_ino,
+                "target_device": stat_value.st_dev,
+                "target_inode": stat_value.st_ino,
+            })
+
+        full_exists = lexical.exists()
+        node = None
+        if full_exists:
+            node_stat = lexical.stat()
+            node_lstat = lexical.lstat()
+            node = {"device": node_stat.st_dev, "inode": node_stat.st_ino,
+                    "lstat_device": node_lstat.st_dev,
+                    "lstat_inode": node_lstat.st_ino,
+                    "is_symlink": stat.S_ISLNK(node_lstat.st_mode)}
+        nearest_stat = nearest_resolved.stat()
+        descriptor = {
+            "label": label,
+            "raw_spelling": raw,
+            "lexical_absolute_normalized": lexical_text,
+            "unicode_nfc": lexical_nfc,
+            "resolved_existing_prefix": resolved_text,
+            "exists": full_exists,
+            "node": node,
+            "nearest_existing_ancestor": {
+                "lexical": str(nearest), "resolved": str(nearest_resolved),
+                "device": nearest_stat.st_dev, "inode": nearest_stat.st_ino,
+            },
+            "existing_ancestors": ancestors,
+            "casefold_key": None,
+        }
+        descriptor["casefold_key"] = _case_insensitive_volume_key(
+            lexical, resolved_text, ancestors)
+        return descriptor
+    except FreshChainError:
+        raise
+    except Exception as error:
+        raise _path_contract_error("%s: %s" % (label, error)) from error
+
+
+def _bounded_relation(left: str, right: str) -> Optional[str]:
+    if left == right:
+        return "SAME_PATH"
+    separator = os.sep
+    left_prefix = left.rstrip(separator) + separator
+    right_prefix = right.rstrip(separator) + separator
+    if right.startswith(left_prefix):
+        return "RIGHT_DESCENDS_FROM_LEFT"
+    if left.startswith(right_prefix):
+        return "RIGHT_ANCESTOR_OF_LEFT"
+    return None
+
+
+def path_relation(input_descriptor: dict[str, Any],
+                  output_descriptor: dict[str, Any]) -> Optional[dict[str, Any]]:
+    if any(row["is_symlink"] for row in output_descriptor["existing_ancestors"]):
+        return {"subtype": "OUTPUT_SYMLINK_ANCESTOR", "samefile": False}
+    samefile = False
+    if input_descriptor["exists"] and output_descriptor["exists"]:
+        try:
+            samefile = os.path.samefile(
+                input_descriptor["lexical_absolute_normalized"],
+                output_descriptor["lexical_absolute_normalized"])
+        except OSError as error:
+            raise _path_contract_error("samefile: %s" % error) from error
+    if samefile:
+        return {"subtype": "SAMEFILE_ALIAS", "samefile": True}
+    input_value = input_descriptor["resolved_existing_prefix"]
+    output_value = output_descriptor["resolved_existing_prefix"]
+    if input_descriptor.get("casefold_key") is not None and \
+            output_descriptor.get("casefold_key") is not None:
+        input_value = input_descriptor["casefold_key"]
+        output_value = output_descriptor["casefold_key"]
+    relation = _bounded_relation(input_value, output_value)
+    if relation == "SAME_PATH":
+        subtype = "RESOLVED_ALIAS"
+    elif relation == "RIGHT_DESCENDS_FROM_LEFT":
+        subtype = "OUTPUT_DESCENDS_FROM_INPUT"
+    elif relation == "RIGHT_ANCESTOR_OF_LEFT":
+        subtype = "OUTPUT_ANCESTOR_OF_INPUT"
+    else:
+        return None
+    return {"subtype": subtype, "samefile": samefile}
+
+
+def fresh_derived_output_paths(session: Path) -> dict[str, Path]:
+    relative_paths = (
+        "00-preflight", "00-preflight/candidate-head.bundle",
+        "00-preflight/bundle-verify.git", "00-preflight/candidate-detached",
+        "00-preflight/bundle-rehash", "00-preflight/stage-diagnostics",
+        "00-preflight/execution-journal.jsonl", "00-preflight/input-identity.json",
+        "00-preflight/path-separation.json", "10-policy", "20-canonical-run",
+        "20-canonical-run/evidence_raw", "20-canonical-run/build_host",
+        "20-canonical-run/build_red", "20-canonical-run/source_upstream_snapshot",
+        "20-canonical-run/source_xbuild_integrated", "20-canonical-run/build_xbuild",
+        "20-canonical-run/seal", "30-facts", "40-closure-fixture", "45-anchors",
+        "50-matrix", "60-final-seal", "70-verification", "80-acceptance",
+        "90-final-audit", "90-final-audit/h2-exact20", "90-final-audit/h2-plain-build",
+    )
+    return {"session/" + relative: session / relative for relative in relative_paths}
+
+
+def validate_precreation_paths(input_domains: dict[str, Any],
+                               output_domains: dict[str, Any],
+                               derived_outputs: Optional[dict[str, Any]] = None,
+                               raw_spellings: Optional[dict[str, str]] = None
+                               ) -> dict[str, Any]:
+    raw_spellings = raw_spellings or {}
+    input_descriptors = {name: canonical_path_descriptor(
+        name, value, raw_spellings.get(name)) for name, value in sorted(input_domains.items())}
+    output_descriptors = {name: canonical_path_descriptor(
+        name, value, raw_spellings.get(name)) for name, value in sorted(output_domains.items())}
+    derived_descriptors = {name: canonical_path_descriptor(
+        name, value, raw_spellings.get(name)) for name, value in
+        sorted((derived_outputs or {}).items())}
+
+    for output_name, output_descriptor in output_descriptors.items():
+        for input_name, input_descriptor in input_descriptors.items():
+            relation = path_relation(input_descriptor, output_descriptor)
+            if relation is not None:
+                detail = {"subtype": relation["subtype"],
+                          "input": input_name, "output": output_name,
+                          "samefile": relation["samefile"],
+                          "conflicting_realpaths": [
+                              input_descriptor["resolved_existing_prefix"],
+                              output_descriptor["resolved_existing_prefix"]],
+                          "no_stage_started": True}
+                raise FreshChainError("INPUT_OUTPUT_OVERLAP",
+                                      canonical(detail).decode().strip())
+    output_names = sorted(output_descriptors)
+    for index, left_name in enumerate(output_names):
+        for right_name in output_names[index + 1:]:
+            relation = path_relation(output_descriptors[left_name],
+                                     output_descriptors[right_name])
+            if relation is not None:
+                detail = {"subtype": "OUTPUT_OUTPUT_" + relation["subtype"],
+                          "input": left_name, "output": right_name,
+                          "samefile": relation["samefile"],
+                          "conflicting_realpaths": [
+                              output_descriptors[left_name]["resolved_existing_prefix"],
+                              output_descriptors[right_name]["resolved_existing_prefix"]],
+                          "no_stage_started": True}
+                raise FreshChainError("INPUT_OUTPUT_OVERLAP",
+                                      canonical(detail).decode().strip())
+
+    if output_descriptors:
+        owner = output_descriptors[output_names[0]]["resolved_existing_prefix"]
+        owner_casefold = output_descriptors[output_names[0]].get("casefold_key")
+        for name, descriptor in derived_descriptors.items():
+            derived = descriptor["resolved_existing_prefix"]
+            if owner_casefold is not None and descriptor.get("casefold_key") is not None:
+                derived = descriptor["casefold_key"]
+                owner_value = owner_casefold
+            else:
+                owner_value = owner
+            if _bounded_relation(owner_value, derived) not in {
+                    "SAME_PATH", "RIGHT_DESCENDS_FROM_LEFT"}:
+                raise _path_contract_error("derived output escapes owner: %s" % name)
+    return {"schema": "cth3ds.precreation-path-separation/v1", "status": "PASS",
+            "inputs": input_descriptors, "outputs": output_descriptors,
+            "derived_outputs": derived_descriptors}
 
 
 def normalize_candidate_transport(kind: str, source: Path, destination: Path,
@@ -1095,6 +1367,14 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
                 invocation_digest = load(internal)["verified_invocation_sha256"]
             except (KeyError, TypeError, json.JSONDecodeError):
                 raise RuntimeError("INTERNAL_RESULT_BINDING_INVALID")
+    diagnostics = path.parent / "stage-diagnostics"
+    diagnostics.mkdir(parents=True, exist_ok=True)
+    diagnostic_id = "%s-%s" % (re.sub(r"[^A-Za-z0-9_.-]", "_", stage_id),
+                                 uuid.uuid4().hex)
+    stdout_path = diagnostics / (diagnostic_id + ".stdout")
+    stderr_path = diagnostics / (diagnostic_id + ".stderr")
+    stdout_path.write_bytes(stdout)
+    stderr_path.write_bytes(stderr)
     record = {
         "schema": "cth3ds.runtime-core-execution-journal-entry/v1",
         "stage_id": stage_id, "dependency_ids": dependencies,
@@ -1107,6 +1387,8 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
         "argv": command, "cwd_realpath": str(Path.cwd().resolve()),
         "exit_code": exit_code, "stdout_sha256": sha(stdout),
         "stderr_sha256": sha(stderr),
+        "stdout_path": str(stdout_path), "stderr_path": str(stderr_path),
+        "owner": "validation-task", "input_role": ACTIVE_INPUT_ROLE,
         "output_root": str(output_root) if output_root else None,
         "output_digest": tree_digest(output_root) if output_root else sha(b""),
         "verified_invocation_sha256": invocation_digest,
@@ -1123,17 +1405,14 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
 
 def run_journaled(journal: Path, stage_id: str, dependencies: list[str],
                   command: list[str], output_root: Optional[Path] = None) -> subprocess.CompletedProcess:
+    global ACTIVE_STAGE
+    ACTIVE_STAGE = stage_id
     started = utc_now()
+    environment = child_environment()
+    environment.update({"ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+                        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"})
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             check=False, cwd=Path.cwd(),
-                             env={"PATH": "/opt/devkitpro/devkitARM/bin:/opt/devkitpro/tools/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-                                  "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C",
-                                  "PYTHONNOUSERSITE": "1",
-                                  "TZ": "UTC", "DEVKITPRO": "/opt/devkitpro",
-                                  "DEVKITARM": "/opt/devkitpro/devkitARM",
-                                  "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
-                                  "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
-                                  "TMPDIR": "/tmp"})
+                             check=False, cwd=Path.cwd(), env=environment)
     append_journal(journal, stage_id, dependencies, command, started, utc_now(),
                    process.returncode, process.stdout, process.stderr, output_root)
     if process.returncode != 0:
@@ -1144,6 +1423,8 @@ def run_journaled(journal: Path, stage_id: str, dependencies: list[str],
 
 def run_in_process_journaled(journal: Path, stage_id: str, dependencies: list[str],
                              label: str, callback, output_root: Optional[Path] = None):
+    global ACTIVE_STAGE
+    ACTIVE_STAGE = stage_id
     started = utc_now()
     stdout_text = io.StringIO()
     stderr_text = io.StringIO()
@@ -1188,10 +1469,11 @@ def call_closed(command: list[str], callback) -> subprocess.CompletedProcess:
 
 def child_environment() -> dict[str, str]:
     return {
-        "PATH": "/opt/devkitpro/devkitARM/bin:/opt/devkitpro/tools/bin:"
-                "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PATH": "/opt/devkitpro/devkitARM/bin:/opt/devkitpro/tools/bin:" +
+                os.environ.get(
+                    "PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"),
         "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1",
-        "LC_ALL": "C", "TZ": "UTC", "TMPDIR": "/private/tmp",
+        "LC_ALL": "C", "TZ": "UTC", "TMPDIR": tempfile.gettempdir(),
         "DEVKITPRO": "/opt/devkitpro", "DEVKITARM": "/opt/devkitpro/devkitARM",
     }
 
@@ -1231,11 +1513,15 @@ def internal_probe_closed(invocation: Any, producer_module: Any,
                 not isinstance(request["fresh_request"], dict):
             raise RuntimeError("INTERNAL_REQUEST_SHAPE_MISMATCH")
         fresh = dict(request["fresh_request"])
-        for key in ("candidate_input", "session_root", "archive", "deps_prefix",
-                    "matrix", "base_cases", "r4_cases"):
+        raw_path_spellings = {}
+        for key in ("bundle_root", "session_root", "candidate_input"):
+            if key == "candidate_input" and key not in fresh:
+                continue
             if not isinstance(fresh.get(key), str):
                 raise RuntimeError("INTERNAL_REQUEST_PATH_MISMATCH")
+            raw_path_spellings[key] = fresh[key]
             fresh[key] = Path(fresh[key])
+        fresh["_raw_path_spellings"] = raw_path_spellings
         code = fresh_chain_closed(invocation, producer_module, consumer_module, fresh)
         return {"status": "PASS" if code == 0 else "FAIL", "_exit_code": code}
     if set(request) != {"schema", "argv"} or \
@@ -1446,10 +1732,104 @@ def run_r4_acceptance(invocation: Any, producer_module: Any, consumer_module: An
     add("R4C19", prefix_equal,
         "EXECUTION_ORDER_IDENTICAL", {"equal": prefix_equal,
                                       "normalized_sha256": sha(canonical(normalized))})
-    with tempfile.TemporaryDirectory(prefix="cth3ds-r4-overlap-") as temporary:
+    def target_creation_count(target: Path) -> int:
+        if not os.path.lexists(target):
+            return 0
+        if target.is_dir() and not target.is_symlink():
+            return 1 + sum(1 for _ in target.rglob("*"))
+        return 1
+
+    def primitive_case(case_id: str, input_path: Any, output_path: Any,
+                       expected_overlap: bool, continue_after_pass: bool = False
+                       ) -> dict[str, Any]:
+        descriptor = canonical_path_descriptor("monitor", output_path)
+        target = Path(descriptor["unicode_nfc"])
+        before = target_creation_count(target)
+        observed_code = "PASS"
+        separation = None
+        try:
+            separation = validate_precreation_paths(
+                {"input": input_path}, {"output": output_path}, raw_spellings={
+                    "input": str(input_path), "output": str(output_path)})
+        except FreshChainError as error:
+            observed_code = error.code
+        after_validation = target_creation_count(target)
+        continuation_created = 0
+        if continue_after_pass and observed_code == "PASS":
+            target.mkdir(parents=True)
+            continuation_created = target_creation_count(target) - after_validation
+        expected_code = "INPUT_OUTPUT_OVERLAP" if expected_overlap else "PASS"
+        passed = observed_code == expected_code and after_validation == before and \
+            ((not continue_after_pass) or continuation_created == 1)
+        return {"id": case_id, "pass": passed, "expected_code": expected_code,
+                "actual_code": observed_code,
+                "validation_new_node_count": after_validation - before,
+                "continuation_creation_count": continuation_created,
+                "separation_status": separation.get("status") if separation else None}
+
+    # Keep the ordinary disjoint cases on the already-canonical session volume.
+    # macOS routes its default temporary directory through /var -> /private/var;
+    # that alias is reserved for the explicit symlink-ancestor negative below.
+    with tempfile.TemporaryDirectory(prefix="cth3ds-r4-overlap-",
+                                     dir=output) as temporary:
+        temp = Path(temporary)
         overlap = candidate / ".r4-overlap-must-not-create"
         ok, ev = expected_fresh(overlap, "INPUT_OUTPUT_OVERLAP")
-        add("R4C20", ok and not overlap.exists(), "INPUT_OUTPUT_OVERLAP", ev)
+        ev.update({"no_stage_started": not overlap.exists(),
+                   "target_creation_count": target_creation_count(overlap),
+                   "target_local_journal_count": int(
+                       (overlap / "00-preflight/execution-journal.jsonl").exists()),
+                   "target_local_durable_failure_count": int(
+                       (overlap / "00-preflight/durable-failure.json").exists())})
+
+        synthetic_input = temp / "InputRoot"
+        synthetic_input.mkdir()
+        ancestor_output = temp / "AncestorOutput"
+        ancestor_input = ancestor_output / "NestedInput"
+        ancestor_input.mkdir(parents=True)
+        symlink_output = temp / "InputLink"
+        symlink_output.symlink_to(synthetic_input, target_is_directory=True)
+        case_input = temp / "CaseAliasRoot"
+        case_input.mkdir()
+        case_alias = temp / (_case_variant(case_input.name) or case_input.name)
+        case_alias_applicable = canonical_path_descriptor(
+            "case-input", case_input)["casefold_key"] is not None
+        matrix = [
+            primitive_case("same", synthetic_input, synthetic_input, True),
+            primitive_case("input-ancestor-output", synthetic_input,
+                           synthetic_input / "Descendant", True),
+            primitive_case("output-ancestor-input", ancestor_input,
+                           ancestor_output, True),
+            primitive_case("symlink-ancestor", synthetic_input,
+                           symlink_output / "Child", True),
+            primitive_case("dot-alias", synthetic_input,
+                           str(synthetic_input) + "/./DotTarget", True),
+            primitive_case("dotdot-alias", synthetic_input,
+                           str(synthetic_input) + "/Segment/../DotDotTarget", True),
+            primitive_case("trailing-slash", synthetic_input,
+                           str(synthetic_input) + "/", True),
+            primitive_case("case-alias", case_input,
+                           case_alias, case_alias_applicable),
+        ]
+        with tempfile.TemporaryDirectory(prefix="cth3ds-r4-tmp-alias-",
+                                         dir="/tmp") as tmp_alias_raw:
+            tmp_input_raw = Path(tmp_alias_raw) / "Input"
+            tmp_input_raw.mkdir()
+            matrix.append(primitive_case(
+                "tmp-private-tmp-alias", tmp_input_raw.resolve(),
+                str(tmp_input_raw) + "/AliasTarget", True))
+        matrix.append(primitive_case(
+            "disjoint-continuation", synthetic_input, temp / "DisjointOutput",
+            False, continue_after_pass=True))
+        matrix_passed = sum(row["pass"] for row in matrix)
+        integration_passed = ok and ev["no_stage_started"] and \
+            ev["target_creation_count"] == 0 and \
+            ev["target_local_journal_count"] == 0 and \
+            ev["target_local_durable_failure_count"] == 0
+        add("R4C20", integration_passed and matrix_passed == 10,
+            "INPUT_OUTPUT_OVERLAP", {"integration": ev,
+                "submatrix": {"total": 10, "passed": matrix_passed,
+                              "failed": 10 - matrix_passed, "cases": matrix}})
     command = ["IN_PROCESS", str(candidate / "scripts/consume_runtime_core_v2.py"),
         "--matrix-evaluate", "--candidate-root", str(candidate),
         "--evidence-root", str(context["canonical_root"] / "evidence_raw"),
@@ -1488,71 +1868,114 @@ def run_r4_acceptance(invocation: Any, producer_module: Any, consumer_module: An
     return summary
 
 
+def stage_rehash(guard: Any, session: Path, stage: str,
+                 roles: tuple[str, ...]) -> dict[str, Any]:
+    global ACTIVE_STAGE, ACTIVE_INPUT_ROLE
+    ACTIVE_STAGE = stage
+    ACTIVE_INPUT_ROLE = ",".join(roles)
+    record = guard.verify(stage, roles)
+    output = session / "00-preflight/bundle-rehash"
+    output.mkdir(parents=True, exist_ok=True)
+    (output / (re.sub(r"[^A-Za-z0-9_.-]", "_", stage) + ".json")).write_bytes(
+        canonical(record))
+    ACTIVE_INPUT_ROLE = None
+    return record
+
+
 def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
                        request: dict[str, Any]) -> int:
-    global ACTIVE_INVOCATION
+    global ACTIVE_INVOCATION, ACTIVE_STAGE, ACTIVE_INPUT_ROLE
     require_verified_invocation(invocation, ("fresh-chain", "_fresh-probe"))
     ACTIVE_INVOCATION = invocation
+    ACTIVE_STAGE = "r4.n00_precreation"
+    ACTIVE_INPUT_ROLE = None
+    raw_request_paths = request.get("_raw_path_spellings", {})
+    if not isinstance(raw_request_paths, dict):
+        raise _path_contract_error("raw path spellings must be an object")
+    session_value = request.get("session_root")
+    bundle_value = request.get("bundle_root")
+    executing_candidate = Path(__file__).resolve().parents[2]
+    broad_inputs = {"executing_candidate": executing_candidate,
+                    "immutable_bundle_root": bundle_value}
+    broad_raw = {
+        "immutable_bundle_root": raw_request_paths.get(
+            "bundle_root", str(bundle_value)),
+        "session_root": raw_request_paths.get("session_root", str(session_value)),
+    }
+    if "candidate_input" in request:
+        broad_inputs["explicit_candidate_input"] = request["candidate_input"]
+        broad_raw["explicit_candidate_input"] = raw_request_paths.get(
+            "candidate_input", str(request["candidate_input"]))
+    broad_separation = validate_precreation_paths(
+        broad_inputs, {"session_root": session_value},
+        fresh_derived_output_paths(Path(session_value)), broad_raw)
+    session = Path(broad_separation["outputs"]["session_root"]["unicode_nfc"])
+    bundle_root = Path(broad_separation["inputs"]["immutable_bundle_root"]
+                       ["unicode_nfc"])
+    preflight_root = session / "00-preflight"
+    journal = preflight_root / "execution-journal.jsonl"
     args = argparse.Namespace(
         candidate_root=None,
-        candidate_input_kind=request["candidate_kind"],
-        candidate_input_path=request["candidate_input"],
-        expected_candidate_input_sha256=request["expected_candidate_input_sha256"],
         expected_candidate_head=request["expected_candidate_head"],
         expected_candidate_tree=request["expected_candidate_tree"],
-        session_root=request["session_root"], archive=request["archive"],
-        deps_prefix=request["deps_prefix"], matrix=request["matrix"],
-        expected_matrix_sha256=request["expected_matrix_sha256"],
-        base_acceptance_cases=request["base_cases"],
-        expected_base_cases_sha256=request["expected_base_cases_sha256"],
-        cycle_acceptance_cases=request["r4_cases"],
-        expected_cycle_cases_sha256=request["expected_r4_cases_sha256"])
+        session_root=session)
     try:
-        candidate_input = args.candidate_input_path or args.candidate_root
-        if candidate_input is None:
-            raise FreshChainError("CLI_REQUIRED_ARGUMENT", "candidate transport missing")
-        candidate_source = candidate_input.resolve(strict=True)
-        archive = args.archive.resolve(strict=True)
-        deps = args.deps_prefix.resolve(strict=True)
-        matrix = args.matrix.resolve(strict=True)
-        base_cases = args.base_acceptance_cases.resolve(strict=True)
-        cycle_cases = args.cycle_acceptance_cases.resolve(strict=True)
-        dag_path = (cycle_cases.parent / "execution-dag.json").resolve(strict=True)
-        session = args.session_root.absolute()
-        if not no_symlink_chain(args.session_root.absolute()):
-            raise FreshChainError("INPUT_OUTPUT_OVERLAP", "session path contains symlink")
-        executing_candidate = Path(__file__).resolve().parents[2]
-        if paths_overlap(session, executing_candidate):
-            raise FreshChainError(
-                "INPUT_OUTPUT_OVERLAP",
-                "session overlaps the candidate executing the Fresh Chain")
-        external = {"candidate_transport": candidate_source, "archive": archive,
-                    "deps_prefix": deps,
-                    "frozen_matrix": matrix, "base_acceptance_cases": base_cases,
-                    "r4_acceptance_cases": cycle_cases}
-        for left_name, left in external.items():
-            if paths_overlap(session, left):
-                raise FreshChainError("INPUT_OUTPUT_OVERLAP",
-                                      f"session overlaps {left_name}")
-        initial_count = len(list(session.iterdir())) if session.exists() else 0
-        if session.exists() and (not session.is_dir() or initial_count != 0):
-            raise FreshChainError("SESSION_ROOT_NOT_EMPTY", "session root must start empty")
-        if args.expected_matrix_sha256 != MATRIX_SHA256 or sha(matrix.read_bytes()) != MATRIX_SHA256:
+        guard = invocation.input_bundle(bundle_root)
+    except Exception as error:
+        code = getattr(error, "code", str(error).split(":", 1)[0])
+        raise FreshChainError(code, str(error)) from error
+    role_paths = {role: guard.path(role) for role in sorted(guard.inputs)}
+    exact_inputs = dict(broad_inputs)
+    exact_inputs.update({"bundle_role:" + role: path
+                         for role, path in role_paths.items()})
+    exact_separation = validate_precreation_paths(
+        exact_inputs, {"session_root": session}, fresh_derived_output_paths(session),
+        broad_raw)
+    try:
+        authority_token = request.get("_validation_change_authority") or \
+            invocation.validation_authority(guard)
+        authority = invocation.require_validation_authority(authority_token)
+        authority_binding = invocation.validation_authority_binding(authority_token)
+    except Exception as error:
+        code = getattr(error, "code", str(error).split(":", 1)[0])
+        raise FreshChainError(code, str(error)) from error
+    initial_count = len(list(session.iterdir())) if session.exists() else 0
+    if session.exists() and (not session.is_dir() or initial_count != 0):
+        raise FreshChainError("SESSION_ROOT_NOT_EMPTY", "session root must start empty")
+    try:
+        ACTIVE_STAGE = "r4.n00_bundle_open"
+        session.mkdir(parents=True, exist_ok=True)
+        preflight_root.mkdir()
+        ACTIVE_STAGE = "r4.n00_validation_authority"
+        candidate_source = role_paths["candidate_transport"]
+        archive = role_paths["source_archive"]
+        deps = role_paths["cross_dependencies"]
+        matrix = role_paths["frozen_matrix"]
+        base_cases = role_paths["base_acceptance_cases"]
+        cycle_cases = role_paths["r4_acceptance_cases"]
+        dag_path = role_paths["execution_dag"]
+        args.archive = archive
+        args.deps_prefix = deps
+        args.matrix = matrix
+        args.expected_matrix_sha256 = MATRIX_SHA256
+        args.base_acceptance_cases = base_cases
+        args.expected_base_cases_sha256 = BASE_CASES_SHA256
+        args.cycle_acceptance_cases = cycle_cases
+        args.expected_cycle_cases_sha256 = R4_CASES_SHA256
+        external = dict(role_paths)
+        preflight_rehash = stage_rehash(guard, session, "r4.n00_preflight",
+                                       tuple(guard.inputs))
+        if sha(matrix.read_bytes()) != MATRIX_SHA256:
             raise FreshChainError("FROZEN_INPUT_HASH_MISMATCH", "matrix hash mismatch")
-        if args.expected_base_cases_sha256 != BASE_CASES_SHA256 or \
-           sha(base_cases.read_bytes()) != BASE_CASES_SHA256:
+        if sha(base_cases.read_bytes()) != BASE_CASES_SHA256:
             raise FreshChainError("FROZEN_INPUT_HASH_MISMATCH", "base cases hash mismatch")
-        if args.expected_cycle_cases_sha256 != R4_CASES_SHA256 or \
-           sha(cycle_cases.read_bytes()) != R4_CASES_SHA256 or \
+        if sha(cycle_cases.read_bytes()) != R4_CASES_SHA256 or \
            sha(dag_path.read_bytes()) != DAG_SHA256:
             raise FreshChainError("FROZEN_INPUT_HASH_MISMATCH", "R4 input hash mismatch")
-        session.mkdir(parents=True, exist_ok=True)
-        preflight_root = session / "00-preflight"
-        preflight_root.mkdir()
         transport = normalize_candidate_transport(
-            args.candidate_input_kind, candidate_source,
+            "head-bundle", candidate_source,
             preflight_root / "candidate-detached",
-            args.expected_candidate_input_sha256)
+            sha(candidate_source.read_bytes()))
         candidate = Path(transport["normalized_repo_realpath"])
         observed_head = subprocess.check_output(
             ["/usr/bin/git", "-C", str(candidate), "rev-parse", "HEAD^{commit}"],
@@ -1564,21 +1987,39 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
                 observed_tree != args.expected_candidate_tree:
             raise FreshChainError("CANDIDATE_IDENTITY_MISMATCH",
                                   "normalized candidate identity differs")
-        journal = preflight_root / "execution-journal.jsonl"
+        try:
+            normalized_authority = invocation.verify_candidate_authority(
+                authority_token, candidate)
+        except RuntimeError as error:
+            raise FreshChainError(str(error).split(":", 1)[0], str(error)) from error
         review_session_id = uuid.uuid4().hex
-        input_identity = {"schema": "cth3ds.runtime-core-r5-input-identity/v1",
+        input_identity = {"schema": "cth3ds.runtime-core-r11-input-identity/v1",
             "review_session_id": review_session_id, "session_root_realpath": str(session),
+            "bundle_root_realpath": str(guard.root),
+            "bundle_manifest_sha256": sha(guard.manifest_path.read_bytes()),
             "verified_invocation_sha256": invocation.digest,
             "initial_entry_count": initial_count,
-            "inputs": {role: {"realpath": str(path),
-                "sha256": sha(path.read_bytes()) if path.is_file() else tree_digest(path),
-                "readonly": not os.access(path, os.W_OK)} for role, path in external.items()},
+            "inputs": {role: {"bundle_relative_path":
+                path.relative_to(guard.root).as_posix(), "readonly": True}
+                for role, path in external.items()},
             "candidate_transport": transport,
-            "execution_dag": {"realpath": str(dag_path), "sha256": DAG_SHA256}}
+            "execution_dag": {"bundle_relative_path":
+                dag_path.relative_to(guard.root).as_posix(), "sha256": DAG_SHA256},
+            "validation_change_authority": {
+                "binding": authority_binding,
+                "normalized_candidate": normalized_authority,
+            },
+            "preflight_rehash": preflight_rehash}
         (preflight_root / "input-identity.json").write_bytes(canonical(input_identity))
-        separation = {"schema": "cth3ds.runtime-core-r4-path-separation/v1",
+        separation = {"schema": "cth3ds.runtime-core-r11-path-separation/v2",
                       "status": "PASS", "session_root": str(session),
-                      "external_realpaths": [str(path) for path in external.values()]}
+                      "bundle_root": str(guard.root),
+                      "consumer_paths": {role: path.relative_to(guard.root).as_posix()
+                                         for role, path in sorted(external.items())},
+                      "bundle_role_count": len(external),
+                      "broad_precreation": broad_separation,
+                      "exact_role_precreation": exact_separation,
+                      "provenance_reopen_allowed": False}
         (preflight_root / "path-separation.json").write_bytes(canonical(separation))
         append_journal(journal, "r4.n00_preflight", [], [str(Path(__file__).resolve()),
             "--fresh-chain"], utc_now(), utc_now(), 0, canonical(input_identity), b"",
@@ -1591,7 +2032,9 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
         policy_args = argparse.Namespace(
             repo=candidate, run_root=canonical_root, reviewer_root=policy_root,
             archive=archive, deps_prefix=deps, review_session_id=review_session_id,
-            session_root=session)
+            session_root=session, validation_change_authority=authority_token)
+        stage_rehash(guard, session, "r4.n10_policy.inputs",
+                     ("candidate_transport", "source_archive", "cross_dependencies"))
         run_in_process_journaled(
             journal, "r4.n10_policy", ["r4.n00_preflight"], "policy",
             lambda: producer.build_policy(invocation, consumer_module, policy_args),
@@ -1599,6 +2042,10 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
         policy_path = policy_root / "review-policy.json"
         policy_sha = sha(policy_path.read_bytes())
         policy = load(policy_path)
+        try:
+            invocation.verify_policy_authority(authority_token, policy)
+        except RuntimeError as error:
+            raise FreshChainError(str(error).split(":", 1)[0], str(error)) from error
         produce_args = argparse.Namespace(policy=policy_path,
                                           expected_policy_sha256=policy_sha)
         run_in_process_journaled(
@@ -1693,6 +2140,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "--expected-closure-fixture-sha256", fixture_digest,
             "--fixture-consumption-state", str(consumption_state),
             "--execution-journal", str(journal)]
+        stage_rehash(guard, session, "r4.n50_closure_cases.inputs",
+                     ("frozen_matrix", "candidate_transport"))
         run_in_process_journaled(
             journal, "r4.n50_closure_cases", ["r4.n42_fixture_verify"],
             "matrix", lambda: matrix_closed(invocation, producer, consumer_module,
@@ -1724,6 +2173,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "--expected-closure-fixture-sha256", fixture_digest,
             "--seal-root", str(final_seal)]
         finalize_args = consumer_module.parser().parse_args(finalize_command[2:])
+        stage_rehash(guard, session, "r4.n60_finalize.inputs",
+                     ("frozen_matrix", "candidate_transport"))
         run_in_process_journaled(
             journal, "r4.n60_finalize",
             ["r4.n52_receipt_anchor", "r4.n41_fixture_anchor"],
@@ -1760,6 +2211,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "--seal-root", str(final_seal), "--expected-seal-sha256", final_digest,
             "--cases", str(base_cases), "--out", str(base_output),
             "--execution-journal", str(journal)]
+        stage_rehash(guard, session, "r4.n80_base_acceptance.inputs",
+                     ("base_acceptance_cases", "frozen_matrix"))
         run_in_process_journaled(
             journal, "r4.n80_base_acceptance", ["r4.n70_semantic_verify"],
             "result-provenance",
@@ -1783,6 +2236,7 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
         normalized_order = observed_order
         observed_edges = sorted(observed_edges_set)
         probe_request = dict(request)
+        probe_request.pop("_validation_change_authority", None)
         probe_request["candidate_input"] = candidate
         acceptance_context = {"candidate": candidate, "fixture": fixture, "facts": facts,
             "fixture_digest": fixture_digest, "review_session_id": review_session_id,
@@ -1796,6 +2250,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "canonical_seal": canonical_seal, "policy_path": policy_path,
             "journal": journal, "fresh_request": probe_request}
         r4_output = acceptance_root / "r4-additive22"
+        stage_rehash(guard, session, "r4.n81_cycle_acceptance.inputs",
+                     ("r4_acceptance_cases", "execution_dag", "frozen_matrix"))
         r4_summary = run_r4_acceptance(invocation, producer, consumer_module,
                                         args, acceptance_context, r4_output)
         if r4_summary["passed"] != 22:
@@ -1865,7 +2321,9 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
         if h2_gate["status"] != "PASS" or h2_gate["independent_process_count"] != 40:
             raise FreshChainError("H2_EXACT20_GATE_FAILED", "H2 exact20 process gate failed")
         base_summary = load(base_output / "summary.json")
-        result = {"schema": "cth3ds.runtime-core-c3-r5-fresh-chain-result/v1",
+        final_input_rehash = stage_rehash(guard, session, "r4.n90_final_audit.inputs",
+                                         tuple(guard.inputs))
+        result = {"schema": "cth3ds.runtime-core-c3-r11-fresh-chain-result/v1",
             "stage_id": "C3-R5", "review_session_id": review_session_id,
             "verified_invocation_sha256": invocation.digest,
             "candidate_identity": facts["candidate_identity_live"],
@@ -1878,6 +2336,10 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "canonical_seal_pre_finalizer_observations": seal_observations,
             "receipt_sha256": receipt_sha, "fixture_sha256s_sha256": fixture_digest,
             "final_seal_sha256s_sha256": final_digest,
+            "input_bundle": {"root": str(guard.root),
+                             "manifest_sha256": sha(guard.manifest_path.read_bytes()),
+                             "final_rehash": final_input_rehash},
+            "evidence_field_contract": invocation.evidence_contract(),
             "semantic_verify": "PASS", "construction_self_verification": "PASS",
             "independent_review": "NOT_PROVEN",
             "product_verdicts": {"RH09_PRODUCT": "FAIL", "RH07_PRODUCT": "FAIL",
@@ -1906,9 +2368,48 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "composed": "54/54", "result": str(audit / "fresh-chain-result.json")},
             sort_keys=True, separators=(",", ":")))
         return 0
-    except FreshChainError as error:
+    except Exception as error:
+        failure_code_value = getattr(error, "code", type(error).__name__)
+        last_entry: dict[str, Any] = {}
+        stdout_text = ""
+        stderr_text = repr(error)
+        if journal.is_file():
+            lines = journal.read_text(encoding="utf-8").splitlines()
+            if lines:
+                last_entry = json.loads(lines[-1])
+                stdout_path = Path(last_entry.get("stdout_path", ""))
+                stderr_path = Path(last_entry.get("stderr_path", ""))
+                if stdout_path.is_file():
+                    stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+                if stderr_path.is_file():
+                    stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        provenance: list[dict[str, Any]] = []
+        if "guard" in locals():
+            active_roles = (ACTIVE_INPUT_ROLE or "").split(",")
+            provenance = [{"role": role,
+                           "bundle_path": str(guard.path(role)),
+                           "provenance_path": guard.inputs[role]["provenance_source_path"]}
+                          for role in active_roles if role in guard.inputs]
+        failure_receipt = {
+            "schema": "cth3ds.runtime-core-durable-failure/v1",
+            "status": "FAIL", "c3": "NOT_PROVEN",
+            "stage": ACTIVE_STAGE, "input_role": ACTIVE_INPUT_ROLE,
+            "bundle_root": str(bundle_root), "inputs": provenance,
+            "failure_code": failure_code_value, "detail": str(error),
+            "errno": getattr(error, "errno", None),
+            "stdout": stdout_text, "stderr": stderr_text,
+            "stdout_sha256": sha(stdout_text.encode()),
+            "stderr_sha256": sha(stderr_text.encode()),
+            "owner": "validation-task",
+            "journal_sha256": sha(journal.read_bytes()) if journal.is_file() else None,
+            "last_journal_entry": last_entry or None,
+            "recorded_at_utc": utc_now(),
+        }
+        if preflight_root.is_dir():
+            (preflight_root / "durable-failure.json").write_bytes(canonical(failure_receipt))
         print(json.dumps({"fresh_chain": "FAIL", "c3": "NOT_PROVEN",
-            "failure_code": error.code, "detail": str(error)},
+            "failure_code": failure_code_value, "detail": str(error),
+            "durable_failure": str(preflight_root / "durable-failure.json")},
             sort_keys=True, separators=(",", ":")), file=sys.stderr)
         return 2
 
@@ -2112,10 +2613,34 @@ def protocol_self_test_closed(context: Any, producer: Any, consumer: Any,
     case("R5A29", lambda: consumer.raw_ancestry_commitment(
          "/usr/bin/git", missing_repo, head_oid, []), "ANCESTRY_OBJECT_UNREADABLE")
 
+    semantic_left = {"review_session_id": "1" * 32,
+                     "session_root": "/independent/a/session",
+                     "started_at": "2026-09-04T01:02:03.100000Z",
+                     "elapsed": "1.25s", "verdict": "PASS", "selected": 149,
+                     "artifact": "/independent/a/session/result.json"}
+    semantic_right = {"review_session_id": "2" * 32,
+                      "session_root": "/independent/b/session",
+                      "started_at": "2026-09-04T09:08:07.900000Z",
+                      "elapsed": "9.75s", "verdict": "PASS", "selected": 149,
+                      "artifact": "/independent/b/session/result.json"}
+    case("R11A30", lambda: context.compare_evidence(
+         "validation.protocol_self_test.result_sha256",
+         semantic_left, semantic_right,
+         {"RUN_ROOT": "/independent/a/session"},
+         {"RUN_ROOT": "/independent/b/session"})["status"] == "PASS")
+    case("R11A31", lambda: context.compare_evidence(
+         "validation.selected_python_ids", "deterministic-byte-a",
+         "deterministic-byte-b", {"RUN_ROOT": "/a"},
+         {"RUN_ROOT": "/b"})["status"] == "FAIL")
+    case("R11A32", lambda: context.require_evidence_class(
+         "validation.official_fresh_chain.verified_invocation_sha256",
+         "CONTENT_DETERMINISTIC"), "RuntimeError")
+
     counts = result_counts(results)
-    summary = {"schema": "cth3ds.runtime-core-c3-r5-self-test/v1",
+    summary = {"schema": "cth3ds.runtime-core-c3-r11-self-test/v1",
                "session_root": str(session),
                "verified_invocation_sha256": context.digest,
+               "evidence_field_contract": context.evidence_contract(),
                **counts, "cases": results}
     out = out_path.absolute()
     out.parent.mkdir(parents=True, exist_ok=True)

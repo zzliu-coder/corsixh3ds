@@ -10,6 +10,8 @@ LOCK_SHA256="0bec73ce08a019ea3b7a78429f75d03e074d25c0599c8e5a770f25cbbe93bf37"
 DRIVER="${ROOT}/scripts/verifier_driver.py"
 BOOTSTRAP_PYTHON=""
 ENV_DIR=""
+BUNDLE_ROOT=""
+RUNTIME_VERSION=""
 EVIDENCE_DIR="${ROOT}/artifacts/verification/verifier-python"
 STAGE="cli-contract"
 DETAIL="wrapper did not start an operation"
@@ -38,9 +40,9 @@ json_summary() {
   if [[ -n "${writer}" && -x "${writer}" ]]; then
     "${writer}" -I - "${EVIDENCE_DIR}/bootstrap-summary.json" "${status}" \
       "${STAGE}" "${code}" "${detail}" "${verb}" "${LOCK}" \
-      "${LOCK_SHA256}" "${ENV_DIR}" <<'PY'
+      "${LOCK_SHA256}" "${ENV_DIR}" "${BUNDLE_ROOT}" "${RUNTIME_VERSION}" <<'PY'
 import datetime, json, pathlib, sys
-out, status, stage, code, detail, verb, lock, lock_sha, env_dir = sys.argv[1:]
+out, status, stage, code, detail, verb, lock, lock_sha, env_dir, bundle, runtime = sys.argv[1:]
 payload = {
     "schema": "cth3ds.verifier-bootstrap/v2",
     "bootstrap_scope": "ENVIRONMENT_AND_COMMAND_ONLY",
@@ -51,6 +53,8 @@ payload = {
     "verb": verb or None,
     "lock": {"path": lock, "expected_sha256": lock_sha},
     "environment": env_dir or None,
+    "input_bundle": bundle or None,
+    "runtime_version": runtime or None,
     "recorded_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
 }
 audit_path = pathlib.Path(out).parent / "environment-audit.json"
@@ -98,12 +102,16 @@ done
 SEEN_BOOTSTRAP=0
 SEEN_ENV=0
 SEEN_EVIDENCE=0
+SEEN_BUNDLE=0
+SEEN_RUNTIME=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --bootstrap-python|--env-dir|--evidence-dir)
+    --bootstrap-python|--env-dir|--evidence-dir|--input-bundle|--runtime-version)
       option="$1"
       [[ $# -ge 2 && -n "$2" ]] || cli_error "missing value for ${option}"
-      [[ "$2" = /* ]] || cli_error "${option} requires an absolute path"
+      if [[ "${option}" != "--runtime-version" ]]; then
+        [[ "$2" = /* ]] || cli_error "${option} requires an absolute path"
+      fi
       case "${option}" in
         --bootstrap-python)
           [[ "${SEEN_BOOTSTRAP}" -eq 0 ]] || cli_error "duplicate option: ${option}"
@@ -114,6 +122,12 @@ while [[ $# -gt 0 ]]; do
         --evidence-dir)
           [[ "${SEEN_EVIDENCE}" -eq 0 ]] || cli_error "duplicate option: ${option}"
           SEEN_EVIDENCE=1; EVIDENCE_DIR="$2" ;;
+        --input-bundle)
+          [[ "${SEEN_BUNDLE}" -eq 0 ]] || cli_error "duplicate option: ${option}"
+          SEEN_BUNDLE=1; BUNDLE_ROOT="$2" ;;
+        --runtime-version)
+          [[ "${SEEN_RUNTIME}" -eq 0 ]] || cli_error "duplicate option: ${option}"
+          SEEN_RUNTIME=1; RUNTIME_VERSION="$2" ;;
       esac
       shift 2
       ;;
@@ -147,6 +161,59 @@ fi
 [[ "$(sha256_file "${LOCK}")" == "${LOCK_SHA256}" ]] || \
   integrity_error "verifier lock SHA-256 mismatch"
 [[ -f "${DRIVER}" && ! -L "${DRIVER}" ]] || integrity_error "canonical driver is missing or invalid"
+mkdir -p "${EVIDENCE_DIR}"
+
+if [[ -n "${BUNDLE_ROOT}" ]]; then
+  [[ -n "${RUNTIME_VERSION}" ]] || cli_error "--runtime-version is required with --input-bundle"
+  [[ "${RUNTIME_VERSION}" == "3.9.25" || "${RUNTIME_VERSION}" == "3.14.6" ]] || \
+    cli_error "unsupported exact runtime version: ${RUNTIME_VERSION}"
+  [[ -n "${ENV_DIR}" ]] || cli_error "--env-dir is required with --input-bundle"
+  [[ -d "${BUNDLE_ROOT}" && ! -L "${BUNDLE_ROOT}" ]] || \
+    integrity_error "INPUT_BUNDLE_ROOT_INVALID"
+  [[ -f "${BUNDLE_ROOT}/manifest.json" && -f "${BUNDLE_ROOT}/SHA256SUMS" ]] || \
+    integrity_error "INPUT_BUNDLE_CONTROL_FILES_MISSING"
+  STAGE="bundle-preflight"
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "${BUNDLE_ROOT}" && sha256sum -c SHA256SUMS) \
+      >"${EVIDENCE_DIR}/bundle-sha256-check.log" 2>&1 || \
+      integrity_error "INPUT_BUNDLE_SHA256SUMS_MISMATCH"
+  else
+    (cd "${BUNDLE_ROOT}" && shasum -a 256 -c SHA256SUMS) \
+      >"${EVIDENCE_DIR}/bundle-sha256-check.log" 2>&1 || \
+      integrity_error "INPUT_BUNDLE_SHA256SUMS_MISMATCH"
+  fi
+  PLATFORM_TAG="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | tr '[:upper:]' '[:lower:]')"
+  RUNTIME_ARCHIVE="${BUNDLE_ROOT}/runtimes/${PLATFORM_TAG}/python-${RUNTIME_VERSION}/runtime.tar"
+  WHEELHOUSE="${BUNDLE_ROOT}/wheelhouse/${PLATFORM_TAG}/python-${RUNTIME_VERSION}"
+  [[ -f "${RUNTIME_ARCHIVE}" && -d "${WHEELHOUSE}" ]] || \
+    integrity_error "BUNDLED_RUNTIME_OR_WHEELHOUSE_MISSING"
+  BUNDLED_ENV_NEW=0
+  if [[ ! -d "${ENV_DIR}" ]]; then
+    RUNTIME_TEMP="${ENV_DIR}.creating.$$"
+    [[ ! -e "${RUNTIME_TEMP}" ]] || integrity_error "runtime temporary path exists"
+    mkdir -p "$(dirname "${ENV_DIR}")"
+    mkdir -p "${RUNTIME_TEMP}"
+    /usr/bin/tar -xf "${RUNTIME_ARCHIVE}" -C "${RUNTIME_TEMP}" || \
+      integrity_error "BUNDLED_RUNTIME_EXTRACT_FAILED"
+    [[ -d "${RUNTIME_TEMP}/runtime" ]] || integrity_error "BUNDLED_RUNTIME_LAYOUT_INVALID"
+    mv "${RUNTIME_TEMP}/runtime" "${ENV_DIR}"
+    rmdir "${RUNTIME_TEMP}"
+    BUNDLED_ENV_NEW=1
+  fi
+  PYTHON_MM="${RUNTIME_VERSION%.*}"
+  if [[ ! -e "${ENV_DIR}/bin/python" ]]; then
+    [[ -x "${ENV_DIR}/bin/python${PYTHON_MM}" ]] || \
+      integrity_error "BUNDLED_RUNTIME_VERSIONED_EXECUTABLE_MISSING"
+    ln -s "python${PYTHON_MM}" "${ENV_DIR}/bin/python"
+  fi
+  for candidate in "${ENV_DIR}/bin/python" "${ENV_DIR}/bin/python${PYTHON_MM}" \
+                   "${ENV_DIR}/bin/python3"; do
+    if [[ -x "${candidate}" ]]; then BOOTSTRAP_PYTHON="${candidate}"; break; fi
+  done
+  [[ -n "${BOOTSTRAP_PYTHON}" ]] || integrity_error "BUNDLED_RUNTIME_EXECUTABLE_MISSING"
+elif [[ -n "${RUNTIME_VERSION}" ]]; then
+  cli_error "--runtime-version requires --input-bundle"
+fi
 
 if [[ -z "${BOOTSTRAP_PYTHON}" ]]; then
   BOOTSTRAP_PYTHON="$(command -v python3 || true)"
@@ -154,6 +221,11 @@ fi
 [[ -x "${BOOTSTRAP_PYTHON}" ]] || integrity_error "bootstrap Python is missing"
 BOOTSTRAP_PYTHON="$("${BOOTSTRAP_PYTHON}" -I -c 'import pathlib,sys; print(pathlib.Path(sys.executable).absolute())')" || \
   integrity_error "cannot identify bootstrap Python"
+OBSERVED_PYTHON_VERSION="$("${BOOTSTRAP_PYTHON}" -I -c 'import sys; print(sys.version.split()[0])')" || \
+  integrity_error "cannot identify bootstrap Python version"
+if [[ -n "${RUNTIME_VERSION}" && "${OBSERVED_PYTHON_VERSION}" != "${RUNTIME_VERSION}" ]]; then
+  integrity_error "BUNDLED_RUNTIME_VERSION_MISMATCH"
+fi
 PYTHON_TAG="$("${BOOTSTRAP_PYTHON}" -I -c 'import sys; assert sys.version_info >= (3,9); print(f"{sys.version_info.major}.{sys.version_info.minor}")')" || \
   integrity_error "verifier requires CPython 3.9 or newer"
 if [[ -z "${ENV_DIR}" ]]; then
@@ -164,6 +236,9 @@ VENV_PYTHON="${ENV_DIR}/bin/python"
 DISPATCH="${ENV_DIR}/bin/cth3ds-verifier-python"
 MARKER="${ENV_DIR}/.cth3ds-verifier-environment.json"
 PYVENV_CFG="${ENV_DIR}/pyvenv.cfg"
+BUNDLED_CFG="${ENV_DIR}/.cth3ds-bundled-runtime.json"
+RUNTIME_CONFIG="${BUNDLED_CFG}"
+if [[ -z "${BUNDLE_ROOT}" ]]; then RUNTIME_CONFIG="${PYVENV_CFG}"; fi
 mkdir -p "${EVIDENCE_DIR}"
 
 write_dispatch_and_marker() {
@@ -177,7 +252,7 @@ write_dispatch_and_marker() {
   [[ "${DISPATCH_LINKS}" == "1" ]] || \
     integrity_error "dispatch must have exactly one link"
   "${VENV_PYTHON}" -I - "${MARKER}" "${ENV_DIR}" "${LOCK}" "${DRIVER}" \
-    "${ROOT}/scripts/run_verifier_python.sh" "${DISPATCH}" "${PYVENV_CFG}" <<'PY'
+    "${ROOT}/scripts/run_verifier_python.sh" "${DISPATCH}" "${RUNTIME_CONFIG}" <<'PY'
 import hashlib, importlib.metadata, json, pathlib, site, stat, sys
 marker, env, lock, driver, wrapper, dispatch, cfg = map(pathlib.Path, sys.argv[1:])
 expected = {"attrs":"25.3.0", "jsonschema":"4.25.1",
@@ -217,12 +292,86 @@ basis={"schema":"cth3ds.verifier-environment-marker-basis/v2",
    "version":sys.version,"cache_tag":sys.implementation.cache_tag,"prefix":str(pathlib.Path(sys.prefix).resolve(strict=True)),
    "base_prefix":str(pathlib.Path(sys.base_prefix).resolve(strict=True)),"isolated":sys.flags.isolated,
    "user_site_enabled":bool(site.ENABLE_USER_SITE)},
- "pyvenv_cfg_sha256":sha(cfg),"dependencies":deps()}
+ "runtime_configuration":{"path":str(cfg.absolute()),
+   "kind":"venv" if cfg.name=="pyvenv.cfg" else "bundled-runtime",
+   "sha256":sha(cfg)},"dependencies":deps()}
 marker.write_text(json.dumps(basis,indent=2,sort_keys=True)+"\n")
 PY
 }
 
-if [[ ! -e "${ENV_DIR}" ]]; then
+if [[ -n "${BUNDLE_ROOT}" && "${BUNDLED_ENV_NEW}" -eq 1 ]]; then
+  STAGE="bundled-runtime-bootstrap"
+  EXTERNALLY_MANAGED="${ENV_DIR}/lib/python${PYTHON_MM}/EXTERNALLY-MANAGED"
+  if [[ -f "${EXTERNALLY_MANAGED}" ]]; then
+    mv "${EXTERNALLY_MANAGED}" "${EXTERNALLY_MANAGED}.source-policy"
+  fi
+  LOCAL_SITE="${ENV_DIR}/lib/python${PYTHON_MM}/site-packages"
+  mkdir -p "${LOCAL_SITE}"
+  # Extract the runtime-owned pip wheel with the standard library.  This
+  # avoids distribution install schemes which may name a host prefix (the
+  # Homebrew framework scheme does so even after relocation).
+  "${BOOTSTRAP_PYTHON}" -I - "${LOCAL_SITE}" >"${EVIDENCE_DIR}/pip-bootstrap.log" 2>&1 <<'PY' || \
+    integrity_error "bundled pip bootstrap failed"
+import ensurepip, pathlib, zipfile, sys
+destination = pathlib.Path(sys.argv[1]).resolve(strict=True)
+wheels = sorted((pathlib.Path(ensurepip.__file__).parent / "_bundled").glob("pip-*.whl"))
+if len(wheels) != 1:
+    raise SystemExit("expected exactly one bundled pip wheel")
+with zipfile.ZipFile(wheels[0]) as archive:
+    archive.extractall(destination)
+PY
+  "${BOOTSTRAP_PYTHON}" -I -m pip --isolated --disable-pip-version-check install --no-input \
+    --no-index --find-links "${WHEELHOUSE}" --require-hashes --only-binary=:all: \
+    --target "${LOCAL_SITE}" --upgrade -r "${LOCK}" \
+    >"${EVIDENCE_DIR}/install.log" 2>&1 || \
+    integrity_error "offline locked dependency install failed"
+  "${BOOTSTRAP_PYTHON}" -I - "${LOCAL_SITE}" \
+    >"${EVIDENCE_DIR}/record-normalization.log" 2>&1 <<'PY' || \
+    integrity_error "installed RECORD normalization failed"
+import csv, io, pathlib, sys
+site = pathlib.Path(sys.argv[1]).resolve(strict=True)
+for record in sorted(site.glob("*.dist-info/RECORD")):
+    rows = list(csv.reader(io.StringIO(record.read_text(encoding="utf-8"))))
+    changed = False
+    for row in rows:
+        parts = pathlib.PurePosixPath(row[0]).parts
+        if ".." not in parts:
+            continue
+        if len(parts) == 3 and parts[:2] == ("..", "..") and parts[2] == "bin":
+            raise SystemExit("malformed script RECORD entry")
+        if len(parts) == 4 and parts[:3] == ("..", "..", "bin"):
+            target = site / "bin" / parts[3]
+            if not target.is_file() or target.is_symlink():
+                raise SystemExit("script RECORD target missing or invalid")
+            row[0] = "bin/" + parts[3]
+            changed = True
+            continue
+        raise SystemExit("RECORD path escape")
+    if changed:
+        buffer = io.StringIO(newline="")
+        csv.writer(buffer, lineterminator="\n").writerows(rows)
+        with record.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(buffer.getvalue())
+PY
+  "${BOOTSTRAP_PYTHON}" -I -m pip --isolated --disable-pip-version-check check \
+    >"${EVIDENCE_DIR}/pip-check.log" 2>&1 || integrity_error "pip check failed"
+  "${BOOTSTRAP_PYTHON}" -I - "${BUNDLED_CFG}" "${BUNDLE_ROOT}" \
+    "${RUNTIME_ARCHIVE}" "${RUNTIME_VERSION}" <<'PY'
+import hashlib, json, pathlib, sys
+out, bundle, archive, version = map(pathlib.Path, sys.argv[1:])
+def sha(path):
+    h=hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda:f.read(1024*1024), b""): h.update(block)
+    return h.hexdigest()
+value={"schema":"cth3ds.bundled-runtime-instance/v1",
+       "bundle_manifest_sha256":sha(bundle/"manifest.json"),
+       "runtime_archive_sha256":sha(archive),"runtime_version":str(version),
+       "source":"immutable-input-bundle","network_install":False}
+out.write_text(json.dumps(value,indent=2,sort_keys=True)+"\n")
+PY
+  write_dispatch_and_marker
+elif [[ ! -e "${ENV_DIR}" ]]; then
   STAGE="environment-create"
   TEMP_ENV="${ENV_DIR}.creating.$$"
   [[ ! -e "${TEMP_ENV}" ]] || integrity_error "temporary environment already exists"
@@ -253,8 +402,13 @@ else
   fi
   [[ "${DISPATCH_LINKS}" == "1" ]] || \
     integrity_error "dispatch must have exactly one link"
-  grep -Eq '^include-system-site-packages = false$' "${PYVENV_CFG}" || \
-    integrity_error "system site packages are enabled"
+  if [[ -n "${BUNDLE_ROOT}" ]]; then
+    [[ -f "${BUNDLED_CFG}" && ! -L "${BUNDLED_CFG}" ]] || \
+      integrity_error "bundled runtime configuration is missing"
+  else
+    grep -Eq '^include-system-site-packages = false$' "${PYVENV_CFG}" || \
+      integrity_error "system site packages are enabled"
+  fi
 fi
 
 STAGE="driver"

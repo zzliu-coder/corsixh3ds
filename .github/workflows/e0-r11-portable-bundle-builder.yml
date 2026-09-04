@@ -15,8 +15,8 @@ jobs:
       - name: Check out immutable candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 57d16a443ee4488d7eeaa88022e22e5d05da9c39
-          fetch-depth: 2
+          ref: d6ae8b588b5cda45f0c583428744ed6fa1735730
+          fetch-depth: 0
           path: candidate
 
       - name: Fetch frozen inputs and portable runtimes
@@ -27,8 +27,8 @@ jobs:
           mkdir -p "$base/original" "$base/downloads" "$base/runtime39" "$base/runtime314" "$base/toolchain"
           curl --fail --location --retry 5 --retry-all-errors \
             --output "$base/original.tar" \
-            'https://github.com/zzliu-coder/corsixh3ds/releases/download/e0-r11-ci-env-37e4559-portable/input-bundle-r11-ci-env-linux-x86_64-h11-portable.tar'
-          echo '289df8ed720bcaabf383972bdef435bc23684951bc3d62d8f123432d95553f48  '"$base/original.tar" | sha256sum -c -
+            'https://github.com/zzliu-coder/corsixh3ds/releases/download/e0-r11-ci-env-57d16a4-portable/input-bundle-r11-ci-env-linux-x86_64-h12-portable.tar'
+          echo 'fa29d68a43eeb835b2e1d788d90eb95ffcc65d8c44c0d1aaf1df688dc8d3b641  '"$base/original.tar" | sha256sum -c -
           tar -xf "$base/original.tar" -C "$base/original"
           bundle_root="$(find "$base/original" -name manifest.json -type f -print -quit | xargs dirname)"
           printf '%s\n' "$bundle_root" > "$base/bundle-root.txt"
@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           base="$RUNNER_TEMP/e0-r11-builder"
           bundle_root="$(cat "$base/bundle-root.txt")"
-          output="$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h12-portable"
+          output="$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h13-portable"
           python3 candidate/scripts/build_verifier_input_bundle.py \
             --output "$output" \
             --candidate-repo "$GITHUB_WORKSPACE/candidate" \
@@ -86,8 +86,8 @@ jobs:
             --ci-host-container 'ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4' \
             --ci-old3ds-container 'devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5'
           python3 candidate/scripts/build_verifier_input_bundle.py --verify "$output" > "$RUNNER_TEMP/bundle-verification.json"
-          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h12-portable.tar" "$(basename "$output")"
-          sha256sum "$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h12-portable.tar" | tee "$RUNNER_TEMP/transport-sha256.txt"
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h13-portable.tar" "$(basename "$output")"
+          sha256sum "$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h13-portable.tar" | tee "$RUNNER_TEMP/transport-sha256.txt"
 
       - name: Publish candidate-bound bundle release
         env:
@@ -95,14 +95,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag='e0-r11-ci-env-57d16a4-portable'
-          tarfile="$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h12-portable.tar"
+          tag='e0-r11-ci-env-d6ae8b5-portable'
+          tarfile="$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h13-portable.tar"
           digest="$(sha256sum "$tarfile" | awk '{print $1}')"
           gh release create "$tag" \
-            "$tarfile#input-bundle-r11-ci-env-linux-x86_64-h12-portable.tar" \
+            "$tarfile#input-bundle-r11-ci-env-linux-x86_64-h13-portable.tar" \
             --repo "$GITHUB_REPOSITORY" \
-            --target 57d16a443ee4488d7eeaa88022e22e5d05da9c39 \
-            --title 'E0 R11 H12 portable verifier bundle' \
+            --target d6ae8b588b5cda45f0c583428744ed6fa1735730 \
+            --title 'E0 R11 H13 portable verifier bundle' \
             --notes "Candidate-bound portable verifier input bundle. Transport SHA256: $digest. Python runtimes: 3.9.25 and 3.14.6, x86_64 Linux, verified in the exact Fresh container."
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,tagName,targetCommitish,assets
 

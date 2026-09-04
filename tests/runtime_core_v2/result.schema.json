@@ -11,7 +11,7 @@
       "properties": {
         "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "first_parent": {"const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"},
+        "first_parent": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "tracked_fingerprint_v3": {"$ref": "#/$defs/sha256"},
         "tracked_entries": {"type": "integer", "minimum": 199}
       },
@@ -175,7 +175,7 @@
           "required": ["ctest_passed", "ctest_failed", "ctest_total", "cpp_passed", "cpp_failed", "cpp_total", "python_executed", "python_passed", "python_failures", "python_errors", "python_skipped", "python_unexpected_skipped", "python_runner_sha256", "python_manifest_sha256", "python_interpreter_sha256", "python_ids_sha256", "python_outcomes"],
           "properties": {
             "ctest_passed": {"const": 3}, "ctest_failed": {"const": 0}, "ctest_total": {"const": 3},
-            "cpp_passed": {"const": 105}, "cpp_failed": {"const": 0}, "cpp_total": {"const": 105},
+            "cpp_passed": {"const": 106}, "cpp_failed": {"const": 0}, "cpp_total": {"const": 106},
             "python_executed": {"type": "integer", "minimum": 1},
             "python_passed": {"type": "integer", "minimum": 1},
             "python_failures": {"const": 0}, "python_errors": {"const": 0},

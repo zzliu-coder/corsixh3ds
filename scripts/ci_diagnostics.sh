@@ -12,8 +12,9 @@ ci_diag_init() {
   CI_DIAG_LOGS=("")
   mkdir -p "${CI_DIAG_DIR}"
 
+  local identity_status=0
   python3 - "${CI_DIAG_DIR}/identity.json" "${CI_DIAG_MATRIX}" \
-    "${CTH3DS_CONTAINER_IMAGE:-}" <<'PY'
+    "${CTH3DS_CONTAINER_IMAGE:-}" <<'PY' || identity_status=$?
 from __future__ import annotations
 
 import hashlib
@@ -44,14 +45,19 @@ def first_line(command: list[str]) -> str | None:
     return text.splitlines()[0] if text else None
 
 
-def git(*arguments: str) -> str | None:
+def required_git(*arguments: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(root), *arguments],
         text=True,
         capture_output=True,
         check=False,
     )
-    return result.stdout.strip() if result.returncode == 0 else None
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise RuntimeError(
+            f"git {' '.join(arguments)} exited {result.returncode}: {detail}"
+        )
+    return result.stdout.strip()
 
 
 def package_rows(command: list[str]) -> list[str]:
@@ -60,19 +66,58 @@ def package_rows(command: list[str]) -> list[str]:
 
 
 pin_path = root / "config" / "upstream-pins.json"
-identity = {
-    "format": 1,
-    "matrix": matrix,
-    "source": {
-        "commit": git("rev-parse", "HEAD"),
-        "tree": git("rev-parse", "HEAD^{tree}"),
-        "dirty": bool(git("status", "--porcelain=v1", "--untracked-files=all")),
+identity_error = None
+try:
+    commit = required_git("rev-parse", "HEAD")
+    tree = required_git("rev-parse", "HEAD^{tree}")
+    parent_row = required_git("rev-list", "--parents", "-n", "1", "HEAD").split()
+    shallow = required_git("rev-parse", "--is-shallow-repository")
+    if not commit or not tree:
+        raise RuntimeError("Git returned an empty commit or tree identity")
+    if not parent_row or parent_row[0] != commit or len(parent_row) < 2:
+        raise RuntimeError("Git returned an empty or inconsistent parent identity")
+    if shallow != "false":
+        raise RuntimeError("Git ancestry is shallow")
+    source = {
+        "status": "PASS",
+        "commit": commit,
+        "tree": tree,
+        "parents": parent_row[1:],
+        "dirty": bool(
+            required_git("status", "--porcelain=v1", "--untracked-files=all")
+        ),
         "pin_manifest_sha256": (
             hashlib.sha256(pin_path.read_bytes()).hexdigest()
             if pin_path.is_file()
             else None
         ),
-    },
+    }
+except (OSError, RuntimeError) as error:
+    identity_error = str(error)
+    source = {
+        "status": "FAIL",
+        "error": identity_error,
+        "pin_manifest_sha256": (
+            hashlib.sha256(pin_path.read_bytes()).hexdigest()
+            if pin_path.is_file()
+            else None
+        ),
+    }
+
+if identity_error is not None:
+    identity = {
+        "format": 1,
+        "matrix": matrix,
+        "source": source,
+    }
+    output.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+    print(identity_error, file=sys.stderr)
+    raise SystemExit(42)
+
+identity = {
+    "format": 1,
+    "matrix": matrix,
+    "source": source,
     "machine": {
         "platform": platform.platform(),
         "architecture": platform.machine(),
@@ -113,6 +158,14 @@ identity = {
 }
 output.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
 PY
+
+  if [[ "${identity_status}" -ne 0 ]]; then
+    CI_DIAG_STAGE="source-identity"
+    CI_DIAG_LOGS=("${CI_DIAG_DIR}/identity.json")
+    ci_diag_emit_failure "${identity_status}" \
+      "Git source identity preflight failed"
+    return "${identity_status}"
+  fi
 
   trap 'ci_diag_on_error "$?" "$BASH_COMMAND"' ERR
   die() { ci_diag_die "$@"; }

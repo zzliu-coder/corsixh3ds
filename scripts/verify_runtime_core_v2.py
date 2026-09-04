@@ -25,13 +25,6 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-BASE = {
-    "commit": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d",
-    "tree": "c868f46a48055201e2e179c01f160d22d6b721dd",
-    "parent": "9bf6f5e64bccb2366f80d17cc426060e26664ce5",
-    "tracked_fingerprint_v3": "6919796ca6aaf183c70ed34a9db32c73409362572ad4fe8907b2dc39c1e5ecc6",
-    "tracked_entries": 199,
-}
 FORBIDDEN = [
     "0637cc8d64a3152ae27bee344806ae9aec58592b",
     "9ff2b84114df9070d578c88fe927255369c12b6d",
@@ -59,33 +52,24 @@ REQUIRED_PRODUCT_BASELINE = {
     "REAL_DEVICE_RUNTIME": "NOT_PROVEN",
     "S70_REAL_DEVICE_MEMORY": "NOT_PROVEN",
 }
-PRODUCT_FP = "20b404a5a90cf074f7f540b05e969b4e37da452047a9b30a6ca6cdd330e38d49"
+PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"
 ARCHIVE_SHA = "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
 UPSTREAM_DIGEST = "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
 ALLOWLIST = [
     ".github/workflows/old3ds-validation.yml",
-    "CMakeLists.txt",
-    "docs/runtime-core-v2-red-oracle.md",
-    "requirements/verifier.in",
-    "requirements/verifier.lock",
+    ".gitignore",
+    "scripts/ci_diagnostics.sh",
     "scripts/consume_runtime_core_v2.py",
-    "scripts/run_host_python_suite.py",
-    "scripts/run_verifier_python.sh",
     "scripts/test_all.sh",
     "scripts/verifier_driver.py",
     "scripts/verify_runtime_core_v2.py",
-    "tests/host-python-suite.json",
-    "tests/runtime_core_v2/evidence_protocol_adversarial.py",
+    "src/common/resource_manager.cpp",
     "tests/runtime_core_v2/result.schema.json",
     "tests/runtime_core_v2/review-policy.schema.json",
     "tests/test_build_scripts.py",
-    "tests/test_embedded_adapter.py",
-    "tests/test_integrator.py",
-    "tests/test_sdl2_patcher.py",
+    "tests/test_ci_diagnostics.py",
+    "tests/test_resource_manager.cpp",
     "tests/test_verifier_python_environment.py",
-    "tools/embed_platform_lua.py",
-    "tools/integrate_corsixth.py",
-    "tools/patch_sdl2_n3ds.py",
 ]
 CLOSURE_INPUTS = {
     "wrapper": "scripts/run_verifier_python.sh",
@@ -110,6 +94,18 @@ def require_verified_invocation(context: Any, operations: tuple[str, ...]) -> No
     if context is None or context.__class__.__name__ != "VerifiedInvocation":
         raise RuntimeError("VERIFIED_INVOCATION_REQUIRED")
     context.require(operations)
+
+
+def require_policy_context(context: Any, policy: dict[str, Any]) -> None:
+    if policy.get("verified_invocation") != context.record or \
+       policy.get("verified_invocation_sha256") != context.digest:
+        raise RuntimeError("VERIFIED_INVOCATION_BINDING_MISMATCH")
+    selected = context.record.get("baseline_identity")
+    base = policy.get("base_identity")
+    if not isinstance(selected, dict) or not isinstance(base, dict) or \
+       base.get("commit") != selected.get("commit") or \
+       base.get("tree") != selected.get("tree"):
+        raise RuntimeError("VERIFIED_BASELINE_IDENTITY_MISMATCH")
 
 VERIFIER_DEPENDENCIES = {
     "jsonschema": "4.25.1",
@@ -322,6 +318,31 @@ def reviewer_ancestry_commitment(consumer: Any, repo: Path, head: str,
                                  git_path: str) -> dict[str, Any]:
     """Use the already verified consumer module; candidate paths stay data."""
     return consumer.raw_ancestry_commitment(git_path, repo, head, FORBIDDEN)
+
+
+def baseline_identity(context: Any, consumer: Any, repo: Path,
+                      git_path: str) -> dict[str, Any]:
+    """Derive all non-selector baseline facts from the driver's verified context."""
+    selected = context.record.get("baseline_identity")
+    if not isinstance(selected, dict) or set(selected) != {"commit", "tree"}:
+        raise RuntimeError("VERIFIED_BASELINE_IDENTITY_MISSING")
+    commit = selected.get("commit", "")
+    tree = selected.get("tree", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit) or \
+       not re.fullmatch(r"[0-9a-f]{40}", tree):
+        raise RuntimeError("VERIFIED_BASELINE_IDENTITY_MALFORMED")
+    ancestry = consumer.raw_ancestry_commitment(git_path, repo, commit, [])
+    if ancestry["head"] != commit or ancestry["head_tree"] != tree or \
+       len(ancestry["head_parents"]) != 1:
+        raise RuntimeError("VERIFIED_BASELINE_IDENTITY_MISMATCH")
+    tracked_fp, tracked_entries = fingerprint(repo, commit)
+    return {
+        "commit": commit,
+        "tree": tree,
+        "parent": ancestry["head_parents"][0],
+        "tracked_fingerprint_v3": tracked_fp,
+        "tracked_entries": tracked_entries,
+    }
 
 
 def reject_verdict_fields(value: Any) -> None:
@@ -834,7 +855,8 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
             raise RuntimeError("EXECUTING_SOURCE_CLOSURE_MISMATCH: " + role)
     ancestry = reviewer_ancestry_commitment(consumer, repo, head, tools["git"])
     tree = ancestry["head_tree"]
-    if ancestry["head_parents"] != [BASE["commit"]]:
+    base = baseline_identity(context, consumer, repo, tools["git"])
+    if ancestry["head_parents"] != [base["commit"]]:
         raise RuntimeError("candidate first parent is not the remediation baseline")
     tracked_fp, tracked_entries = fingerprint(repo, head)
     product_fp, product_entries = fingerprint(
@@ -901,11 +923,11 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     }
     policy = {
         "schema": "cth3ds.runtime-core-review-policy/v6", "stage_id": "C3-R5",
-        "policy_id": policy_id, "created_at": now(), "base_identity": BASE,
+        "policy_id": policy_id, "created_at": now(), "base_identity": base,
         "verified_invocation": context.record,
         "verified_invocation_sha256": context.digest,
         "candidate_identity": {
-            "required_first_parent": BASE["commit"], "forbidden_ancestors": FORBIDDEN,
+            "required_first_parent": base["commit"], "forbidden_ancestors": FORBIDDEN,
             "expected_commit": head, "expected_tree": tree,
             "expected_candidate_fingerprint": tracked_fp,
             "expected_candidate_entries": tracked_entries, "require_clean": True,
@@ -1197,6 +1219,7 @@ def produce(context: Any, args: argparse.Namespace) -> int:
     if sha_bytes(raw) != args.expected_policy_sha256:
         raise RuntimeError("policy hash mismatch")
     policy = strict_load_bytes(raw)
+    require_policy_context(context, policy)
     repo = next(Path(item["absolute_realpath"]) for item in policy["roots"]
                 if item["root_id"] == "candidate")
     schema = strict_load(repo / "tests/runtime_core_v2/review-policy.schema.json")
@@ -1319,11 +1342,11 @@ def produce(context: Any, args: argparse.Namespace) -> int:
         "producer_version": "cth3ds-runtime-core-observer/4",
         "policy_id": policy["policy_id"],
         "policy_sha256": args.expected_policy_sha256, "created_at": now(),
-        "base_identity": BASE,
+        "base_identity": policy["base_identity"],
         "candidate_identity": {
             "commit": policy["candidate_identity"]["expected_commit"],
             "tree": policy["candidate_identity"]["expected_tree"],
-            "first_parent": BASE["commit"],
+            "first_parent": policy["base_identity"]["commit"],
             "tracked_fingerprint_v3":
                 policy["candidate_identity"]["expected_candidate_fingerprint"],
             "tracked_entries":
@@ -1331,7 +1354,8 @@ def produce(context: Any, args: argparse.Namespace) -> int:
         },
         "product_fingerprint": {
             "algorithm": "v3-mode-type-path-payload-sha256-nul",
-            "sha256": PRODUCT_FP, "entries": 54},
+            "sha256": policy["product_boundary"]["expected_product_fingerprint"],
+            "entries": policy["product_boundary"]["expected_product_entries"]},
         "builds": builds, "tools": tool_rows, "artifacts": artifacts,
         "fixtures": fixtures, "invocations": invocations,
     }

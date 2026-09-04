@@ -119,9 +119,77 @@ class AuthorityContractTests(unittest.TestCase):
         producer = WORKERS[0].read_text(encoding="utf-8")
         self.assertNotIn("pathlib.Path.write_text =", producer)
         self.assertNotIn("subprocess.run =", producer)
+        self.assertNotIn("BASE =", producer)
+        self.assertIn(
+            'PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"',
+            producer)
         consumer = WORKERS[1].read_text(encoding="utf-8")
         self.assertIn("parse_host_python_receipt", consumer)
         self.assertNotIn("python_counts = parse_unittest_counts", consumer)
+        self.assertNotIn("BASE_COMMIT =", consumer)
+        self.assertNotIn("PRODUCT_DIFF_NONZERO", consumer)
+        policy_schema = json.loads((
+            ROOT / "tests/runtime_core_v2/review-policy.schema.json"
+        ).read_text(encoding="utf-8"))
+        base_schema = policy_schema["properties"]["base_identity"]["properties"]
+        self.assertTrue(all("const" not in base_schema[name] for name in (
+            "commit", "tree", "parent", "tracked_fingerprint_v3",
+            "tracked_entries")))
+        candidate_schema = policy_schema[
+            "properties"]["candidate_identity"]["properties"]
+        self.assertNotIn("const", candidate_schema["required_first_parent"])
+        self.assertNotIn("prefixItems", candidate_schema[
+            "ancestry"]["properties"]["head_parents"])
+        result_schema = json.loads((
+            ROOT / "tests/runtime_core_v2/result.schema.json"
+        ).read_text(encoding="utf-8"))
+        self.assertNotIn("const", result_schema["$defs"][
+            "candidate_identity"]["properties"]["first_parent"])
+        spec = importlib.util.spec_from_file_location("cth3ds_driver_identity_test", DRIVER)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        head = module.run_git(ROOT, "rev-parse", "HEAD^{commit}")
+        tree = module.run_git(ROOT, "rev-parse", "HEAD^{tree}")
+        parents = module.run_git(
+            ROOT, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+        invocation = module.VerifiedInvocation({
+            "operation": "fresh-chain",
+            "repository": {
+                "realpath": str(ROOT), "head": head, "tree": tree,
+                "parents": parents,
+            },
+            "baseline_identity": {
+                "commit": module.BASE_COMMIT, "tree": module.BASE_TREE,
+            },
+            "source_closure": {"driver": {"path": str(DRIVER)}},
+            "python": {"executable": str(self.env_dir / "bin/python")},
+        }, module._SENTINEL)
+        args = type("FreshIdentity", (), {
+            "expected_candidate_head": head,
+            "expected_candidate_tree": tree,
+        })()
+        module.require_fresh_candidate_identity(invocation, args)
+        args.expected_candidate_tree = "0" * 40
+        with self.assertRaisesRegex(RuntimeError,
+                                    "EXECUTING_CANDIDATE_IDENTITY_MISMATCH"):
+            module.require_fresh_candidate_identity(invocation, args)
+        args.expected_candidate_tree = tree
+        wrong_parent = module.VerifiedInvocation({
+            **invocation.record,
+            "repository": {**invocation.record["repository"],
+                           "parents": ["0" * 40]},
+        }, module._SENTINEL)
+        with self.assertRaisesRegex(RuntimeError, "CANDIDATE_PARENT_MISMATCH"):
+            module.require_fresh_candidate_identity(wrong_parent, args)
+        expected_base_tree = module.BASE_TREE
+        try:
+            module.BASE_TREE = "0" * 40
+            with self.assertRaisesRegex(RuntimeError,
+                                        "CANDIDATE_PARENT_TREE_MISMATCH"):
+                module.require_fresh_candidate_identity(invocation, args)
+        finally:
+            module.BASE_TREE = expected_base_tree
 
     def test_W0_N01_wrapper_c(self) -> None:
         result = self.wrapper("W0-N01", "dash-c", ["-c", "print(1)"])
@@ -223,6 +291,15 @@ class AuthorityContractTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
         finally:
             marker.write_bytes(original_marker)
+        readme = ROOT / "README.md"
+        original_readme = readme.read_bytes()
+        try:
+            readme.write_bytes(original_readme + b"\n")
+            result = self.wrapper("W0-N12", "dirty-worktree", ["check-env"])
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("EXECUTING_REPOSITORY_NOT_CLEAN", result.stderr)
+        finally:
+            readme.write_bytes(original_readme)
 
     def test_W0_N13_N14_dependency_file_inventory_is_exact(self) -> None:
         site_packages = next((self.env_dir / "lib").glob("python*/site-packages"))

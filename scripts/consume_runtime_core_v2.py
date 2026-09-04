@@ -34,11 +34,6 @@ from jsonschema import Draft202012Validator, FormatChecker
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ID32 = re.compile(r"^[0-9a-f]{32}$")
-BASE_COMMIT = "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
-BASE_TREE = "c868f46a48055201e2e179c01f160d22d6b721dd"
-BASE_PARENT = "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
-BASE_FP = "6919796ca6aaf183c70ed34a9db32c73409362572ad4fe8907b2dc39c1e5ecc6"
-PRODUCT_FP = "20b404a5a90cf074f7f540b05e969b4e37da452047a9b30a6ca6cdd330e38d49"
 FORBIDDEN_KEYS = {
     "assertions", "status", "gate_status", "product_status",
     "review_decision", "candidate_is_expected",
@@ -179,6 +174,58 @@ def validate_definition(instance: Any, schema: dict[str, Any], name: str,
     validate_schema(instance, {"$schema": schema["$schema"],
                                "$defs": schema["$defs"],
                                "$ref": f"#/$defs/{name}"}, code)
+
+
+def validate_context_binding(context: Any, policy: dict[str, Any]) -> None:
+    recorded = policy.get("verified_invocation")
+    if not isinstance(recorded, dict) or \
+       policy.get("verified_invocation_sha256") != sha_bytes(canonical(recorded)):
+        fail("VERIFIED_INVOCATION_BINDING_MISMATCH",
+             "policy invocation digest is invalid")
+    current = context.record
+    recorded_repo = recorded.get("repository", {})
+    current_repo = current.get("repository", {})
+    if any(recorded_repo.get(name) != current_repo.get(name)
+           for name in ("realpath", "head", "tree", "parents")):
+        fail("VERIFIED_INVOCATION_BINDING_MISMATCH",
+             "policy and executing context select different repositories")
+    recorded_sources = recorded.get("source_closure", {})
+    current_sources = current.get("source_closure", {})
+    if set(recorded_sources) != set(current_sources) or any(
+            recorded_sources[role].get("sha256") !=
+            current_sources[role].get("sha256") for role in recorded_sources):
+        fail("VERIFIED_INVOCATION_BINDING_MISMATCH",
+             "policy and executing source closures differ")
+    selected = context.record.get("baseline_identity")
+    recorded_selected = recorded.get("baseline_identity")
+    base = policy.get("base_identity")
+    if not isinstance(selected, dict) or not isinstance(base, dict) or \
+       set(selected) != {"commit", "tree"} or \
+       selected != recorded_selected or \
+       base.get("commit") != selected.get("commit") or \
+       base.get("tree") != selected.get("tree"):
+        fail("GIT_TOPOLOGY", "policy baseline differs from verified selector")
+
+
+def validate_base_identity(policy: dict[str, Any], git_path: str,
+                           repo: Path) -> str:
+    base = policy.get("base_identity", {})
+    commit = base.get("commit", "")
+    if not HEX40.fullmatch(commit):
+        fail("GIT_TOPOLOGY", "policy baseline commit malformed")
+    ancestry = raw_ancestry_commitment(git_path, repo, commit, [])
+    tracked_fp, tracked_count, _ = fingerprint(git_path, repo, commit)
+    expected = {
+        "commit": commit,
+        "tree": ancestry["head_tree"],
+        "parent": (ancestry["head_parents"][0]
+                   if len(ancestry["head_parents"]) == 1 else None),
+        "tracked_fingerprint_v3": tracked_fp,
+        "tracked_entries": tracked_count,
+    }
+    if base != expected:
+        fail("GIT_TOPOLOGY", "policy baseline is not derived from Git objects")
+    return commit
 
 
 def reject_forbidden_keys(value: Any) -> None:
@@ -458,7 +505,7 @@ def parse_host_python_receipt(text: str, policy: dict[str, Any]) -> tuple[dict[s
     candidate = receipt.get("candidate", {})
     if candidate.get("commit") != identity["expected_commit"] or \
             candidate.get("tree") != identity["expected_tree"] or \
-            candidate.get("parents") != [BASE_COMMIT] or \
+            candidate.get("parents") != [policy["base_identity"]["commit"]] or \
             candidate.get("tracked_worktree_clean") is not True:
         fail("HOST_PYTHON_CANDIDATE_BINDING", "runner candidate identity differs")
     interpreter = receipt.get("interpreter", {})
@@ -827,6 +874,7 @@ def consume(context: Any, args: argparse.Namespace) -> int:
     policy = strict_json(policy_raw)
     if not isinstance(policy, dict):
         fail("POLICY_SCHEMA", "policy is not object")
+    validate_context_binding(context, policy)
     roots_rows = policy.get("roots", [])
     if len(roots_rows) != 9:
         fail("EXTRA_ROOT_OR_BUILD", "policy root cardinality changed")
@@ -908,6 +956,7 @@ def consume(context: Any, args: argparse.Namespace) -> int:
     tools = exact_role_map(manifest["tools"],
         {role for kind, role in expected if kind == "tool"}, "tool")
     git_path = tools["git"]["absolute_realpath"]
+    base_commit = validate_base_identity(policy, git_path, candidate)
     head = run_git(git_path, candidate, "rev-parse", "HEAD^{commit}")[1].decode().strip()
     identity = policy["candidate_identity"]
     if not HEX40.fullmatch(identity.get("expected_commit", "")) or \
@@ -919,7 +968,8 @@ def consume(context: Any, args: argparse.Namespace) -> int:
     parents = ancestry["head_parents"]
     if head != identity["expected_commit"] or tree != identity["expected_tree"]:
         fail("CANDIDATE_IDENTITY_MISMATCH", "candidate commit/tree mismatch")
-    if parents != [BASE_COMMIT]:
+    if parents != [base_commit] or \
+       identity.get("required_first_parent") != base_commit:
         fail("GIT_TOPOLOGY", "candidate is not the required single-parent commit")
     if ancestry != identity.get("ancestry"):
         fail("ANCESTRY_COMMITMENT_MISMATCH",
@@ -934,7 +984,7 @@ def consume(context: Any, args: argparse.Namespace) -> int:
        tracked_count != identity["expected_candidate_entries"]:
         fail("CANDIDATE_FINGERPRINT_MISMATCH", "candidate tracked fingerprint mismatch")
     live_identity = {
-        "commit": head, "tree": tree, "first_parent": BASE_COMMIT,
+        "commit": head, "tree": tree, "first_parent": base_commit,
         "tracked_fingerprint_v3": tracked_fp,
         "tracked_entries": tracked_count,
     }
@@ -949,12 +999,9 @@ def consume(context: Any, args: argparse.Namespace) -> int:
        product_count != product["expected_product_entries"]:
         fail("PRODUCT_FINGERPRINT_MISMATCH", "product fingerprint mismatch")
     diff = run_git(git_path, candidate, "diff", "--name-only",
-                   BASE_COMMIT, head)[1].decode().splitlines()
-    if any(path not in set(product["allowlist_exact"]) for path in diff):
-        fail("DIFF_OUTSIDE_ALLOWLIST", "candidate diff outside exact allowlist")
-    if any(path in set(product["product_exact"]) or
-           path.startswith(tuple(product["product_prefixes"])) for path in diff):
-        fail("PRODUCT_DIFF_NONZERO", "product path changed")
+                   base_commit, head)[1].decode().splitlines()
+    if set(diff) != set(product["allowlist_exact"]):
+        fail("DIFF_OUTSIDE_ALLOWLIST", "candidate diff is not the exact allowlist")
 
     artifact_roles = {role for kind, role in expected if kind == "artifact"}
     artifacts = exact_role_map(manifest["artifacts"], artifact_roles, "artifact")
@@ -1196,8 +1243,8 @@ def consume(context: Any, args: argparse.Namespace) -> int:
         fail("HOST_REGRESSION_COUNT_MISMATCH", "CTest 3/3 missing")
     cpp_text = (artifact_data["cpp-stdout"] +
                 artifact_data["cpp-stderr"]).decode(errors="replace")
-    if "Ran 105 tests; 0 failed" not in cpp_text:
-        fail("HOST_REGRESSION_COUNT_MISMATCH", "C++ 105/105 missing")
+    if "Ran 106 tests; 0 failed" not in cpp_text:
+        fail("HOST_REGRESSION_COUNT_MISMATCH", "C++ 106/106 missing")
     python_text = (artifact_data["python-stdout"] +
                    artifact_data["python-stderr"]).decode(errors="replace")
     python_receipt, python_counts = parse_host_python_receipt(python_text, policy)
@@ -1476,8 +1523,8 @@ def consume(context: Any, args: argparse.Namespace) -> int:
             },
             "host_facts": {"ctest_passed": 3, "ctest_failed": 0,
                            "ctest_total": 3,
-                           "cpp_passed": 105, "cpp_failed": 0,
-                           "cpp_total": 105, **{"python_" + key: value
+                           "cpp_passed": 106, "cpp_failed": 0,
+                           "cpp_total": 106, **{"python_" + key: value
                            for key, value in python_counts.items()},
                            "python_unexpected_skipped": 0,
                            "python_runner_sha256": policy["host_regression"]["runner_sha256"],
@@ -1703,9 +1750,11 @@ def live_identity_from_policy(candidate: Path, policy: dict[str, Any]) -> dict[s
     tree = run_git(git_path, candidate, "rev-parse", "HEAD^{tree}")[1].decode().strip()
     parents = run_git(git_path, candidate, "show", "-s", "--format=%P", head)[1].decode().split()
     tracked_fp, tracked_count, _ = fingerprint(git_path, candidate, head)
-    if parents != [BASE_COMMIT]:
+    base_commit = validate_base_identity(policy, git_path, candidate)
+    if parents != [base_commit] or \
+       policy["candidate_identity"].get("required_first_parent") != base_commit:
         fail("GIT_TOPOLOGY", "finalizer candidate is not A0 single-parent")
-    return {"commit": head, "tree": tree, "first_parent": BASE_COMMIT,
+    return {"commit": head, "tree": tree, "first_parent": base_commit,
             "tracked_fingerprint_v3": tracked_fp,
             "tracked_entries": tracked_count}
 
@@ -1922,6 +1971,7 @@ def finalize(context: Any, args: argparse.Namespace) -> int:
     if not args.expected_policy_sha256 or sha_bytes(policy_raw) != args.expected_policy_sha256:
         fail("POLICY_HASH_MISMATCH", "policy differs from external digest")
     policy = strict_json(policy_raw)
+    validate_context_binding(context, policy)
     matrix_raw = bootstrap_read(args.matrix.resolve(strict=True))
     validate_policy_acceptance(policy, candidate, matrix_raw,
                                args.expected_matrix_sha256)
@@ -2125,6 +2175,7 @@ def verify_final(context: Any, args: argparse.Namespace) -> int:
     schema_raw = secure_read(seal, schema_paths[0], 268435456,
                              require_single_link=False)
     policy = strict_json(policy_raw)
+    validate_context_binding(context, policy)
     schema = strict_json(schema_raw)
     manifest = strict_json(secure_read(seal, manifest_paths[0], 268435456,
                                        require_single_link=False))

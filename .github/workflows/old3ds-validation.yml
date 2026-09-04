@@ -9,34 +9,109 @@ jobs:
   host-python:
     name: host-python-${{ matrix.python }}
     runs-on: ubuntu-latest
+    needs: old3ds-cross-build
     strategy:
       fail-fast: false
       matrix:
         python: ['3.9.25', '3.14']
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify complete source identity
+        run: |
+          mkdir -p artifacts/ci
+          test "$(git rev-parse --is-shallow-repository)" = false
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
+          git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
+          git rev-list --topo-order HEAD >> artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+      - name: Install native host runtime inputs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ lua5.4 liblua5.4-0
+          mkdir -p "$RUNNER_TEMP/cth3ds-bin"
+          ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua"
+          echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"
+          cmake -S . -B "$RUNNER_TEMP/cth3ds-host-python" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCTH3DS_BUILD_TESTS=OFF \
+            -DCTH3DS_BUILD_SIMULATOR=ON \
+            -DCTH3DS_BUILD_3DS_SYNTAX_CHECK=ON \
+            -DCTH3DS_WARNINGS_AS_ERRORS=ON
+          cmake --build "$RUNNER_TEMP/cth3ds-host-python" --parallel 2 \
+            --target cth3ds-simulator cth3ds-runtime-probe
+      - name: Download exact-head cross runtime proof
+        uses: actions/download-artifact@v4
+        with:
+          name: corsixth-old3ds
+          path: ${{ runner.temp }}/cth3ds-cross-evidence
+      - name: Verify exact-head cross runtime proof
+        run: |
+          mkdir -p "$RUNNER_TEMP/cross-proof"
+          proof="$(find "$RUNNER_TEMP/cth3ds-cross-evidence" -type f -name runtime-core-link-proof.json -print -quit)"
+          manifest="$(find "$RUNNER_TEMP/cth3ds-cross-evidence" -type f -name artifact-manifest.json -print -quit)"
+          identity="$(find "$RUNNER_TEMP/cth3ds-cross-evidence" -type f -name source-identity-old3ds-cross-build.txt -print -quit)"
+          test -n "$proof" && test -n "$manifest" && test -n "$identity"
+          cp "$proof" "$RUNNER_TEMP/cross-proof/runtime-core-link-proof.json"
+          python - "$manifest" "$identity" <<'PY'
+          import json, pathlib, subprocess, sys
+          manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          identity = pathlib.Path(sys.argv[2]).read_text().splitlines()
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip()
+          parent = subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip()
+          if manifest.get("source_commit") != head or manifest.get("source_tree") != tree:
+              raise SystemExit("cross artifact manifest is not bound to this head/tree")
+          if identity[:3] != [head, tree, parent]:
+              raise SystemExit("cross source identity is not bound to this head/tree/parent")
+          PY
       - name: Run manifest-bound host Python suite
+        env:
+          CTH3DS_SIMULATOR: ${{ runner.temp }}/cth3ds-host-python/cth3ds-simulator
+          CTH3DS_RUNTIME_PROBE: ${{ runner.temp }}/cth3ds-host-python/cth3ds-runtime-probe
+          CTH3DS_RUNTIME_LINK_PROOF: ${{ runner.temp }}/cross-proof/runtime-core-link-proof.json
         run: |
           python scripts/run_host_python_suite.py \
             --repo "$PWD" \
             --manifest "$PWD/tests/host-python-suite.json" \
             --output "$PWD/artifacts/verification/host-python-${{ matrix.python }}.json"
+          python - "$PWD/artifacts/verification/host-python-${{ matrix.python }}.json" <<'PY'
+          import json, pathlib, sys
+          totals = json.loads(pathlib.Path(sys.argv[1]).read_text())["execution"]["totals"]
+          expected = {"selected": 149, "accounted": 149, "passed": 149, "failed": 0, "errors": 0, "skipped": 0}
+          if totals != expected:
+              raise SystemExit(f"host Python contract mismatch: {totals}")
+          print("149 passed, 0 failed, 0 errors, 0 skipped")
+          PY
       - name: Upload host Python receipt
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: host-python-${{ matrix.python }}-evidence
           if-no-files-found: error
-          path: artifacts/verification/host-python-${{ matrix.python }}.json
+          path: |
+            artifacts/verification/host-python-${{ matrix.python }}.json
+            artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
 
   protocol-self-test:
     name: runtime-core-protocol-self-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify complete source identity
+        run: |
+          mkdir -p artifacts/ci
+          test "$(git rev-parse --is-shallow-repository)" = false
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-protocol-self-test.txt
+          git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-protocol-self-test.txt
+          git rev-list --topo-order HEAD >> artifacts/ci/source-identity-protocol-self-test.txt
       - name: Select the minimum verifier Python
         uses: actions/setup-python@v7
         with:
@@ -72,12 +147,23 @@ jobs:
           path: |
             artifacts/verification/protocol-self-test
             artifacts/ci/protocol-self-test
+            artifacts/ci/source-identity-protocol-self-test.txt
 
   verifier-authority-negative:
     name: verifier-authority-negative
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify complete source identity
+        run: |
+          mkdir -p artifacts/ci
+          test "$(git rev-parse --is-shallow-repository)" = false
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-verifier-authority-negative.txt
+          git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-verifier-authority-negative.txt
+          git rev-list --topo-order HEAD >> artifacts/ci/source-identity-verifier-authority-negative.txt
       - uses: actions/setup-python@v7
         with:
           python-version: '3.9.25'
@@ -103,7 +189,9 @@ jobs:
         with:
           name: verifier-authority-negative-evidence
           if-no-files-found: error
-          path: artifacts/verification/authority-negative
+          path: |
+            artifacts/verification/authority-negative
+            artifacts/ci/source-identity-verifier-authority-negative.txt
 
   host:
     name: host-${{ matrix.name }}
@@ -122,18 +210,32 @@ jobs:
             run_common: "0"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify complete source identity
+        run: |
+          mkdir -p artifacts/ci
+          test "$(git rev-parse --is-shallow-repository)" = false
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-host-${{ matrix.name }}.txt
+          git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-host-${{ matrix.name }}.txt
+          git rev-list --topo-order HEAD >> artifacts/ci/source-identity-host-${{ matrix.name }}.txt
       - name: Install host dependencies
         run: >-
           ./scripts/run_ci_command.sh host-${{ matrix.name }}-setup
           artifacts/ci/host-${{ matrix.name }}-setup --
           bash -c 'sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          cmake ninja-build clang liblua5.4-0 python3'
+          cmake ninja-build gcc-13 g++-13 clang liblua5.4-0 python3'
+      - name: Verify setup preserves repository cleanliness
+        run: test -z "$(git status --porcelain=v1 --untracked-files=all)"
       - name: Run isolated host verification
         env:
           CTH3DS_HOST_MATRIX: ${{ matrix.name }}
           CTH3DS_RUN_COMMON: ${{ matrix.run_common }}
           CTH3DS_VERIFY_CROSS: "0"
           CTH3DS_JOBS: "2"
+          CTH3DS_GCC: gcc-13
+          CTH3DS_GXX: g++-13
         run: ./scripts/test_all.sh
       - name: Upload host evidence
         if: always()
@@ -150,8 +252,29 @@ jobs:
     container: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
     env:
       CTH3DS_CONTAINER_IMAGE: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
+      DEVKITPRO: /opt/devkitpro
+      DEVKITARM: /opt/devkitpro/devkitARM
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Persist source and ARM toolchain identity
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "$DEVKITARM/bin" >> "$GITHUB_PATH"
+          export PATH="$DEVKITARM/bin:$PATH"
+          test "$(git rev-parse --is-shallow-repository)" = false
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p artifacts/ci
+          git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-old3ds-cross-build.txt
+          git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-old3ds-cross-build.txt
+          git rev-list --topo-order HEAD >> artifacts/ci/source-identity-old3ds-cross-build.txt
+          compiler="$(command -v arm-none-eabi-gcc)"
+          test "$compiler" = /opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc
+          {
+            printf 'compiler=%s\n' "$compiler"
+            arm-none-eabi-gcc --version
+          } > artifacts/ci/old3ds-arm-compiler.txt
       - name: Install host tools with apt
         run: >-
           ./scripts/run_ci_command.sh old3ds-host-tools
@@ -166,8 +289,6 @@ jobs:
           3ds-dev 3ds-cmake 3ds-pkg-config 3ds-zlib 3ds-libpng 3ds-freetype 3ds-bzip2
       - name: Build CorsixTH for Nintendo 3DS
         env:
-          DEVKITPRO: /opt/devkitpro
-          DEVKITARM: /opt/devkitpro/devkitARM
           CTH3DS_JOBS: "2"
         run: ./scripts/build_3ds.sh
       - name: Upload cross-build diagnostics and outputs

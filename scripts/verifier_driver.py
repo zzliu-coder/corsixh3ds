@@ -29,8 +29,8 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 EXIT_REJECTED = 2
 EXIT_CLI = 64
 LOCK_SHA256 = "0bec73ce08a019ea3b7a78429f75d03e074d25c0599c8e5a770f25cbbe93bf37"
-BASE_COMMIT = "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
-BASE_TREE = "c868f46a48055201e2e179c01f160d22d6b721dd"
+BASE_COMMIT = "f112a2d3ee2b61a9ad2aed6c7d6b1442c834a052"
+BASE_TREE = "b466e34190975547c3071e5d1970fd600743fb29"
 REJECTED_CANDIDATE = "0637cc8d64a3152ae27bee344806ae9aec58592b"
 DEPENDENCIES = {
     "attrs": "25.3.0",
@@ -288,6 +288,12 @@ def audit_invocation(operation: str) -> VerifiedInvocation:
     head = run_git(repo, "rev-parse", "HEAD^{commit}")
     tree = run_git(repo, "rev-parse", "HEAD^{tree}")
     parents = run_git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+    baseline_commit = run_git(repo, "rev-parse", "%s^{commit}" % BASE_COMMIT)
+    baseline_tree = run_git(repo, "rev-parse", "%s^{tree}" % BASE_COMMIT)
+    if baseline_commit != BASE_COMMIT:
+        raise RuntimeError("BASELINE_COMMIT_MISMATCH")
+    if baseline_tree != BASE_TREE:
+        raise RuntimeError("BASELINE_TREE_MISMATCH")
     status_text = run_git(repo, "status", "--porcelain=v1", "--untracked-files=all")
     if status_text:
         raise RuntimeError("EXECUTING_REPOSITORY_NOT_CLEAN")
@@ -311,6 +317,7 @@ def audit_invocation(operation: str) -> VerifiedInvocation:
             "clean": True, "head": head, "tree": tree, "parents": parents,
             "tracked_closure": tracked_closure(repo),
         },
+        "baseline_identity": {"commit": baseline_commit, "tree": baseline_tree},
         "source_closure": sources,
         "python": {
             "executable": str(python_lexical),
@@ -498,6 +505,19 @@ def run_protocol(invocation: VerifiedInvocation, args: argparse.Namespace) -> in
     return 0
 
 
+def require_fresh_candidate_identity(invocation: VerifiedInvocation,
+                                     args: argparse.Namespace) -> None:
+    if args.expected_candidate_head != invocation.record["repository"]["head"] or \
+       args.expected_candidate_tree != invocation.record["repository"]["tree"]:
+        raise RuntimeError("EXECUTING_CANDIDATE_IDENTITY_MISMATCH")
+    parents = invocation.record["repository"]["parents"]
+    if parents != [BASE_COMMIT]:
+        raise RuntimeError("CANDIDATE_PARENT_MISMATCH")
+    parent_tree = run_git(invocation.repo, "rev-parse", "%s^{tree}" % parents[0])
+    if parent_tree != BASE_TREE:
+        raise RuntimeError("CANDIDATE_PARENT_TREE_MISMATCH")
+
+
 def run_fresh(invocation: VerifiedInvocation, args: argparse.Namespace) -> int:
     invocation.require(("fresh-chain",))
     validate_hex(args.expected_candidate_head, 40, "CANDIDATE_HEAD")
@@ -512,11 +532,7 @@ def run_fresh(invocation: VerifiedInvocation, args: argparse.Namespace) -> int:
         validate_hex(args.expected_candidate_input_sha256, 64, "BUNDLE")
     elif args.expected_candidate_input_sha256:
         raise RuntimeError("BUNDLE_DIGEST_FORBIDDEN_FOR_DETACHED_REPO")
-    if args.expected_candidate_head != invocation.record["repository"]["head"] or \
-       args.expected_candidate_tree != invocation.record["repository"]["tree"]:
-        raise RuntimeError("EXECUTING_CANDIDATE_IDENTITY_MISMATCH")
-    if invocation.record["repository"]["parents"] != [BASE_COMMIT]:
-        raise RuntimeError("CANDIDATE_PARENT_MISMATCH")
+    require_fresh_candidate_identity(invocation, args)
     runner = load_module("runner", invocation.repo / SOURCE_FILES["runner"])
     producer = load_module("producer", invocation.repo / SOURCE_FILES["producer"])
     consumer = load_module("consumer", invocation.repo / SOURCE_FILES["consumer"])

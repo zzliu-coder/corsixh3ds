@@ -567,6 +567,17 @@ ResourcePool default_pool(ResourceKind kind) noexcept {
   return ResourcePool::Unclassified;
 }
 
+ResourceResult<std::uint64_t> resource_package_budget_cap(
+    const PackageBudgets& budgets, ResourcePool pool) noexcept {
+  const std::size_t pool_index = static_cast<std::size_t>(pool);
+  if (pool_index >= budgets.bytes.size()) {
+    return ResourceResult<std::uint64_t>::failure(make_error(
+        ResourceErrorCode::BudgetContract,
+        "allocation plan pool is outside the package budget contract"));
+  }
+  return ResourceResult<std::uint64_t>::success(budgets.bytes[pool_index]);
+}
+
 ResourceManager::ResourceManager(
     std::shared_ptr<const MountedBundle> bundle,
     std::shared_ptr<ResourceTelemetrySink> telemetry,
@@ -619,11 +630,17 @@ ResourceResult<ResourceLease> ResourceManager::acquire(
       state_->event(CacheEvent::Acquire, entry, id);
       return ResourceResult<ResourceLease>::success(ResourceLease(state_, id));
     }
-    const std::size_t pool_index = static_cast<std::size_t>(plan.pool);
     const MountedPackage& package =
         state_->bundle->packages[descriptor->package_index];
-    const std::uint64_t cap = std::min(resource_pool_limit(plan.pool),
-                                      package.budgets.bytes[pool_index]);
+    auto package_cap = resource_package_budget_cap(package.budgets, plan.pool);
+    if (!package_cap) {
+      ResourceError rejected = package_cap.error();
+      rejected.resource_id = id;
+      state_->reject(rejected, ResourcePool::Unclassified, reservation);
+      return ResourceResult<ResourceLease>::failure(rejected);
+    }
+    const std::uint64_t cap =
+        std::min(resource_pool_limit(plan.pool), package_cap.value());
     while (!allocation_fits_pool_budget(
         state_->ledger.pool_live_bytes(plan.pool), reservation, cap)) {
       if (!state_->evict_one(plan.pool)) {
@@ -818,10 +835,16 @@ ResourceResult<ResourceLease> ResourceManager::acquire_derived(
         return ResourceResult<ResourceLease>::failure(rejected);
       }
     }
-    const std::size_t pool_index = static_cast<std::size_t>(plan.pool);
     const MountedPackage& package = state_->bundle->packages[source->package_index];
-    const std::uint64_t cap = std::min(resource_pool_limit(plan.pool),
-                                      package.budgets.bytes[pool_index]);
+    auto package_cap = resource_package_budget_cap(package.budgets, plan.pool);
+    if (!package_cap) {
+      ResourceError rejected = package_cap.error();
+      rejected.resource_id = cache_id;
+      state_->reject(rejected, ResourcePool::Unclassified, reservation);
+      return ResourceResult<ResourceLease>::failure(rejected);
+    }
+    const std::uint64_t cap =
+        std::min(resource_pool_limit(plan.pool), package_cap.value());
     while (!allocation_fits_pool_budget(
         state_->ledger.pool_live_bytes(plan.pool), reservation, cap)) {
       if (!state_->evict_one(plan.pool)) {

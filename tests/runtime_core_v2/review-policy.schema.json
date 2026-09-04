@@ -85,19 +85,24 @@
       ],
       "properties": {
         "commit": {
-          "const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
         },
         "tree": {
-          "const": "c868f46a48055201e2e179c01f160d22d6b721dd"
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
         },
         "parent": {
-          "const": "9bf6f5e64bccb2366f80d17cc426060e26664ce5"
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
         },
         "tracked_fingerprint_v3": {
-          "const": "6919796ca6aaf183c70ed34a9db32c73409362572ad4fe8907b2dc39c1e5ecc6"
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "tracked_entries": {
-          "const": 199
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false
@@ -116,7 +121,8 @@
       ],
       "properties": {
         "required_first_parent": {
-          "const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
         },
         "forbidden_ancestors": {
           "type": "array",
@@ -172,7 +178,7 @@
             "object_format": {"const": "sha1"},
             "head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
             "head_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-            "head_parents": {"type": "array", "prefixItems": [{"const": "461cf89e3530cc7cebe7ae510f5559a2832d7f5d"}], "items": false, "minItems": 1, "maxItems": 1},
+            "head_parents": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 1, "maxItems": 1},
             "first_parent_chain": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 2, "uniqueItems": true},
             "roots": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "minItems": 1, "uniqueItems": true},
             "commit_count": {"type": "integer", "minimum": 2},
@@ -250,8 +256,8 @@
           "items": {
             "type": "string"
           },
-          "minItems": 23,
-          "maxItems": 24,
+          "minItems": 14,
+          "maxItems": 15,
           "uniqueItems": true
         },
         "forbidden_patterns": {

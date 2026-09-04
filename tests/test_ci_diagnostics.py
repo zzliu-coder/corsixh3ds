@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -58,6 +59,14 @@ class CiDiagnosticsTests(unittest.TestCase):
                     ["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True
                 ).strip(),
             )
+            self.assertEqual(
+                identity["source"]["parents"],
+                subprocess.check_output(
+                    ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+                    cwd=ROOT,
+                    text=True,
+                ).split()[1:],
+            )
 
     def test_success_path_writes_machine_readable_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -106,6 +115,44 @@ class CiDiagnosticsTests(unittest.TestCase):
             self.assertEqual(summary["failed_command"], "forced preflight failure")
             self.assertIn("machine summary:", result.stderr)
 
+            root = Path(temporary) / "not-a-repository"
+            root.mkdir()
+            non_git_output = Path(temporary) / "non-git-evidence"
+            environment = os.environ.copy()
+            non_git_command = (
+                'set -euo pipefail; CTH3DS_ROOT="$1"; export CTH3DS_ROOT; '
+                'source "$2"; ci_diag_init non-git-root "$3"; '
+                "printf 'must not execute\\n'"
+            )
+            non_git_result = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    non_git_command,
+                    "non-git-test",
+                    str(root),
+                    str(ROOT / "scripts" / "ci_diagnostics.sh"),
+                    str(non_git_output),
+                ],
+                cwd=root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(non_git_result.returncode, 0)
+            non_git_summary = json.loads(
+                (non_git_output / "summary.json").read_text()
+            )
+            identity = json.loads((non_git_output / "identity.json").read_text())
+            self.assertEqual(non_git_summary["status"], "FAIL")
+            self.assertEqual(non_git_summary["stage"], "source-identity")
+            self.assertEqual(identity["source"]["status"], "FAIL")
+            self.assertNotIn("commit", identity["source"])
+            self.assertNotIn("tree", identity["source"])
+            self.assertNotIn("dirty", identity["source"])
+            self.assertNotIn("must not execute", non_git_result.stdout)
 
 if __name__ == "__main__":
     unittest.main()

@@ -90,6 +90,57 @@ class BuildScriptTests(unittest.TestCase):
             workflow,
             r"devkitpro/devkitarm@sha256:[0-9a-f]{64}",
         )
+        checkouts = list(
+            re.finditer(
+                r"(?m)^\s*- uses: actions/checkout@v4\n"
+                r"\s+with:\n"
+                r"\s+fetch-depth: 0$",
+                workflow,
+            )
+        )
+        self.assertEqual(workflow.count("uses: actions/checkout@v4"), 5)
+        self.assertEqual(len(checkouts), 5)
+        self.assertEqual(workflow.count("git rev-parse --is-shallow-repository"), 5)
+        self.assertEqual(
+            len(
+                re.findall(
+                    r"git rev-parse HEAD HEAD\^\{tree\} HEAD\^ > artifacts/ci/source-identity-",
+                    workflow,
+                )
+            ),
+            5,
+        )
+        self.assertEqual(workflow.count("git rev-list --parents -n 1 HEAD"), 5)
+        host_python = workflow.split("  protocol-self-test:", 1)[0]
+        for token in (
+            "needs: old3ds-cross-build",
+            "lua5.4",
+            "cth3ds-simulator",
+            "cth3ds-runtime-probe",
+            "actions/download-artifact@v4",
+            "name: corsixth-old3ds",
+            "CTH3DS_SIMULATOR:",
+            "CTH3DS_RUNTIME_PROBE:",
+            "CTH3DS_RUNTIME_LINK_PROOF:",
+            "149 passed, 0 failed, 0 errors, 0 skipped",
+        ):
+            self.assertIn(token, host_python)
+        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        self.assertIn("/artifacts/ci/", ignored)
+        self.assertIn("git status --porcelain=v1 --untracked-files=all", workflow)
+        verifier = (ROOT / "scripts/verifier_driver.py").read_text(encoding="utf-8")
+        self.assertIn("--untracked-files=all", verifier)
+        cross = workflow.split("  old3ds-cross-build:", 1)[1]
+        for token in (
+            "DEVKITPRO: /opt/devkitpro",
+            "DEVKITARM: /opt/devkitpro/devkitARM",
+            'git config --global --add safe.directory "$GITHUB_WORKSPACE"',
+            'echo "$DEVKITARM/bin" >> "$GITHUB_PATH"',
+            "command -v arm-none-eabi-gcc",
+            "/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
+            "arm-none-eabi-gcc --version",
+        ):
+            self.assertIn(token, cross)
 
     def test_host_verification_keeps_generated_report_under_artifacts(self) -> None:
         script = (ROOT / "scripts/test_all.sh").read_text(encoding="utf-8")
@@ -97,6 +148,24 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('PREVIEW_DIR="${LOG_DIR}/preview"', script)
         self.assertIn('"${LOG_DIR}/summary.json" "${LOG_DIR}/report.md"', script)
         self.assertNotIn('docs/VM_VERIFICATION.md', script)
+        for token in (
+            "CMakeCXXCompiler.cmake",
+            "CMAKE_CXX_COMPILER_ID",
+            "CMAKE_CXX_COMPILER_VERSION",
+            "compiler_path",
+            "expected_ids",
+            "gcc-",
+            "AppleClang",
+            "if common_ran:",
+            "python_receipt = None",
+        ):
+            self.assertIn(token, script)
+        source = (ROOT / "src/common/resource_manager.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(source.count("resource_package_budget_cap("), 3)
+        self.assertEqual(source.count("budgets.bytes[pool_index]"), 1)
+        self.assertIn("pool_index >= budgets.bytes.size()", source)
 
     def test_container_build_uses_immutable_image_without_rolling_upgrade(self) -> None:
         script = (ROOT / "scripts/build_3ds_docker.sh").read_text(

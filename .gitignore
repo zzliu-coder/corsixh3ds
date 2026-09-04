@@ -2,6 +2,7 @@
 /external/
 /dist/
 /artifacts/verification/
+/artifacts/ci/
 /local-devkitpro/
 /local-portlibs/
 /work/

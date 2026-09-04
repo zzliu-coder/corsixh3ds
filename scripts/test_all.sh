@@ -84,6 +84,7 @@ configure_build_test() {
   local fingerprint_file="${LOG_DIR}/${name}-source.sha256"
   if [[ "${VERIFY_RESUME}" == "1" && -f "${fingerprint_file}" &&
         "$(cat "${fingerprint_file}")" == "${SOURCE_FINGERPRINT}" &&
+        -f "${LOG_DIR}/${name}-compiler.json" &&
         -f "${LOG_DIR}/${name}-ctest.log" &&
         -s "${LOG_DIR}/${name}-simulator/top.ppm" ]] &&
         grep -q '100% tests passed, 0 tests failed' "${LOG_DIR}/${name}-ctest.log"; then
@@ -102,8 +103,60 @@ configure_build_test() {
     -DCTH3DS_WARNINGS_AS_ERRORS=ON \
     -DCTH3DS_ENABLE_SANITIZERS="${sanitizers}" \
     >"${LOG_DIR}/${name}-configure.log" 2>&1
+  ci_diag_step "${name}-compiler-identity" \
+    "${LOG_DIR}/${name}-configure.log" "${LOG_DIR}/${name}-compiler.json"
+  python3 - "${build}" "${name}" "${cc}" "${cxx}" \
+    "${LOG_DIR}/${name}-compiler.json" <<'PY'
+from __future__ import annotations
+import json
+import pathlib
+import re
+import shutil
+import sys
+
+build = pathlib.Path(sys.argv[1])
+name, requested_cc, requested_cxx = sys.argv[2:5]
+output = pathlib.Path(sys.argv[5])
+matches = list(build.glob("CMakeFiles/*/CMakeCXXCompiler.cmake"))
+if len(matches) != 1:
+    raise SystemExit(f"expected one CMakeCXXCompiler.cmake, found {len(matches)}")
+text = matches[0].read_text(encoding="utf-8", errors="replace")
+
+
+def cmake_value(variable: str) -> str:
+    match = re.search(rf'^set\({variable} "([^"]*)"\)$', text, re.MULTILINE)
+    if match is None or not match.group(1):
+        raise SystemExit(f"missing {variable} in {matches[0]}")
+    return match.group(1)
+
+
+compiler_id = cmake_value("CMAKE_CXX_COMPILER_ID")
+compiler_version = cmake_value("CMAKE_CXX_COMPILER_VERSION")
+compiler_value = cmake_value("CMAKE_CXX_COMPILER")
+resolved = pathlib.Path(compiler_value).resolve(strict=True)
+expected_ids = ("GNU",) if name.startswith("gcc-") else ("Clang", "AppleClang")
+if compiler_id not in expected_ids:
+    raise SystemExit(
+        f"{name} resolved {compiler_id}, expected one of {expected_ids}"
+    )
+if name.startswith("gcc-") and not compiler_version.startswith("13."):
+    raise SystemExit(f"{name} resolved GNU {compiler_version}, expected GNU 13")
+identity = {
+    "matrix": name,
+    "expected_ids": list(expected_ids),
+    "requested_cc": requested_cc,
+    "requested_cxx": requested_cxx,
+    "requested_cxx_path": shutil.which(requested_cxx),
+    "compiler_path": str(resolved),
+    "compiler_id": compiler_id,
+    "compiler_version": compiler_version,
+    "cmake_identity_file": str(matches[0].resolve()),
+}
+output.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+print(json.dumps(identity, sort_keys=True))
+PY
   ci_diag_step "${name}-build" "${LOG_DIR}/${name}-configure.log" \
-    "${LOG_DIR}/${name}-build.log"
+    "${LOG_DIR}/${name}-compiler.json" "${LOG_DIR}/${name}-build.log"
   cmake --build "${build}" --parallel "${CTH3DS_JOBS}" \
     >"${LOG_DIR}/${name}-build.log" 2>&1
   ci_diag_step "${name}-ctest" "${LOG_DIR}/${name}-configure.log" \
@@ -130,38 +183,43 @@ configure_build_test() {
 }
 
 require_cmd cmake
+GNU_CC="${CTH3DS_GCC:-gcc}"
+GNU_CXX="${CTH3DS_GXX:-g++}"
+CLANG_CC="${CTH3DS_CLANG:-clang}"
+CLANG_CXX="${CTH3DS_CLANGXX:-clang++}"
 case "${HOST_MATRIX}" in
   all)
-    require_cmd gcc
-    require_cmd g++
-    configure_build_test gcc-debug gcc g++ Debug OFF
-    configure_build_test gcc-release gcc g++ Release OFF
-    configure_build_test gcc-sanitized gcc g++ Debug ON
-    if command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
-      configure_build_test clang-debug clang clang++ Debug OFF
+    require_cmd "${GNU_CC}"
+    require_cmd "${GNU_CXX}"
+    configure_build_test gcc-debug "${GNU_CC}" "${GNU_CXX}" Debug OFF
+    configure_build_test gcc-release "${GNU_CC}" "${GNU_CXX}" Release OFF
+    configure_build_test gcc-sanitized "${GNU_CC}" "${GNU_CXX}" Debug ON
+    if command -v "${CLANG_CC}" >/dev/null 2>&1 && \
+       command -v "${CLANG_CXX}" >/dev/null 2>&1; then
+      configure_build_test clang-debug "${CLANG_CC}" "${CLANG_CXX}" Debug OFF
     else
       log 'clang unavailable; clang matrix skipped'
     fi
     ;;
   gcc-debug)
-    require_cmd gcc
-    require_cmd g++
-    configure_build_test gcc-debug gcc g++ Debug OFF
+    require_cmd "${GNU_CC}"
+    require_cmd "${GNU_CXX}"
+    configure_build_test gcc-debug "${GNU_CC}" "${GNU_CXX}" Debug OFF
     ;;
   gcc-release)
-    require_cmd gcc
-    require_cmd g++
-    configure_build_test gcc-release gcc g++ Release OFF
+    require_cmd "${GNU_CC}"
+    require_cmd "${GNU_CXX}"
+    configure_build_test gcc-release "${GNU_CC}" "${GNU_CXX}" Release OFF
     ;;
   gcc-sanitized)
-    require_cmd gcc
-    require_cmd g++
-    configure_build_test gcc-sanitized gcc g++ Debug ON
+    require_cmd "${GNU_CC}"
+    require_cmd "${GNU_CXX}"
+    configure_build_test gcc-sanitized "${GNU_CC}" "${GNU_CXX}" Debug ON
     ;;
   clang-debug)
-    require_cmd clang
-    require_cmd clang++
-    configure_build_test clang-debug clang clang++ Debug OFF
+    require_cmd "${CLANG_CC}"
+    require_cmd "${CLANG_CXX}"
+    configure_build_test clang-debug "${CLANG_CC}" "${CLANG_CXX}" Debug OFF
     ;;
 esac
 
@@ -293,6 +351,9 @@ for name in matrix_names:
     if ctest_match:
         total = int(ctest_match.group(3))
         failed = int(ctest_match.group(2))
+        compiler_identity = json.loads(
+            (logs / f'{name}-compiler.json').read_text(encoding='utf-8')
+        )
         matrices.append({
             'name': name,
             'status': 'PASS' if failed == 0 and not_run == 0 else 'FAIL',
@@ -300,6 +361,7 @@ for name in matrix_names:
             'ctest_passed': total - failed - not_run,
             'ctest_failed': failed,
             'ctest_skipped': not_run,
+            'compiler': compiler_identity,
         })
     else:
         reason = (
@@ -327,15 +389,23 @@ for name in matrix_names:
             'skipped': 0,
         })
 
-python_receipt = json.loads((logs / 'host-python-suite-result.json').read_text())
-if python_receipt.get('verdict') != 'PASS':
-    raise SystemExit('host Python suite receipt is not PASS')
-python_totals = python_receipt['execution']['totals']
-python_total = python_totals['selected']
-python_failed = python_totals['failed']
-python_errors = python_totals['errors']
-python_skipped = python_totals['skipped']
-python_passed = python_totals['passed']
+common_ran = os.environ['CTH3DS_VERIFY_RUN_COMMON'] == '1'
+python_receipt = None
+python_total = 0
+python_failed = 0
+python_errors = 0
+python_skipped = 0
+python_passed = 0
+if common_ran:
+    python_receipt = json.loads((logs / 'host-python-suite-result.json').read_text())
+    if python_receipt.get('verdict') != 'PASS':
+        raise SystemExit('host Python suite receipt is not PASS')
+    python_totals = python_receipt['execution']['totals']
+    python_total = python_totals['selected']
+    python_failed = python_totals['failed']
+    python_errors = python_totals['errors']
+    python_skipped = python_totals['skipped']
+    python_passed = python_totals['passed']
 python_expected_failures = 0
 python_unexpected_successes = 0
 frames = {}
@@ -345,9 +415,27 @@ for name in ('top.ppm', 'bottom.ppm', 'trace.json'):
         frames[name] = hashlib.sha256(path.read_bytes()).hexdigest()
 identity_path = logs / 'identity.json'
 identity = json.loads(identity_path.read_text()) if identity_path.is_file() else None
-common_ran = os.environ['CTH3DS_VERIFY_RUN_COMMON'] == '1'
 cpp_total = sum(row['total'] for row in cpp_suites)
 cpp_failed = sum(row['failed'] for row in cpp_suites)
+compiler_identities = [row['compiler'] for row in matrices]
+actual_gnu = next(
+    (row for row in compiler_identities if row['compiler_id'] == 'GNU'), None
+)
+actual_clang = next(
+    (
+        row for row in compiler_identities
+        if row['compiler_id'] in ('Clang', 'AppleClang')
+    ),
+    None,
+)
+
+
+def compiler_summary(row):
+    if row is None:
+        return None
+    return f"{row['compiler_id']} {row['compiler_version']} ({row['compiler_path']})"
+
+
 summary = {
     'format': 3,
     'status': 'PASS',
@@ -360,8 +448,9 @@ summary = {
     'platform': platform.platform(),
     'python': platform.python_version(),
     'cmake': subprocess.check_output(['cmake', '--version'], text=True).splitlines()[0],
-    'gcc': subprocess.check_output(['g++', '--version'], text=True).splitlines()[0],
-    'clang': subprocess.run(['clang++', '--version'], text=True, capture_output=True).stdout.splitlines()[0] if shutil.which('clang++') else None,
+    'gcc': compiler_summary(actual_gnu),
+    'clang': compiler_summary(actual_clang),
+    'compiler_identities': compiler_identities,
     'matrices': matrices,
     'matrix_skips': matrix_skips,
     'cpp_suites': cpp_suites,

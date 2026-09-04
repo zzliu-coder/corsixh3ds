@@ -12,6 +12,11 @@
 #include "cth3ds/resource_manager.hpp"
 #include "test_framework.hpp"
 
+namespace cth3ds {
+ResourceResult<std::uint64_t> resource_package_budget_cap(
+    const PackageBudgets& budgets, ResourcePool pool) noexcept;
+}
+
 namespace {
 
 struct FixtureResource {
@@ -145,6 +150,25 @@ class FailOnce final : public cth3ds::ResourceFaultInjector {
 };
 
 }  // namespace
+
+TEST(resource_manager_package_budget_rejects_count_and_invalid_pool_indices) {
+  cth3ds::PackageBudgets budgets{};
+  budgets.bytes[static_cast<std::size_t>(cth3ds::ResourcePool::Texture)] = 4096U;
+
+  const auto valid = cth3ds::resource_package_budget_cap(
+      budgets, cth3ds::ResourcePool::Texture);
+  EXPECT_TRUE(valid.ok());
+  EXPECT_EQ(valid.value(), 4096U);
+
+  for (const cth3ds::ResourcePool pool : {
+           cth3ds::ResourcePool::Count,
+           static_cast<cth3ds::ResourcePool>(255U),
+       }) {
+    const auto rejected = cth3ds::resource_package_budget_cap(budgets, pool);
+    EXPECT_FALSE(rejected.ok());
+    EXPECT_EQ(rejected.error().code, cth3ds::ResourceErrorCode::BudgetContract);
+  }
+}
 
 TEST(resource_manager_lease_reuses_one_owner_and_rejects_double_release) {
   auto bundle = make_bundle({bitmap(1U, 4U)});

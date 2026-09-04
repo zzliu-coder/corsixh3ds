@@ -16,6 +16,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: c13e8f4280991ec89a1adb8f7d8e7acd1d9c22f7
+          fetch-depth: 2
           path: candidate
 
       - name: Fetch frozen inputs and portable runtimes

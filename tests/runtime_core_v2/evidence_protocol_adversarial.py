@@ -36,6 +36,8 @@ DAG_SHA256 = "b9be4ec34c97cdb10138354df740ad24143b0e202cc96383006f6ef9ca9b52fa"
 CLOSURE_CASES = {"E48", "E49", "E50", "E51", "E60"}
 ACTIVE_JOURNAL: Optional[Path] = None
 ACTIVE_INVOCATION: Any = None
+ACTIVE_STAGE = "not-started"
+ACTIVE_INPUT_ROLE: Optional[str] = None
 
 
 def sha(data: bytes) -> str:
@@ -1095,6 +1097,14 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
                 invocation_digest = load(internal)["verified_invocation_sha256"]
             except (KeyError, TypeError, json.JSONDecodeError):
                 raise RuntimeError("INTERNAL_RESULT_BINDING_INVALID")
+    diagnostics = path.parent / "stage-diagnostics"
+    diagnostics.mkdir(parents=True, exist_ok=True)
+    diagnostic_id = "%s-%s" % (re.sub(r"[^A-Za-z0-9_.-]", "_", stage_id),
+                                 uuid.uuid4().hex)
+    stdout_path = diagnostics / (diagnostic_id + ".stdout")
+    stderr_path = diagnostics / (diagnostic_id + ".stderr")
+    stdout_path.write_bytes(stdout)
+    stderr_path.write_bytes(stderr)
     record = {
         "schema": "cth3ds.runtime-core-execution-journal-entry/v1",
         "stage_id": stage_id, "dependency_ids": dependencies,
@@ -1107,6 +1117,8 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
         "argv": command, "cwd_realpath": str(Path.cwd().resolve()),
         "exit_code": exit_code, "stdout_sha256": sha(stdout),
         "stderr_sha256": sha(stderr),
+        "stdout_path": str(stdout_path), "stderr_path": str(stderr_path),
+        "owner": "validation-task", "input_role": ACTIVE_INPUT_ROLE,
         "output_root": str(output_root) if output_root else None,
         "output_digest": tree_digest(output_root) if output_root else sha(b""),
         "verified_invocation_sha256": invocation_digest,
@@ -1123,6 +1135,8 @@ def append_journal(path: Path, stage_id: str, dependencies: list[str],
 
 def run_journaled(journal: Path, stage_id: str, dependencies: list[str],
                   command: list[str], output_root: Optional[Path] = None) -> subprocess.CompletedProcess:
+    global ACTIVE_STAGE
+    ACTIVE_STAGE = stage_id
     started = utc_now()
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              check=False, cwd=Path.cwd(),
@@ -1144,6 +1158,8 @@ def run_journaled(journal: Path, stage_id: str, dependencies: list[str],
 
 def run_in_process_journaled(journal: Path, stage_id: str, dependencies: list[str],
                              label: str, callback, output_root: Optional[Path] = None):
+    global ACTIVE_STAGE
+    ACTIVE_STAGE = stage_id
     started = utc_now()
     stdout_text = io.StringIO()
     stderr_text = io.StringIO()
@@ -1231,8 +1247,7 @@ def internal_probe_closed(invocation: Any, producer_module: Any,
                 not isinstance(request["fresh_request"], dict):
             raise RuntimeError("INTERNAL_REQUEST_SHAPE_MISMATCH")
         fresh = dict(request["fresh_request"])
-        for key in ("candidate_input", "session_root", "archive", "deps_prefix",
-                    "matrix", "base_cases", "r4_cases"):
+        for key in ("bundle_root", "session_root"):
             if not isinstance(fresh.get(key), str):
                 raise RuntimeError("INTERNAL_REQUEST_PATH_MISMATCH")
             fresh[key] = Path(fresh[key])
@@ -1488,71 +1503,92 @@ def run_r4_acceptance(invocation: Any, producer_module: Any, consumer_module: An
     return summary
 
 
+def stage_rehash(guard: Any, session: Path, stage: str,
+                 roles: tuple[str, ...]) -> dict[str, Any]:
+    global ACTIVE_STAGE, ACTIVE_INPUT_ROLE
+    ACTIVE_STAGE = stage
+    ACTIVE_INPUT_ROLE = ",".join(roles)
+    record = guard.verify(stage, roles)
+    output = session / "00-preflight/bundle-rehash"
+    output.mkdir(parents=True, exist_ok=True)
+    (output / (re.sub(r"[^A-Za-z0-9_.-]", "_", stage) + ".json")).write_bytes(
+        canonical(record))
+    ACTIVE_INPUT_ROLE = None
+    return record
+
+
 def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
                        request: dict[str, Any]) -> int:
-    global ACTIVE_INVOCATION
+    global ACTIVE_INVOCATION, ACTIVE_STAGE, ACTIVE_INPUT_ROLE
     require_verified_invocation(invocation, ("fresh-chain", "_fresh-probe"))
     ACTIVE_INVOCATION = invocation
+    session = Path(request["session_root"]).absolute()
+    bundle_root = Path(request["bundle_root"]).absolute()
+    preflight_root = session / "00-preflight"
+    journal = preflight_root / "execution-journal.jsonl"
     args = argparse.Namespace(
         candidate_root=None,
-        candidate_input_kind=request["candidate_kind"],
-        candidate_input_path=request["candidate_input"],
-        expected_candidate_input_sha256=request["expected_candidate_input_sha256"],
         expected_candidate_head=request["expected_candidate_head"],
         expected_candidate_tree=request["expected_candidate_tree"],
-        session_root=request["session_root"], archive=request["archive"],
-        deps_prefix=request["deps_prefix"], matrix=request["matrix"],
-        expected_matrix_sha256=request["expected_matrix_sha256"],
-        base_acceptance_cases=request["base_cases"],
-        expected_base_cases_sha256=request["expected_base_cases_sha256"],
-        cycle_acceptance_cases=request["r4_cases"],
-        expected_cycle_cases_sha256=request["expected_r4_cases_sha256"])
+        session_root=session)
     try:
-        candidate_input = args.candidate_input_path or args.candidate_root
-        if candidate_input is None:
-            raise FreshChainError("CLI_REQUIRED_ARGUMENT", "candidate transport missing")
-        candidate_source = candidate_input.resolve(strict=True)
-        archive = args.archive.resolve(strict=True)
-        deps = args.deps_prefix.resolve(strict=True)
-        matrix = args.matrix.resolve(strict=True)
-        base_cases = args.base_acceptance_cases.resolve(strict=True)
-        cycle_cases = args.cycle_acceptance_cases.resolve(strict=True)
-        dag_path = (cycle_cases.parent / "execution-dag.json").resolve(strict=True)
-        session = args.session_root.absolute()
-        if not no_symlink_chain(args.session_root.absolute()):
+        ACTIVE_STAGE = "r4.n00_bundle_open"
+        if not no_symlink_chain(session):
             raise FreshChainError("INPUT_OUTPUT_OVERLAP", "session path contains symlink")
         executing_candidate = Path(__file__).resolve().parents[2]
-        if paths_overlap(session, executing_candidate):
+        if paths_overlap(session, executing_candidate) or paths_overlap(session, bundle_root):
             raise FreshChainError(
                 "INPUT_OUTPUT_OVERLAP",
-                "session overlaps the candidate executing the Fresh Chain")
+                "session overlaps the executing candidate or immutable input bundle")
+        initial_count = len(list(session.iterdir())) if session.exists() else 0
+        if session.exists() and (not session.is_dir() or initial_count != 0):
+            raise FreshChainError("SESSION_ROOT_NOT_EMPTY", "session root must start empty")
+        session.mkdir(parents=True, exist_ok=True)
+        preflight_root.mkdir()
+        guard = invocation.input_bundle(bundle_root)
+        role_paths = {
+            role: guard.path(role) for role in (
+                "candidate_transport", "source_archive", "cross_dependencies",
+                "frozen_matrix", "base_acceptance_cases", "r4_acceptance_cases",
+                "execution_dag")
+        }
+        candidate_source = role_paths["candidate_transport"]
+        archive = role_paths["source_archive"]
+        deps = role_paths["cross_dependencies"]
+        matrix = role_paths["frozen_matrix"]
+        base_cases = role_paths["base_acceptance_cases"]
+        cycle_cases = role_paths["r4_acceptance_cases"]
+        dag_path = role_paths["execution_dag"]
+        args.archive = archive
+        args.deps_prefix = deps
+        args.matrix = matrix
+        args.expected_matrix_sha256 = MATRIX_SHA256
+        args.base_acceptance_cases = base_cases
+        args.expected_base_cases_sha256 = BASE_CASES_SHA256
+        args.cycle_acceptance_cases = cycle_cases
+        args.expected_cycle_cases_sha256 = R4_CASES_SHA256
+        external = dict(role_paths)
         external = {"candidate_transport": candidate_source, "archive": archive,
                     "deps_prefix": deps,
                     "frozen_matrix": matrix, "base_acceptance_cases": base_cases,
-                    "r4_acceptance_cases": cycle_cases}
+                    "r4_acceptance_cases": cycle_cases, "execution_dag": dag_path}
         for left_name, left in external.items():
             if paths_overlap(session, left):
                 raise FreshChainError("INPUT_OUTPUT_OVERLAP",
                                       f"session overlaps {left_name}")
-        initial_count = len(list(session.iterdir())) if session.exists() else 0
-        if session.exists() and (not session.is_dir() or initial_count != 0):
-            raise FreshChainError("SESSION_ROOT_NOT_EMPTY", "session root must start empty")
-        if args.expected_matrix_sha256 != MATRIX_SHA256 or sha(matrix.read_bytes()) != MATRIX_SHA256:
+        preflight_rehash = stage_rehash(guard, session, "r4.n00_preflight",
+                                       tuple(guard.inputs))
+        if sha(matrix.read_bytes()) != MATRIX_SHA256:
             raise FreshChainError("FROZEN_INPUT_HASH_MISMATCH", "matrix hash mismatch")
-        if args.expected_base_cases_sha256 != BASE_CASES_SHA256 or \
-           sha(base_cases.read_bytes()) != BASE_CASES_SHA256:
+        if sha(base_cases.read_bytes()) != BASE_CASES_SHA256:
             raise FreshChainError("FROZEN_INPUT_HASH_MISMATCH", "base cases hash mismatch")
-        if args.expected_cycle_cases_sha256 != R4_CASES_SHA256 or \
-           sha(cycle_cases.read_bytes()) != R4_CASES_SHA256 or \
+        if sha(cycle_cases.read_bytes()) != R4_CASES_SHA256 or \
            sha(dag_path.read_bytes()) != DAG_SHA256:
             raise FreshChainError("FROZEN_INPUT_HASH_MISMATCH", "R4 input hash mismatch")
-        session.mkdir(parents=True, exist_ok=True)
-        preflight_root = session / "00-preflight"
-        preflight_root.mkdir()
         transport = normalize_candidate_transport(
-            args.candidate_input_kind, candidate_source,
+            "head-bundle", candidate_source,
             preflight_root / "candidate-detached",
-            args.expected_candidate_input_sha256)
+            sha(candidate_source.read_bytes()))
         candidate = Path(transport["normalized_repo_realpath"])
         observed_head = subprocess.check_output(
             ["/usr/bin/git", "-C", str(candidate), "rev-parse", "HEAD^{commit}"],
@@ -1564,21 +1600,27 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
                 observed_tree != args.expected_candidate_tree:
             raise FreshChainError("CANDIDATE_IDENTITY_MISMATCH",
                                   "normalized candidate identity differs")
-        journal = preflight_root / "execution-journal.jsonl"
         review_session_id = uuid.uuid4().hex
-        input_identity = {"schema": "cth3ds.runtime-core-r5-input-identity/v1",
+        input_identity = {"schema": "cth3ds.runtime-core-r11-input-identity/v1",
             "review_session_id": review_session_id, "session_root_realpath": str(session),
+            "bundle_root_realpath": str(guard.root),
+            "bundle_manifest_sha256": sha(guard.manifest_path.read_bytes()),
             "verified_invocation_sha256": invocation.digest,
             "initial_entry_count": initial_count,
-            "inputs": {role: {"realpath": str(path),
-                "sha256": sha(path.read_bytes()) if path.is_file() else tree_digest(path),
-                "readonly": not os.access(path, os.W_OK)} for role, path in external.items()},
+            "inputs": {role: {"bundle_relative_path":
+                path.relative_to(guard.root).as_posix(), "readonly": True}
+                for role, path in external.items()},
             "candidate_transport": transport,
-            "execution_dag": {"realpath": str(dag_path), "sha256": DAG_SHA256}}
+            "execution_dag": {"bundle_relative_path":
+                dag_path.relative_to(guard.root).as_posix(), "sha256": DAG_SHA256},
+            "preflight_rehash": preflight_rehash}
         (preflight_root / "input-identity.json").write_bytes(canonical(input_identity))
-        separation = {"schema": "cth3ds.runtime-core-r4-path-separation/v1",
+        separation = {"schema": "cth3ds.runtime-core-r11-path-separation/v1",
                       "status": "PASS", "session_root": str(session),
-                      "external_realpaths": [str(path) for path in external.values()]}
+                      "bundle_root": str(guard.root),
+                      "consumer_paths": [path.relative_to(guard.root).as_posix()
+                                         for path in external.values()],
+                      "provenance_reopen_allowed": False}
         (preflight_root / "path-separation.json").write_bytes(canonical(separation))
         append_journal(journal, "r4.n00_preflight", [], [str(Path(__file__).resolve()),
             "--fresh-chain"], utc_now(), utc_now(), 0, canonical(input_identity), b"",
@@ -1592,6 +1634,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             repo=candidate, run_root=canonical_root, reviewer_root=policy_root,
             archive=archive, deps_prefix=deps, review_session_id=review_session_id,
             session_root=session)
+        stage_rehash(guard, session, "r4.n10_policy.inputs",
+                     ("candidate_transport", "source_archive", "cross_dependencies"))
         run_in_process_journaled(
             journal, "r4.n10_policy", ["r4.n00_preflight"], "policy",
             lambda: producer.build_policy(invocation, consumer_module, policy_args),
@@ -1693,6 +1737,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "--expected-closure-fixture-sha256", fixture_digest,
             "--fixture-consumption-state", str(consumption_state),
             "--execution-journal", str(journal)]
+        stage_rehash(guard, session, "r4.n50_closure_cases.inputs",
+                     ("frozen_matrix", "candidate_transport"))
         run_in_process_journaled(
             journal, "r4.n50_closure_cases", ["r4.n42_fixture_verify"],
             "matrix", lambda: matrix_closed(invocation, producer, consumer_module,
@@ -1724,6 +1770,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "--expected-closure-fixture-sha256", fixture_digest,
             "--seal-root", str(final_seal)]
         finalize_args = consumer_module.parser().parse_args(finalize_command[2:])
+        stage_rehash(guard, session, "r4.n60_finalize.inputs",
+                     ("frozen_matrix", "candidate_transport"))
         run_in_process_journaled(
             journal, "r4.n60_finalize",
             ["r4.n52_receipt_anchor", "r4.n41_fixture_anchor"],
@@ -1760,6 +1808,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "--seal-root", str(final_seal), "--expected-seal-sha256", final_digest,
             "--cases", str(base_cases), "--out", str(base_output),
             "--execution-journal", str(journal)]
+        stage_rehash(guard, session, "r4.n80_base_acceptance.inputs",
+                     ("base_acceptance_cases", "frozen_matrix"))
         run_in_process_journaled(
             journal, "r4.n80_base_acceptance", ["r4.n70_semantic_verify"],
             "result-provenance",
@@ -1796,6 +1846,8 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "canonical_seal": canonical_seal, "policy_path": policy_path,
             "journal": journal, "fresh_request": probe_request}
         r4_output = acceptance_root / "r4-additive22"
+        stage_rehash(guard, session, "r4.n81_cycle_acceptance.inputs",
+                     ("r4_acceptance_cases", "execution_dag", "frozen_matrix"))
         r4_summary = run_r4_acceptance(invocation, producer, consumer_module,
                                         args, acceptance_context, r4_output)
         if r4_summary["passed"] != 22:
@@ -1865,7 +1917,9 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
         if h2_gate["status"] != "PASS" or h2_gate["independent_process_count"] != 40:
             raise FreshChainError("H2_EXACT20_GATE_FAILED", "H2 exact20 process gate failed")
         base_summary = load(base_output / "summary.json")
-        result = {"schema": "cth3ds.runtime-core-c3-r5-fresh-chain-result/v1",
+        final_input_rehash = stage_rehash(guard, session, "r4.n90_final_audit.inputs",
+                                         tuple(guard.inputs))
+        result = {"schema": "cth3ds.runtime-core-c3-r11-fresh-chain-result/v1",
             "stage_id": "C3-R5", "review_session_id": review_session_id,
             "verified_invocation_sha256": invocation.digest,
             "candidate_identity": facts["candidate_identity_live"],
@@ -1878,6 +1932,10 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "canonical_seal_pre_finalizer_observations": seal_observations,
             "receipt_sha256": receipt_sha, "fixture_sha256s_sha256": fixture_digest,
             "final_seal_sha256s_sha256": final_digest,
+            "input_bundle": {"root": str(guard.root),
+                             "manifest_sha256": sha(guard.manifest_path.read_bytes()),
+                             "final_rehash": final_input_rehash},
+            "evidence_field_contract": invocation.evidence_contract(),
             "semantic_verify": "PASS", "construction_self_verification": "PASS",
             "independent_review": "NOT_PROVEN",
             "product_verdicts": {"RH09_PRODUCT": "FAIL", "RH07_PRODUCT": "FAIL",
@@ -1906,9 +1964,48 @@ def fresh_chain_closed(invocation: Any, producer: Any, consumer_module: Any,
             "composed": "54/54", "result": str(audit / "fresh-chain-result.json")},
             sort_keys=True, separators=(",", ":")))
         return 0
-    except FreshChainError as error:
+    except Exception as error:
+        failure_code_value = getattr(error, "code", type(error).__name__)
+        last_entry: dict[str, Any] = {}
+        stdout_text = ""
+        stderr_text = repr(error)
+        if journal.is_file():
+            lines = journal.read_text(encoding="utf-8").splitlines()
+            if lines:
+                last_entry = json.loads(lines[-1])
+                stdout_path = Path(last_entry.get("stdout_path", ""))
+                stderr_path = Path(last_entry.get("stderr_path", ""))
+                if stdout_path.is_file():
+                    stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+                if stderr_path.is_file():
+                    stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        provenance: list[dict[str, Any]] = []
+        if "guard" in locals():
+            active_roles = (ACTIVE_INPUT_ROLE or "").split(",")
+            provenance = [{"role": role,
+                           "bundle_path": str(guard.path(role)),
+                           "provenance_path": guard.inputs[role]["provenance_source_path"]}
+                          for role in active_roles if role in guard.inputs]
+        failure_receipt = {
+            "schema": "cth3ds.runtime-core-durable-failure/v1",
+            "status": "FAIL", "c3": "NOT_PROVEN",
+            "stage": ACTIVE_STAGE, "input_role": ACTIVE_INPUT_ROLE,
+            "bundle_root": str(bundle_root), "inputs": provenance,
+            "failure_code": failure_code_value, "detail": str(error),
+            "errno": getattr(error, "errno", None),
+            "stdout": stdout_text, "stderr": stderr_text,
+            "stdout_sha256": sha(stdout_text.encode()),
+            "stderr_sha256": sha(stderr_text.encode()),
+            "owner": "validation-task",
+            "journal_sha256": sha(journal.read_bytes()) if journal.is_file() else None,
+            "last_journal_entry": last_entry or None,
+            "recorded_at_utc": utc_now(),
+        }
+        if preflight_root.is_dir():
+            (preflight_root / "durable-failure.json").write_bytes(canonical(failure_receipt))
         print(json.dumps({"fresh_chain": "FAIL", "c3": "NOT_PROVEN",
-            "failure_code": error.code, "detail": str(error)},
+            "failure_code": failure_code_value, "detail": str(error),
+            "durable_failure": str(preflight_root / "durable-failure.json")},
             sort_keys=True, separators=(",", ":")), file=sys.stderr)
         return 2
 
@@ -2112,10 +2209,34 @@ def protocol_self_test_closed(context: Any, producer: Any, consumer: Any,
     case("R5A29", lambda: consumer.raw_ancestry_commitment(
          "/usr/bin/git", missing_repo, head_oid, []), "ANCESTRY_OBJECT_UNREADABLE")
 
+    semantic_left = {"review_session_id": "1" * 32,
+                     "session_root": "/independent/a/session",
+                     "started_at": "2026-09-04T01:02:03.100000Z",
+                     "elapsed": "1.25s", "verdict": "PASS", "selected": 149,
+                     "artifact": "/independent/a/session/result.json"}
+    semantic_right = {"review_session_id": "2" * 32,
+                      "session_root": "/independent/b/session",
+                      "started_at": "2026-09-04T09:08:07.900000Z",
+                      "elapsed": "9.75s", "verdict": "PASS", "selected": 149,
+                      "artifact": "/independent/b/session/result.json"}
+    case("R11A30", lambda: context.compare_evidence(
+         "validation.protocol_self_test.result_sha256",
+         semantic_left, semantic_right,
+         {"RUN_ROOT": "/independent/a/session"},
+         {"RUN_ROOT": "/independent/b/session"})["status"] == "PASS")
+    case("R11A31", lambda: context.compare_evidence(
+         "validation.selected_python_ids", "deterministic-byte-a",
+         "deterministic-byte-b", {"RUN_ROOT": "/a"},
+         {"RUN_ROOT": "/b"})["status"] == "FAIL")
+    case("R11A32", lambda: context.require_evidence_class(
+         "validation.official_fresh_chain.verified_invocation_sha256",
+         "CONTENT_DETERMINISTIC"), "RuntimeError")
+
     counts = result_counts(results)
-    summary = {"schema": "cth3ds.runtime-core-c3-r5-self-test/v1",
+    summary = {"schema": "cth3ds.runtime-core-c3-r11-self-test/v1",
                "session_root": str(session),
                "verified_invocation_sha256": context.digest,
+               "evidence_field_contract": context.evidence_contract(),
                **counts, "cases": results}
     out = out_path.absolute()
     out.parent.mkdir(parents=True, exist_ok=True)

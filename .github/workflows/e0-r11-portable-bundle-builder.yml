@@ -1,0 +1,116 @@
+name: E0 R11 portable verifier bundle builder
+
+on:
+  push:
+    branches:
+      - codex/e0-r11-bundle-builder-h11
+
+permissions:
+  contents: write
+
+jobs:
+  build-portable-bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out immutable candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: c13e8f4280991ec89a1adb8f7d8e7acd1d9c22f7
+          path: candidate
+
+      - name: Fetch frozen inputs and portable runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$RUNNER_TEMP/e0-r11-builder"
+          mkdir -p "$base/original" "$base/downloads" "$base/runtime39" "$base/runtime314" "$base/toolchain"
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "$base/original.tar" \
+            'https://github.com/zzliu-coder/corsixh3ds/releases/download/e0-r11-ci-env-c13e8f4/input-bundle-r11-ci-env-linux-x86_64-h10-final.tar'
+          echo '20de2658dda494125f7ada75eafe0d4289496d36c8d467b710cbe502cdfaa132  '"$base/original.tar" | sha256sum -c -
+          tar -xf "$base/original.tar" -C "$base/original"
+          bundle_root="$(find "$base/original" -name manifest.json -type f -print -quit | xargs dirname)"
+          printf '%s\n' "$bundle_root" > "$base/bundle-root.txt"
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "$base/downloads/python39.tar.gz" \
+            'https://github.com/astral-sh/python-build-standalone/releases/download/20251031/cpython-3.9.25%2B20251031-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz'
+          echo 'fe04e8b27bd69ca2144fc542428f8b9b5287b6a2e45516a4acfe2c2bc3102773  '"$base/downloads/python39.tar.gz" | sha256sum -c -
+          tar -xzf "$base/downloads/python39.tar.gz" -C "$base/runtime39"
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "$base/downloads/python314.tar.gz" \
+            'https://github.com/astral-sh/python-build-standalone/releases/download/20260804/cpython-3.14.6%2B20260804-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz'
+          echo 'ba960817e542642021135db330d875f410f4e14c64a62e2ae5faf3697ada08b2  '"$base/downloads/python314.tar.gz" | sha256sum -c -
+          tar -xzf "$base/downloads/python314.tar.gz" -C "$base/runtime314"
+
+          tar -xf "$bundle_root/toolchains/old3ds/toolchain.tar" -C "$base/toolchain"
+          rm -f "$base/original.tar"
+
+      - name: Verify runtimes on host and exact Fresh container
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$RUNNER_TEMP/e0-r11-builder"
+          test "$(uname -m)" = x86_64
+          test "$($base/runtime39/python/bin/python3.9 -I -c 'import platform,sys; print(sys.version.split()[0]+" "+platform.machine())')" = '3.9.25 x86_64'
+          test "$($base/runtime314/python/bin/python3.14 -I -c 'import platform,sys; print(sys.version.split()[0]+" "+platform.machine())')" = '3.14.6 x86_64'
+          image='devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5'
+          docker pull "$image"
+          test "$(docker run --rm --platform linux/amd64 -v "$base/runtime39/python:/runtime:ro" "$image" /runtime/bin/python3.9 -I -c 'import platform,sys; print(sys.version.split()[0]+" "+platform.machine())')" = '3.9.25 x86_64'
+          test "$(docker run --rm --platform linux/amd64 -v "$base/runtime314/python:/runtime:ro" "$image" /runtime/bin/python3.14 -I -c 'import platform,sys; print(sys.version.split()[0]+" "+platform.machine())')" = '3.14.6 x86_64'
+
+      - name: Build and verify immutable bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$RUNNER_TEMP/e0-r11-builder"
+          bundle_root="$(cat "$base/bundle-root.txt")"
+          output="$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h10-portable"
+          python3 candidate/scripts/build_verifier_input_bundle.py \
+            --output "$output" \
+            --candidate-repo "$GITHUB_WORKSPACE/candidate" \
+            --archive "$bundle_root/authority/frozen/CorsixTH.tar.gz" \
+            --matrix "$bundle_root/authority/frozen/c3-acceptance-matrix.json" \
+            --base-cases "$bundle_root/authority/frozen/c3-r3-acceptance-cases.json" \
+            --r4-cases "$bundle_root/authority/frozen/c3-r4-acceptance-cases.json" \
+            --dag "$bundle_root/authority/frozen/execution-dag.json" \
+            --deps-prefix "$bundle_root/dependencies/host" \
+            --python-runtime "3.9.25=$base/runtime39/python" \
+            --python-runtime "3.14.6=$base/runtime314/python" \
+            --wheelhouse "3.9.25=$bundle_root/wheelhouse/linux-x86_64/python-3.9.25" \
+            --wheelhouse "3.14.6=$bundle_root/wheelhouse/linux-x86_64/python-3.14.6" \
+            --toolchain-root "$base/toolchain/runtime" \
+            --ci-runner ubuntu-24.04 \
+            --ci-host-container 'ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4' \
+            --ci-old3ds-container 'devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5'
+          python3 candidate/scripts/build_verifier_input_bundle.py --verify "$output" > "$RUNNER_TEMP/bundle-verification.json"
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h10-portable.tar" "$(basename "$output")"
+          sha256sum "$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h10-portable.tar" | tee "$RUNNER_TEMP/transport-sha256.txt"
+
+      - name: Publish candidate-bound bundle release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='e0-r11-ci-env-c13e8f4-portable'
+          tarfile="$RUNNER_TEMP/input-bundle-r11-ci-env-linux-x86_64-h10-portable.tar"
+          digest="$(sha256sum "$tarfile" | awk '{print $1}')"
+          gh release create "$tag" \
+            "$tarfile#input-bundle-r11-ci-env-linux-x86_64-h10-portable.tar" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target c13e8f4280991ec89a1adb8f7d8e7acd1d9c22f7 \
+            --title 'E0 R11 H10 portable verifier bundle' \
+            --notes "Candidate-bound portable verifier input bundle. Transport SHA256: $digest. Python runtimes: 3.9.25 and 3.14.6, x86_64 Linux, verified in the exact Fresh container."
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,tagName,targetCommitish,assets
+
+      - name: Upload compact build receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: e0-r11-portable-bundle-build-receipt
+          path: |
+            ${{ runner.temp }}/bundle-verification.json
+            ${{ runner.temp }}/transport-sha256.txt
+          if-no-files-found: warn

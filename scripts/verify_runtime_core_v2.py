@@ -52,25 +52,9 @@ REQUIRED_PRODUCT_BASELINE = {
     "REAL_DEVICE_RUNTIME": "NOT_PROVEN",
     "S70_REAL_DEVICE_MEMORY": "NOT_PROVEN",
 }
-PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"
 ARCHIVE_SHA = "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
 UPSTREAM_DIGEST = "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
-ALLOWLIST = [
-    ".github/workflows/old3ds-validation.yml",
-    ".gitignore",
-    "scripts/ci_diagnostics.sh",
-    "scripts/consume_runtime_core_v2.py",
-    "scripts/test_all.sh",
-    "scripts/verifier_driver.py",
-    "scripts/verify_runtime_core_v2.py",
-    "src/common/resource_manager.cpp",
-    "tests/runtime_core_v2/result.schema.json",
-    "tests/runtime_core_v2/review-policy.schema.json",
-    "tests/test_build_scripts.py",
-    "tests/test_ci_diagnostics.py",
-    "tests/test_resource_manager.cpp",
-    "tests/test_verifier_python_environment.py",
-]
+PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"
 CLOSURE_INPUTS = {
     "wrapper": "scripts/run_verifier_python.sh",
     "driver": "scripts/verifier_driver.py",
@@ -814,6 +798,8 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     from jsonschema import Draft202012Validator, FormatChecker
 
     require_verified_invocation(context, ("fresh-chain",))
+    authority = context.require_validation_authority(
+        args.validation_change_authority)
 
     if not args.review_session_id or not re.fullmatch(
             r"[0-9a-f]{32}", args.review_session_id):
@@ -856,6 +842,9 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     ancestry = reviewer_ancestry_commitment(consumer, repo, head, tools["git"])
     tree = ancestry["head_tree"]
     base = baseline_identity(context, consumer, repo, tools["git"])
+    if base["commit"] != authority["baseline"]["commit"] or \
+            base["tree"] != authority["baseline"]["tree"]:
+        raise RuntimeError("VALIDATION_AUTHORITY_BASELINE_MISMATCH")
     if ancestry["head_parents"] != [base["commit"]]:
         raise RuntimeError("candidate first parent is not the remediation baseline")
     tracked_fp, tracked_entries = fingerprint(repo, head)
@@ -863,8 +852,11 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
         repo, head, {"tools/th3ds_convert.py", "scripts/build_3ds.sh",
                      "scripts/bootstrap_upstream.sh"},
         ("cmake/", "include/", "src/", "lua/"))
-    if product_fp != PRODUCT_FP or product_entries != 54:
-        raise RuntimeError("product fingerprint mismatch")
+    expected_product = authority["product_boundary"]
+    if expected_product["sha256"] != PRODUCT_FP or \
+            product_fp != PRODUCT_FP or \
+            product_entries != expected_product["entry_count"]:
+        raise RuntimeError("VALIDATION_AUTHORITY_PRODUCT_MISMATCH")
 
     run_id = uuid.uuid4().hex
     policy_id = "c3-" + run_id
@@ -926,6 +918,7 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
         "policy_id": policy_id, "created_at": now(), "base_identity": base,
         "verified_invocation": context.record,
         "verified_invocation_sha256": context.digest,
+        "validation_change_authority": authority,
         "candidate_identity": {
             "required_first_parent": base["commit"], "forbidden_ancestors": FORBIDDEN,
             "expected_commit": head, "expected_tree": tree,
@@ -938,8 +931,9 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
             "product_exact": ["tools/th3ds_convert.py", "scripts/build_3ds.sh",
                               "scripts/bootstrap_upstream.sh"],
             "product_prefixes": ["cmake/", "include/", "src/", "lua/"],
-            "expected_product_fingerprint": PRODUCT_FP, "expected_product_entries": 54,
-            "allowlist_exact": ALLOWLIST,
+            "expected_product_fingerprint": expected_product["sha256"],
+            "expected_product_entries": expected_product["entry_count"],
+            "allowlist_exact": list(authority["authorized_diff_exact"]),
             "forbidden_patterns": ["config/**", "tests/** except tests/runtime_core_v2/**",
                                    "game-data", "build-output-in-repository"],
             "require_product_diff_empty": True,

@@ -52,25 +52,9 @@ REQUIRED_PRODUCT_BASELINE = {
     "REAL_DEVICE_RUNTIME": "NOT_PROVEN",
     "S70_REAL_DEVICE_MEMORY": "NOT_PROVEN",
 }
-PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"
 ARCHIVE_SHA = "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
 UPSTREAM_DIGEST = "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
-ALLOWLIST = [
-    ".github/workflows/old3ds-validation.yml",
-    ".gitignore",
-    "scripts/ci_diagnostics.sh",
-    "scripts/consume_runtime_core_v2.py",
-    "scripts/test_all.sh",
-    "scripts/verifier_driver.py",
-    "scripts/verify_runtime_core_v2.py",
-    "src/common/resource_manager.cpp",
-    "tests/runtime_core_v2/result.schema.json",
-    "tests/runtime_core_v2/review-policy.schema.json",
-    "tests/test_build_scripts.py",
-    "tests/test_ci_diagnostics.py",
-    "tests/test_resource_manager.cpp",
-    "tests/test_verifier_python_environment.py",
-]
+PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"
 CLOSURE_INPUTS = {
     "wrapper": "scripts/run_verifier_python.sh",
     "driver": "scripts/verifier_driver.py",
@@ -284,17 +268,24 @@ def _run_identity(argv: list[str], env: dict[str, str]) -> bytes:
 
 def tool_implementation_identity(tools: dict[str, str]) -> dict[str, Any]:
     env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC"}
-    developer_dir = _run_identity(["/usr/bin/xcode-select", "-p"], env).decode().strip()
-    env["DEVELOPER_DIR"] = developer_dir
-    sdk_path = _run_identity(["/usr/bin/xcrun", "--sdk", "macosx",
-                              "--show-sdk-path"], env).decode().strip()
+    if sys.platform == "darwin":
+        developer_dir = _run_identity(
+            ["/usr/bin/xcode-select", "-p"], env).decode().strip()
+        env["DEVELOPER_DIR"] = developer_dir
+        sdk_path = _run_identity(
+            ["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"],
+            env).decode().strip()
+    else:
+        developer_dir = "/non-darwin"
+        sdk_path = "/non-darwin"
     apple_names = {"python": "python3", "git": "git", "cxx": "clang++",
                    "nm": "nm"}
     rows = []
     for role in sorted(tools):
         dispatch = Path(tools[role]).resolve(strict=True)
         implementation = dispatch
-        if role in apple_names and dispatch.parent == Path("/usr/bin"):
+        if sys.platform == "darwin" and role in apple_names and \
+                dispatch.parent == Path("/usr/bin"):
             implementation = Path(_run_identity(
                 ["/usr/bin/xcrun", "--find", apple_names[role]], env
             ).decode().strip()).resolve(strict=True)
@@ -521,20 +512,26 @@ def prepare_sources(repo: Path, archive: Path, snapshot: Path, integrated: Path,
 
 def tool_paths(context: Any) -> dict[str, str]:
     require_verified_invocation(context, ("fresh-chain",))
-    identity_env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC",
-                    "DEVELOPER_DIR": subprocess.check_output(
-                        ["/usr/bin/xcode-select", "-p"], text=True).strip()}
+    identity_env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TZ": "UTC"}
 
-    def xcrun_find(name: str) -> str:
-        return subprocess.check_output(
-            ["/usr/bin/xcrun", "--find", name], env=identity_env,
-            text=True).strip()
+    def host_find(*names: str) -> Optional[str]:
+        if sys.platform == "darwin":
+            identity_env["DEVELOPER_DIR"] = subprocess.check_output(
+                ["/usr/bin/xcode-select", "-p"], text=True).strip()
+            return subprocess.check_output(
+                ["/usr/bin/xcrun", "--find", names[0]], env=identity_env,
+                text=True).strip()
+        for name in names:
+            found = shutil.which(name)
+            if found is not None:
+                return found
+        return None
 
     required = {
         "python": str(context.python),
         "cmake": shutil.which("cmake"),
-        "ctest": shutil.which("ctest"), "git": xcrun_find("git"),
-        "cxx": xcrun_find("clang++"), "nm": xcrun_find("nm"),
+        "ctest": shutil.which("ctest"), "git": host_find("git"),
+        "cxx": host_find("clang++", "g++", "c++"), "nm": host_find("nm"),
         "cxx-linker": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-g++",
         "symbol-reader": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-nm",
         "elf-reader": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-readelf",
@@ -705,7 +702,8 @@ def command_records(context: Any, repo: Path, roots: dict[str, Path], tools: dic
             "-DCTH3DS_BUILD_TESTS=ON", "-DCTH3DS_BUILD_SIMULATOR=ON",
             "-DCTH3DS_BUILD_3DS_SYNTAX_CHECK=ON",
             "-DCTH3DS_WARNINGS_AS_ERRORS=ON", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "-DPython3_EXECUTABLE=" + str(context.python)],
         "build-host": [tools["cmake"], "--build", str(host), "--parallel"],
         "ctest": [tools["ctest"], "--test-dir", str(host), "--output-on-failure"],
         "cpp": [str(cpp)],
@@ -814,6 +812,8 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     from jsonschema import Draft202012Validator, FormatChecker
 
     require_verified_invocation(context, ("fresh-chain",))
+    authority = context.require_validation_authority(
+        args.validation_change_authority)
 
     if not args.review_session_id or not re.fullmatch(
             r"[0-9a-f]{32}", args.review_session_id):
@@ -856,6 +856,9 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     ancestry = reviewer_ancestry_commitment(consumer, repo, head, tools["git"])
     tree = ancestry["head_tree"]
     base = baseline_identity(context, consumer, repo, tools["git"])
+    if base["commit"] != authority["baseline"]["commit"] or \
+            base["tree"] != authority["baseline"]["tree"]:
+        raise RuntimeError("VALIDATION_AUTHORITY_BASELINE_MISMATCH")
     if ancestry["head_parents"] != [base["commit"]]:
         raise RuntimeError("candidate first parent is not the remediation baseline")
     tracked_fp, tracked_entries = fingerprint(repo, head)
@@ -863,8 +866,11 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
         repo, head, {"tools/th3ds_convert.py", "scripts/build_3ds.sh",
                      "scripts/bootstrap_upstream.sh"},
         ("cmake/", "include/", "src/", "lua/"))
-    if product_fp != PRODUCT_FP or product_entries != 54:
-        raise RuntimeError("product fingerprint mismatch")
+    expected_product = authority["product_boundary"]
+    if expected_product["sha256"] != PRODUCT_FP or \
+            product_fp != PRODUCT_FP or \
+            product_entries != expected_product["entry_count"]:
+        raise RuntimeError("VALIDATION_AUTHORITY_PRODUCT_MISMATCH")
 
     run_id = uuid.uuid4().hex
     policy_id = "c3-" + run_id
@@ -916,16 +922,20 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
                         "integrated_path": target.as_posix(), "mode": row[0]})
 
     base_env = {
-        "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PATH": os.environ.get(
+            "PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"),
         "LC_ALL": "C", "TZ": "UTC", "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
-        "TMPDIR": "/tmp", "DEVELOPER_DIR": tool_identity["developer_dir"],
+        "TMPDIR": tempfile.gettempdir(),
     }
+    if sys.platform == "darwin":
+        base_env["DEVELOPER_DIR"] = tool_identity["developer_dir"]
     policy = {
         "schema": "cth3ds.runtime-core-review-policy/v6", "stage_id": "C3-R5",
         "policy_id": policy_id, "created_at": now(), "base_identity": base,
         "verified_invocation": context.record,
         "verified_invocation_sha256": context.digest,
+        "validation_change_authority": authority,
         "candidate_identity": {
             "required_first_parent": base["commit"], "forbidden_ancestors": FORBIDDEN,
             "expected_commit": head, "expected_tree": tree,
@@ -938,8 +948,9 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
             "product_exact": ["tools/th3ds_convert.py", "scripts/build_3ds.sh",
                               "scripts/bootstrap_upstream.sh"],
             "product_prefixes": ["cmake/", "include/", "src/", "lua/"],
-            "expected_product_fingerprint": PRODUCT_FP, "expected_product_entries": 54,
-            "allowlist_exact": ALLOWLIST,
+            "expected_product_fingerprint": expected_product["sha256"],
+            "expected_product_entries": expected_product["entry_count"],
+            "allowlist_exact": list(authority["authorized_diff_exact"]),
             "forbidden_patterns": ["config/**", "tests/** except tests/runtime_core_v2/**",
                                    "game-data", "build-output-in-repository"],
             "require_product_diff_empty": True,
@@ -1247,9 +1258,13 @@ def produce(context: Any, args: argparse.Namespace) -> int:
         invocations.append(invocation)
         if invocation["timed_out"] or invocation["signal"] is not None or \
            invocation["exit_code"] != 0:
-            detail = artifact_path(command["stderr_role"], repo, roots).read_text(
-                errors="replace")
-            raise RuntimeError(f"{command['role']} failed: {detail[-3000:]}")
+            stdout_detail = artifact_path(
+                command["stdout_role"], repo, roots).read_text(errors="replace")
+            stderr_detail = artifact_path(
+                command["stderr_role"], repo, roots).read_text(errors="replace")
+            detail = ("stdout-tail:\n" + stdout_detail[-65536:] +
+                      "\nstderr-tail:\n" + stderr_detail[-8192:])
+            raise RuntimeError(f"{command['role']} failed: {detail}")
         for role in command["output_roles"]:
             path = artifact_path(role, repo, roots)
             if not path.is_file():

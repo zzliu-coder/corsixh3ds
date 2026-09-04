@@ -190,9 +190,13 @@ ci_diag_write_result() {
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
+import os
 import pathlib
+import stat
 import sys
+import tempfile
 
 (
     output,
@@ -207,6 +211,36 @@ import sys
 logs = [path for path in logs if path]
 identity_file = pathlib.Path(identity_path)
 identity = json.loads(identity_file.read_text()) if identity_file.is_file() else None
+log_artifacts = []
+log_validation_errors = []
+for log in logs:
+    path = pathlib.Path(log)
+    artifact = {"path": log}
+    try:
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("path is not a regular file")
+        if metadata.st_mode & 0o444 == 0:
+            raise PermissionError("path has no readable permission bits")
+        content = path.read_bytes()
+        artifact.update(
+            {
+                "byte_size": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
+    except OSError as error:
+        detail = f"{log}: {error}"
+        artifact["error"] = str(error)
+        log_validation_errors.append(detail)
+    log_artifacts.append(artifact)
+
+if log_validation_errors:
+    status = "FAIL"
+    if int(exit_code) == 0:
+        exit_code = "74"
+    if not failed_command:
+        failed_command = "diagnostic log validation failed"
 summary = {
     "format": 1,
     "status": status,
@@ -215,26 +249,60 @@ summary = {
     "exit_code": int(exit_code),
     "failed_command": failed_command or None,
     "logs": logs,
+    "log_artifacts": log_artifacts,
+    "log_validation_errors": log_validation_errors,
     "identity": identity,
     "recorded_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
 }
-pathlib.Path(output).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+output_path = pathlib.Path(output)
+payload = (json.dumps(summary, indent=2, sort_keys=True) + "\n").encode("utf-8")
+descriptor, temporary_name = tempfile.mkstemp(
+    prefix=f".{output_path.name}.", suffix=".tmp", dir=output_path.parent
+)
+try:
+    with os.fdopen(descriptor, "wb") as temporary:
+        temporary.write(payload)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+    os.replace(temporary_name, output_path)
+    directory_descriptor = os.open(output_path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
+except BaseException:
+    try:
+        os.unlink(temporary_name)
+    except FileNotFoundError:
+        pass
+    raise
+
+if log_validation_errors:
+    raise SystemExit(74)
 PY
 }
 
 ci_diag_emit_failure() {
-  local status="$1" command="$2" log_path
-  ci_diag_write_result FAIL "${status}" "${command}" "${CI_DIAG_LOGS[@]}"
+  local status="$1" command="$2" log_path write_status=0
+  ci_diag_write_result FAIL "${status}" "${command}" \
+    "${CI_DIAG_LOGS[@]}" || write_status=$?
   printf '[cth3ds-ci] matrix: %s\n' "${CI_DIAG_MATRIX}" >&2
   printf '[cth3ds-ci] stage: %s\n' "${CI_DIAG_STAGE}" >&2
   printf '[cth3ds-ci] failed command: %s\n' "${command}" >&2
   printf '[cth3ds-ci] exit code: %s\n' "${status}" >&2
   for log_path in "${CI_DIAG_LOGS[@]}"; do
-    if [[ -f "${log_path}" ]]; then
-      printf '[cth3ds-ci] tail: %s\n' "${log_path}" >&2
+    [[ -n "${log_path}" ]] || continue
+    printf '[cth3ds-ci] tail: %s\n' "${log_path}" >&2
+    if [[ -f "${log_path}" && -r "${log_path}" ]]; then
       tail -n "${CTH3DS_LOG_TAIL_LINES:-80}" "${log_path}" >&2
+    else
+      printf '[cth3ds-ci] tail unavailable: declared log is missing, nonregular, or unreadable\n' >&2
     fi
   done
+  if [[ "${write_status}" -ne 0 ]]; then
+    printf '[cth3ds-ci] diagnostic log validation exit code: %s\n' \
+      "${write_status}" >&2
+  fi
   printf '[cth3ds-ci] machine summary: %s\n' "${CI_DIAG_DIR}/summary.json" >&2
 }
 
@@ -256,6 +324,11 @@ ci_diag_on_error() {
 }
 
 ci_diag_mark_pass() {
+  local status=0
   trap - ERR
-  ci_diag_write_result PASS 0 "" "${CI_DIAG_LOGS[@]}"
+  ci_diag_write_result PASS 0 "" "${CI_DIAG_LOGS[@]}" || status=$?
+  if [[ "${status}" -ne 0 ]]; then
+    ci_diag_emit_failure "${status}" "diagnostic log validation failed"
+    return "${status}"
+  fi
 }

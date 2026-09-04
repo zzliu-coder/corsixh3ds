@@ -23,6 +23,71 @@
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       },
       "additionalProperties": false
+    },
+    "validation_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "owner",
+        "baseline",
+        "authorized_diff_count",
+        "authorized_diff_lines_sha256",
+        "authorized_diff_exact",
+        "review_policy_schema_role",
+        "product_boundary",
+        "candidate_constraints"
+      ],
+      "properties": {
+        "schema": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit", "tree"],
+          "properties": {
+            "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+          }
+        },
+        "authorized_diff_count": {"type": "integer", "minimum": 1},
+        "authorized_diff_lines_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "authorized_diff_exact": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+          "uniqueItems": true
+        },
+        "review_policy_schema_role": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["json_pointer", "required_keywords", "forbidden_keywords"],
+          "properties": {
+            "json_pointer": {"type": "string", "pattern": "^/"},
+            "required_keywords": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "forbidden_keywords": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          }
+        },
+        "product_boundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entry_count", "sha256"],
+          "properties": {
+            "entry_count": {"type": "integer", "minimum": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "candidate_constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sole_parent", "clean", "repair_commits"],
+          "properties": {
+            "sole_parent": {"type": "boolean"},
+            "clean": {"type": "boolean"},
+            "repair_commits": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
     }
   },
   "type": "object",
@@ -35,6 +100,7 @@
     "verified_invocation_sha256",
     "base_identity",
     "candidate_identity",
+    "validation_change_authority",
     "product_boundary",
     "roots",
     "role_registry",
@@ -192,6 +258,9 @@
       },
       "additionalProperties": false
     },
+    "validation_change_authority": {
+      "$ref": "#/$defs/validation_authority"
+    },
     "product_boundary": {
       "type": "object",
       "required": [
@@ -254,10 +323,9 @@
         "allowlist_exact": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
           },
-          "minItems": 14,
-          "maxItems": 15,
           "uniqueItems": true
         },
         "forbidden_patterns": {

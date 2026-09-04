@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import unittest
+from collections import Counter
 from pathlib import Path
 
 
@@ -90,16 +91,35 @@ class BuildScriptTests(unittest.TestCase):
             workflow,
             r"devkitpro/devkitarm@sha256:[0-9a-f]{64}",
         )
+        action_references = re.findall(
+            r"(?m)^\s*(?:-\s*)?uses:\s*(actions/[A-Za-z0-9_.-]+@[^\s#]+)\s*$",
+            workflow,
+        )
+        self.assertEqual(
+            Counter(action_references),
+            Counter(
+                {
+                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": 6,
+                    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97": 3,
+                    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c": 1,
+                    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a": 6,
+                }
+            ),
+        )
+        for reference in action_references:
+            revision = reference.rsplit("@", 1)[1]
+            self.assertRegex(revision, r"^[0-9a-f]{40}$", reference)
+            self.assertNotIn(revision, {"main", "master", "latest"})
         checkouts = list(
             re.finditer(
-                r"(?m)^\s*- uses: actions/checkout@v4\n"
+                r"(?m)^\s*- uses: actions/checkout@"
+                r"3d3c42e5aac5ba805825da76410c181273ba90b1\n"
                 r"\s+with:\n"
                 r"\s+fetch-depth: 0$",
                 workflow,
             )
         )
-        self.assertEqual(workflow.count("uses: actions/checkout@v4"), 5)
-        self.assertEqual(len(checkouts), 5)
+        self.assertEqual(len(checkouts), 6)
         self.assertEqual(workflow.count("git rev-parse --is-shallow-repository"), 5)
         self.assertEqual(
             len(
@@ -117,7 +137,7 @@ class BuildScriptTests(unittest.TestCase):
             "lua5.4",
             "cth3ds-simulator",
             "cth3ds-runtime-probe",
-            "actions/download-artifact@v4",
+            "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
             "name: corsixth-old3ds",
             "CTH3DS_SIMULATOR:",
             "CTH3DS_RUNTIME_PROBE:",

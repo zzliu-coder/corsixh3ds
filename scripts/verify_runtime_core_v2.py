@@ -56,20 +56,11 @@ PRODUCT_FP = "4b027341762b902c75c10b522a8edc15330e0723b73512e9fcdc9e24841f0ca6"
 ARCHIVE_SHA = "e1bc438183bbc95e40edf9363628cb73897559c01f537cdce42638e5bb2076f8"
 UPSTREAM_DIGEST = "e8622007fa508f3471294e5954ebc83168d95c81beb3b09b797bf65c02bf1801"
 ALLOWLIST = [
-    ".github/workflows/old3ds-validation.yml",
-    ".gitignore",
     "scripts/ci_diagnostics.sh",
-    "scripts/consume_runtime_core_v2.py",
-    "scripts/test_all.sh",
-    "scripts/verifier_driver.py",
+    "scripts/run_ci_command.sh",
     "scripts/verify_runtime_core_v2.py",
-    "src/common/resource_manager.cpp",
-    "tests/runtime_core_v2/result.schema.json",
-    "tests/runtime_core_v2/review-policy.schema.json",
     "tests/test_build_scripts.py",
     "tests/test_ci_diagnostics.py",
-    "tests/test_resource_manager.cpp",
-    "tests/test_verifier_python_environment.py",
 ]
 CLOSURE_INPUTS = {
     "wrapper": "scripts/run_verifier_python.sh",

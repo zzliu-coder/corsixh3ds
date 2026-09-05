@@ -10,6 +10,10 @@ using lua_CFunction = int (*)(lua_State*);
 
 constexpr int LUA_OK = 0;
 constexpr int LUA_TTABLE = 5;
+constexpr int LUA_TNUMBER = 3;
+constexpr int LUA_TSTRING = 4;
+inline int lua_type(lua_State*,int){return 0;}
+inline lua_Number lua_tonumber(lua_State*,int){return 0;}
 constexpr int LUA_GCCOUNT = 3;
 constexpr int LUA_GCCOUNTB = 4;
 

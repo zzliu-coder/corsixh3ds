@@ -88,9 +88,10 @@ end
 
 local function top_window(ui)
   if not ui or type(ui.windows) ~= "table" then return nil end
-  for index = #ui.windows, 1, -1 do
+  for index = 1, #ui.windows do
     local window = ui.windows[index]
-    if window and window.visible ~= false and window ~= ui.bottom_panel then
+    if window and window.visible ~= false and window ~= ui.bottom_panel and
+       window ~= ui.menu_bar and window ~= ui.adviser and window ~= ui.subtitles then
       return window
     end
   end
@@ -125,8 +126,6 @@ function Platform.new(app, native, capabilities)
     app = app,
     native = native,
     capabilities = capabilities,
-    cursor_x = 320,
-    cursor_y = 240,
     saved_speed = nil,
     save_installed = false,
     load_installed = false,
@@ -232,30 +231,51 @@ end
 
 -- Shared bridge contract for the subsequent InputMapper integration.
 function Platform:inputState()
-  local ui = assert(self.app.ui, "UI unavailable")
-  return {cursor_x=clamp(tonumber(ui.cursor_x) or 320,0,639),
-          cursor_y=clamp(tonumber(ui.cursor_y) or 240,0,479),input_context=self:inputContext()}
+  local ui = assert(self.app.ui, "input UI unavailable")
+  assert(type(ui.cursor_x) == "number" and type(ui.cursor_y) == "number",
+         "input UI cursor unavailable")
+  return {cursor_x = ui.cursor_x, cursor_y = ui.cursor_y,
+          input_context = self:inputContext()}
 end
 
-function Platform:handlePointer(action)
-  local ui = self.app.ui
-  if not ui then return false, "UI unavailable" end
-  local x,y=clamp(action.x,0,639),clamp(action.y,0,479)
-  local old=self:inputState()
-  if ui.setMouseReleased then ui:setMouseReleased(false) end
-  self.app:dispatch("motion",x,y,x-old.cursor_x,y-old.cursor_y)
-  if action.kind == "down" then self.app:dispatch("buttondown",action.button or 1,x,y)
-  elseif action.kind == "up" then self.app:dispatch("buttonup",action.button or 1,x,y)
-  elseif action.kind ~= "motion" then return false,"unknown pointer kind" end
+-- Logical pixels only. The native bridge converts bottom pixels exactly once.
+function Platform:handlePointer(event)
+  local ok, err = pcall(function()
+    local state = self:inputState()
+    local kind = event.kind
+    assert(kind == "motion" or kind == "down" or kind == "up" or kind == "click",
+           "invalid pointer kind")
+    local x = clamp(event.x or state.cursor_x, 0, 639)
+    local y = clamp(event.y or state.cursor_y, 0, 479)
+    local ui = self.app.ui
+    assert(type(ui.setMouseReleased) == "function", "UI mouse capture unavailable")
+    ui:setMouseReleased(false)
+    self.app:dispatch("motion", x, y, x - state.cursor_x, y - state.cursor_y)
+    local button = event.button or 1
+    assert(button == 1 or button == 3, "invalid pointer button")
+    if kind == "down" then
+      self.app:dispatch("buttondown", button, x, y)
+    elseif kind == "up" then
+      self.app:dispatch("buttonup", button, x, y)
+    elseif kind == "click" then
+      local clicks = event.clicks or 1
+      assert(clicks == 1 or clicks == 2, "invalid click count")
+      for _ = 1, clicks do
+        -- A first click can replace App.ui; use its current visible point.
+        local current = self:inputState()
+        self.app:dispatch("buttondown", button, current.cursor_x, current.cursor_y)
+        current = self:inputState()
+        self.app:dispatch("buttonup", button, current.cursor_x, current.cursor_y)
+      end
+    end
+    self.native.request_redraw()
+  end)
+  if not ok then return false, tostring(err) end
   return true
 end
 
---! CorsixTH's own toolbar stays visible.
---
--- The lower screen now shows the whole 640x480 frame at half size, so the
--- game's real toolbar and dialogs are what the player touches. An earlier
--- version hid the toolbar because a hand-drawn panel stood in for it; hiding it
--- now would remove the very thing the lower screen exists to show.
+-- Lifecycle cancellation must not call onMouseUp: upstream uses release to
+-- activate buttons/entities. Clear only UI input ownership, including children.
 function Platform:showLegacyBottomPanel()
   local ui = self.app.ui
   if ui and ui.bottom_panel and ui.bottom_panel.visible == false then
@@ -264,25 +284,27 @@ function Platform:showLegacyBottomPanel()
 end
 
 function Platform:inputContext()
-  local app = self.app
-  local ui = app.ui
-  if not app.world then return "menu" end
-  if ui and ui.focused_textbox then return "text_input" end
-
-  local edit = ui and ui.edit_room
-  if edit then
-    if edit.phase == "walls" then return "build_room" end
-    if edit.phase == "door" or edit.phase == "windows" or
-       edit.phase == "objects" or edit.phase == "clear_area" then
-      return "place_object"
-    end
-  end
-
+  local app, ui = self.app, self.app.ui
+  if not ui then error("input UI unavailable") end
   local window = top_window(ui)
-  if window and window ~= ui and window ~= ui.menu_bar and
-     window ~= ui.adviser and window ~= ui.subtitles then
-    return "dialog"
+  local function focused(owner)
+    for _, box in ipairs(owner and owner.textboxes or {}) do
+      if box.enabled and box.active then return true end
+    end
+    return false
   end
+  if focused(ui) or focused(window) then return "text_input" end
+  -- Window order is front-to-back. A dialog above a blueprint wins.
+  if window then
+    local phase = window.phase
+    if phase == "walls" then return "build_room" end
+    if phase == "door" or phase == "windows" or phase == "objects" or
+       phase == "clear_area" then return "place_object" end
+    local types, place = rawget(_G, "class"), rawget(_G, "UIPlaceObjects")
+    if types and place and types.is(window, place) then return "place_object" end
+    if app.world then return "dialog" end
+  end
+  if not app.world then return "menu" end
   return "world"
 end
 
@@ -378,24 +400,48 @@ function Platform:dispatchKey(name)
   self.app:dispatch("keyup", name, {})
 end
 
+function Platform:cancelPointer()
+  local ui = assert(self.app.ui, "input UI unavailable")
+  local function clear(window)
+    local button = window.active_button
+    if button then
+      button.panel_for_sprite.sprite_index = button.sprite_index_normal
+      button.panel_for_sprite.lowered = button.panel_lowered_normal
+      button.active = false
+    end
+    window.active_button = false
+    window.btn_repeat_delay = nil
+    local bar = window.active_scrollbar
+    if bar then bar.active, bar.down_x, bar.down_y = false, nil, nil end
+    window.active_scrollbar = nil
+    window.dragging = false
+    if window.mouse_down_x ~= nil then window.mouse_down_x = false end
+    if window.mouse_down_y ~= nil then window.mouse_down_y = false end
+    if window.move_rect_x ~= nil then window.move_rect_x = false end
+    if window.move_rect_y ~= nil then window.move_rect_y = false end
+    for _, child in ipairs(window.windows or {}) do clear(child) end
+  end
+  clear(ui)
+  ui.drag_mouse_move = nil
+  ui.down_count = 0
+  ui.buttons_down.mouse_left = nil
+  ui.buttons_down.mouse_right = nil
+  ui.buttons_down.mouse_middle = nil
+  ui.tick_scroll_amount_mouse = false
+  if ui.cursor == ui.down_cursor then ui:setCursor(ui.default_cursor) end
+  self.native.request_redraw()
+  return true
+end
+
 function Platform:moveCursor(dx, dy)
-  local ui = self.app.ui
-  if not ui then return end
-  local step = 16
-  local old_x, old_y = self.cursor_x, self.cursor_y
-  self.cursor_x = clamp(self.cursor_x + dx * step, 0, 639)
-  self.cursor_y = clamp(self.cursor_y + dy * step, 0, 479)
-  ui.cursor_x, ui.cursor_y = self.cursor_x, self.cursor_y
-  self.app:dispatch("motion", self.cursor_x, self.cursor_y,
-                    self.cursor_x - old_x, self.cursor_y - old_y)
+  local state = self:inputState()
+  return self:handlePointer{kind = "motion",
+    x = state.cursor_x + dx * 16, y = state.cursor_y + dy * 16}
 end
 
 function Platform:click(button, double_click)
-  local count = double_click and 2 or 1
-  for _ = 1, count do
-    self.app:dispatch("buttondown", button, self.cursor_x, self.cursor_y)
-    self.app:dispatch("buttonup", button, self.cursor_x, self.cursor_y)
-  end
+  return self:handlePointer{kind = "click", button = button,
+    clicks = double_click and 2 or 1}
 end
 
 function Platform:invokeBottom(method)
@@ -447,37 +493,41 @@ function Platform:handleAction(action)
   local world = self.app.world
   local context = self:inputContext()
 
-  if kind == "pan_camera" then
+  if kind == "pointer_move" or kind == "pointer_down" then
+    return self:handlePointer{kind = kind == "pointer_move" and "motion" or "down",
+      x = clamp(assert(action.x), 0, 319) * 2,
+      y = clamp(assert(action.y), 0, 239) * 2}
+  elseif kind == "pointer_up" then
+    if action.value == 1 then return self:cancelPointer() end
+    return self:handlePointer{kind = "up"}
+  elseif kind == "pan_camera" then
     if ui and type(ui.scrollMap) == "function" then
       safe_call(ui, "scrollMap", -(action.dx or 0), -(action.dy or 0))
     end
   elseif kind == "cursor_step" then
-    local dx, dy = action.dx or 0, action.dy or 0
-    if context == "dialog" or context == "menu" or context == "text_input" then
-      if math.abs(dx) > math.abs(dy) then
-        self:dispatchKey(dx < 0 and "Left" or "Right")
-      elseif dy ~= 0 then
-        self:dispatchKey(dy < 0 and "Up" or "Down")
-      end
-    else
-      self:moveCursor(dx, dy)
-    end
+    local ok, err = self:moveCursor(action.dx or 0, action.dy or 0)
+    if not ok then return false, err end
   elseif kind == "confirm" then
-    if context == "dialog" or context == "menu" or context == "text_input" then
-      self:dispatchKey("Return")
-    else
-      self:click(1, false)
-    end
+    local ok, err = self:click(1, false)
+    if not ok then return false, err end
   elseif kind == "cancel" or kind == "close_top_window" then
-    self:dispatchKey("Escape")
+    if kind == "close_top_window" or context == "dialog" or
+       context == "menu" or context == "text_input" then
+      self:dispatchKey("Escape")
+    else
+      local ok, err = self:click(3, false)
+      if not ok then return false, err end
+    end
   elseif kind == "open_quick_menu" then
     if ui and type(ui.showMenuBar) == "function" then safe_call(ui, "showMenuBar") end
   elseif kind == "rotate_object" then
-    self:click(3, false)
+    local ok, err = self:click(3, false)
+    if not ok then return false, err end
   elseif kind == "toggle_walls" then
     if ui and type(ui.toggleTransparent) == "function" then safe_call(ui, "toggleTransparent") end
   elseif kind == "show_details" then
-    self:click(1, true)
+    local ok, err = self:click(1, true)
+    if not ok then return false, err end
   elseif kind == "zoom_in" then
     self:adjustZoom(1.125)
   elseif kind == "zoom_out" then
@@ -513,13 +563,14 @@ function Platform:handleAction(action)
   elseif kind == "edit_room" then
     self:invokeBottom("editRoom")
   elseif kind == "quick_save" then
-    if world then safe_call(self.app, "quickSave") end
+    if world then return self.app:quickSave() end
   elseif kind == "quick_load" then
-    if world then safe_call(self.app, "quickLoad") end
+    if world then return self.app:quickLoad() end
   elseif kind == "build_room_rectangle" then
     self:placeRoomRectangle(action)
   elseif kind == "place_item" then
-    self:click(1, false)
+    local ok, err = self:click(1, false)
+    if not ok then return false, err end
   elseif kind == "previous_category" then
     self:dispatchKey("Left")
   elseif kind == "next_category" then
@@ -538,8 +589,8 @@ function Platform:handleAction(action)
     -- The native layer queues SDL_QUIT after the atomic quicksave request.
   end
 
-  -- The player just acted, so bypass the change filter for this one sync.
   self.native.request_redraw()
+  return true
 end
 
 local module = {}

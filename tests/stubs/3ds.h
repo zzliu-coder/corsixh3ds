@@ -28,12 +28,23 @@ constexpr u32 KEY_TOUCH = 1U << 20U;
 struct circlePosition { std::int16_t dx; std::int16_t dy; };
 struct touchPosition { u16 px; u16 py; };
 
+#ifdef CTH3DS_RUNTIME_TEST
+inline u32 test_held=0,test_held_reads=0,test_scans=0;
+inline circlePosition test_circle{};inline touchPosition test_touch{};
+inline u32 hidKeysDown(){return 0;}
+inline u32 hidKeysHeld(){++test_held_reads;return test_held;}
+inline u32 hidKeysUp(){return 0;}
+inline void hidScanInput(){++test_scans;}
+inline void hidCircleRead(circlePosition* p){*p=test_circle;}
+inline void hidTouchRead(touchPosition* p){*p=test_touch;}
+#else
 inline u32 hidKeysDown() { return 0U; }
 inline u32 hidKeysHeld() { return 0U; }
 inline u32 hidKeysUp() { return 0U; }
 inline void hidScanInput() {}
 inline void hidCircleRead(circlePosition* position) { position->dx = 0; position->dy = 0; }
 inline void hidTouchRead(touchPosition* position) { position->px = 0; position->py = 0; }
+#endif
 inline Result HIDUSER_GetSoundVolume(u8* out) { *out = 42U; return 0; }
 
 enum APT_HookType {
@@ -46,7 +57,8 @@ enum APT_HookType {
 };
 using aptHookFn = void (*)(APT_HookType, void*);
 struct aptHookCookie { aptHookCookie* next; aptHookFn callback; void* param; };
-inline void aptHook(aptHookCookie*, aptHookFn, void*) {}
+inline aptHookFn test_apt_callback=nullptr;inline void* test_apt_param=nullptr;
+inline void aptHook(aptHookCookie*, aptHookFn fn, void* param) {test_apt_callback=fn;test_apt_param=param;}
 inline void aptUnhook(aptHookCookie*) {}
 inline void aptSetSleepAllowed(bool) {}
 
@@ -67,7 +79,13 @@ enum MemRegion {
 inline u32 osGetMemRegionFree(MemRegion) { return 53U * 1024U * 1024U; }
 inline u8 osGetWifiStrength() { return OS_SharedConfig->wifi_strength; }
 inline u64 osGetTime() { return 1000U; }
-inline u32 envGetHeapSize() { return 48U * 1024U * 1024U; }
+inline u32 envGetHeapSize() {
+#ifdef CTH3DS_RUNTIME_TEST
+ return 64U*1024U*1024U;
+#else
+ return 48U*1024U*1024U;
+#endif
+}
 inline u32 envGetLinearHeapSize() { return 8U * 1024U * 1024U; }
 inline u32 linearSpaceFree() { return 8U * 1024U * 1024U; }
 void* linearMemAlign(std::size_t bytes, std::size_t alignment);

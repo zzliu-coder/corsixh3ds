@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdarg>
+#include <cmath>
+#include <stdexcept>
 #include <cstddef>
 #include <cstdlib>
 #include <cstdio>
@@ -594,6 +596,7 @@ void push_action(lua_State* state, const Action& action) {
 struct AdapterCall {
   const char* method{nullptr};
   const Action* action{nullptr};
+  InputContext* context{nullptr};
 };
 
 // Everything that touches Lua from the runtime runs inside this function, which
@@ -626,15 +629,37 @@ int l_protected_adapter_call(lua_State* state) {
     push_action(state, *request->action);
     ++argument_count;
   }
-  lua_call(state, argument_count, 0);
+  lua_call(state, argument_count, 2);
+  if (request->context) {
+    if (!lua_istable(state,-2)) return luaL_error(state,"inputState must return a table");
+    for (const char* field : {"cursor_x","cursor_y"}) {
+      lua_getfield(state,-2,field);
+      const bool valid=lua_type(state,-1)==LUA_TNUMBER && std::isfinite(lua_tonumber(state,-1));
+      lua_pop(state,1);
+      if(!valid)return luaL_error(state,"inputState invalid cursor: %s",field);
+    }
+    lua_getfield(state,-2,"input_context");
+    if(lua_type(state,-1)!=LUA_TSTRING)return luaL_error(state,"inputState context must be a string");
+    const char* name=lua_tostring(state,-1);
+    if(!std::strcmp(name,"world"))*request->context=InputContext::World;
+    else if(!std::strcmp(name,"build_room"))*request->context=InputContext::BuildRoom;
+    else if(!std::strcmp(name,"place_object"))*request->context=InputContext::PlaceObject;
+    else if(!std::strcmp(name,"menu"))*request->context=InputContext::Menu;
+    else if(!std::strcmp(name,"dialog"))*request->context=InputContext::Dialog;
+    else if(!std::strcmp(name,"text_input"))*request->context=InputContext::TextInput;
+    else return luaL_error(state,"inputState unknown context: %s",name);
+  } else if (!std::strcmp(request->method,"handleAction") || !std::strcmp(request->method,"handlePointer") || !std::strcmp(request->method,"cancelPointer")) {
+    if(!lua_isboolean(state,-2)||!lua_toboolean(state,-2))
+      return luaL_error(state,"%s rejected: %s",request->method,lua_tostring(state,-1)?lua_tostring(state,-1):"expected true");
+  }
   return 0;
 }
 
 bool call_platform_method(lua_State* state, const char* method,
                           const Action* action = nullptr,
-                          std::string* error = nullptr) {
+                          std::string* error = nullptr, InputContext* context = nullptr) {
   const int base = lua_gettop(state);
-  AdapterCall request{method, action};
+  AdapterCall request{method, action, context};
   lua_pushcfunction(state, l_protected_adapter_call);
   lua_pushlightuserdata(state, &request);
   if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
@@ -803,10 +828,10 @@ class Runtime {
       bottom_surface_ = nullptr;
       bottom_window_id_ = 0U;
     }
-    input_mapper_.reset();
+    input_mapper_.reset();input_failed_=false;
     initialized_ = false; ready_ = false;
     lua_state_ = nullptr;
-    game_window_=nullptr;game_window_id_=0;last_game_pointer_={320,240};
+    game_window_=nullptr;game_window_id_=0;
     resource_start_failed_=false;resource_session_.reset();
     pending_lifecycle_.store(0);exit_requested_.store(false);
     lifecycle_.reset(0);last_tick_us_=0;scheduler_.reset(0);
@@ -816,11 +841,6 @@ class Runtime {
   }
 
   void tick(lua_State* state) {
-    if (exit_requested_.load(std::memory_order_relaxed)) {
-      // Nothing below is worth doing while the system is tearing us down, and
-      // some of it (Lua, SD-card writes) can block for a long time.
-      return;
-    }
     if (!assert_ready(state)) return;
     const std::uint64_t frame_started = now_us();
     const float delta_seconds = last_tick_us_ == 0U
@@ -830,6 +850,7 @@ class Runtime {
     last_tick_us_ = frame_started;
 
     process_lifecycle(state, frame_started);
+    if(input_failed_ || lifecycle_.state()!=LifecycleState::Running)return;
     if (state_refresh_gate_.due(frame_started) &&
         bottom_mode_ == BottomScreenMode::Panel) {
       // In game mode nothing on screen consumes this, and walking the hospital
@@ -855,7 +876,8 @@ class Runtime {
     RawInputSnapshot snapshot;
     snapshot.timestamp_us = frame_started;
     snapshot.down = convert_keys(hidKeysDown());
-    snapshot.held = convert_keys(hidKeysHeld());
+    const u32 raw_held = hidKeysHeld();
+    snapshot.held = convert_keys(raw_held);
     snapshot.up = convert_keys(hidKeysUp());
 
     circlePosition circle{};
@@ -863,7 +885,6 @@ class Runtime {
     snapshot.circle_x = circle.dx;
     snapshot.circle_y = circle.dy;
 
-    const u32 raw_held = hidKeysHeld();
     snapshot.touching = (raw_held & KEY_TOUCH) != 0U;
     if (snapshot.touching) {
       touchPosition touch{};
@@ -871,33 +892,25 @@ class Runtime {
       snapshot.touch = {static_cast<int>(touch.px), static_cast<int>(touch.py)};
     }
 
-    const auto actions = input_mapper_.update(
-        snapshot, bottom_ui_.state().input_context,
-        delta_seconds > 0.1F ? 0.1F : delta_seconds);
-    for (const Action& action : actions) {
-      const bool is_pointer = action.type == ActionType::PointerDown ||
-                              action.type == ActionType::PointerMove ||
-                              action.type == ActionType::PointerUp ||
-                              action.type == ActionType::Tap ||
-                              action.type == ActionType::DoubleTap ||
-                              action.type == ActionType::LongPress;
-      if (is_pointer && bottom_mode_ == BottomScreenMode::Game) {
-        // The lower screen is the game, so the touch goes straight to it.
-        // Tap and DoubleTap are derived from the down/up pair the game has
-        // already been given, so forwarding them again would double-click.
-        forward_pointer_to_game(action);
-      } else if (is_pointer) {
-        const auto translated = bottom_ui_.process(action);
-        dirty_ = true;
-        scheduler_.request_redraw();
-        for (const Action& translated_action : translated) {
-          dispatch(state, translated_action);
-        }
-      } else if (bottom_mode_ == BottomScreenMode::Game &&
-                 handle_button_as_click(action)) {
-        // Already delivered straight to the game.
-      } else {
-        dispatch(state, action);
+    if (bottom_mode_ == BottomScreenMode::Game) {
+      std::string error;
+      try {
+        const bool accepted=input_mapper_.dispatch_mixed(snapshot,std::min(delta_seconds,0.1F),
+          [&] { InputContext context;
+            if(!call_platform_method(state,"inputState",nullptr,&error,&context))throw std::runtime_error(error);
+            return context;
+          },
+          [&](const Action& action){return call_platform_method(state,"handleAction",&action,&error);});
+        if(!accepted)throw std::runtime_error(error.empty()?"input batch rejected":error);
+      } catch(const std::exception& e) {
+        cancel_input(state); report_fatal(e.what()); input_failed_=true; return;
+      }
+    } else {
+      const auto actions=input_mapper_.update(snapshot,bottom_ui_.state().input_context,std::min(delta_seconds,0.1F));
+      for(const auto& action:actions) {
+        const bool pointer=action.type==ActionType::PointerDown||action.type==ActionType::PointerMove||action.type==ActionType::PointerUp||action.type==ActionType::Tap||action.type==ActionType::DoubleTap||action.type==ActionType::LongPress;
+        if(pointer){for(const auto& translated:bottom_ui_.process(action))dispatch(state,translated);}
+        else dispatch(state,action);
       }
     }
 
@@ -927,6 +940,15 @@ class Runtime {
   bool consumes_event(const SDL_Event& event) const noexcept {
     if (!initialized_ || bottom_window_id_ == 0U) {
       return false;
+    }
+    if(bottom_mode_==BottomScreenMode::Game) {
+      // SDL N3DS touch emulation is the only pointer owner. HID is dispatched
+      // synchronously; consume all derived pointers regardless of window ID.
+      switch(event.type) {
+        case SDL_MOUSEMOTION: case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
+        case SDL_FINGERDOWN: case SDL_FINGERUP: case SDL_FINGERMOTION:return true;
+        default:return false;
+      }
     }
     switch (event.type) {
       case SDL_MOUSEMOTION: return event.motion.windowID == bottom_window_id_;
@@ -1161,116 +1183,14 @@ class Runtime {
       default: break;
     }
     runtime->pending_lifecycle_.fetch_or(bit, std::memory_order_relaxed);
-    if (bit == kLifecycleExit) {
-      // APT expects the process to go away promptly. Queue the quit here, on
-      // the APT thread, instead of waiting for the next runtime_tick: if the
-      // main thread is inside a long frame, or Lua is wedged, waiting is
-      // exactly what makes HOME -> Close look like a hang.
-      runtime->exit_requested_.store(true, std::memory_order_relaxed);
-      SDL_Event quit{};
-      quit.type = SDL_QUIT;
-      SDL_PushEvent(&quit);
-    }
+
   }
 
-  //! Turn a lower-screen touch into a mouse event on the CorsixTH window.
-  //!
-  //! The lower screen shows the whole 640x480 frame at exactly half size, so
-  //! the mapping is a doubling with no rounding error: whatever the player's
-  //! finger is over is the pixel the game sees.
-  void forward_pointer_to_game(const Action& action) {
-    if (game_window_id_ == 0U) {
-      return;
-    }
-    const Vec2i game_point = ScreenLayout::bottom_touch_to_legacy(action.position);
-
-    const auto push_motion = [&]() {
-      SDL_Event event{};
-      event.motion.type = SDL_MOUSEMOTION;
-      event.motion.windowID = game_window_id_;
-      event.motion.x = game_point.x;
-      event.motion.y = game_point.y;
-      event.motion.xrel = game_point.x - last_game_pointer_.x;
-      event.motion.yrel = game_point.y - last_game_pointer_.y;
-      SDL_PushEvent(&event);
-      last_game_pointer_ = game_point;
-    };
-    const auto push_button = [&](Uint8 button, bool pressed) {
-      SDL_Event event{};
-      event.button.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-      event.button.windowID = game_window_id_;
-      event.button.button = button;
-      event.button.state = pressed ? SDL_PRESSED : SDL_RELEASED;
-      event.button.clicks = 1U;
-      event.button.x = game_point.x;
-      event.button.y = game_point.y;
-      SDL_PushEvent(&event);
-    };
-
-    switch (action.type) {
-      case ActionType::PointerDown:
-        push_motion();
-        push_button(SDL_BUTTON_LEFT, true);
-        break;
-      case ActionType::PointerMove:
-        push_motion();
-        break;
-      case ActionType::PointerUp:
-        push_motion();
-        push_button(SDL_BUTTON_LEFT, false);
-        break;
-      default:
-        // Tap, DoubleTap and LongPress are all derived from the down/up pair
-        // the game has already been given. Forwarding them too would turn one
-        // touch into several clicks. The right button lives on B and X, which
-        // stay reachable with a stylus in hand.
-        break;
-    }
-  }
-
-  //! Inject a click at the last touched point.
-  //!
-  //! Theme Hospital cancels and rotates with the right button, and the Lua
-  //! adapter's own cursor is a separate d-pad cursor, so routing the face
-  //! buttons through Lua would click somewhere other than where the player is
-  //! looking. Going straight to SDL keeps one cursor.
-  void click_at_pointer(Uint8 button) {
-    if (game_window_id_ == 0U) {
-      return;
-    }
-    SDL_Event motion{};
-    motion.motion.type = SDL_MOUSEMOTION;
-    motion.motion.windowID = game_window_id_;
-    motion.motion.x = last_game_pointer_.x;
-    motion.motion.y = last_game_pointer_.y;
-    SDL_PushEvent(&motion);
-    for (const bool pressed : {true, false}) {
-      SDL_Event event{};
-      event.button.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-      event.button.windowID = game_window_id_;
-      event.button.button = button;
-      event.button.state = pressed ? SDL_PRESSED : SDL_RELEASED;
-      event.button.clicks = 1U;
-      event.button.x = last_game_pointer_.x;
-      event.button.y = last_game_pointer_.y;
-      SDL_PushEvent(&event);
-    }
-  }
-
-  //! True when the action was handled as a direct click on the game.
-  [[nodiscard]] bool handle_button_as_click(const Action& action) {
-    switch (action.type) {
-      case ActionType::Confirm:
-      case ActionType::PlaceItem:
-        click_at_pointer(SDL_BUTTON_LEFT);
-        return true;
-      case ActionType::Cancel:
-      case ActionType::RotateObject:
-        click_at_pointer(SDL_BUTTON_RIGHT);
-        return true;
-      default:
-        return false;
-    }
+  void cancel_input(lua_State* state) {
+    std::string error;
+    const bool released=input_mapper_.cancel_mixed([&](const Action& action){return call_platform_method(state,"handleAction",&action,&error);});
+    const bool cleared=call_platform_method(state,"cancelPointer",nullptr,&error);
+    if(!released||!cleared){input_failed_=true;report_fatal(error.c_str());}
   }
 
   void dispatch(lua_State* state, const Action& action) {
@@ -1311,6 +1231,7 @@ class Runtime {
     if (flags != 0U) {
       boot_log("lifecycle: flags=0x%08lx", static_cast<unsigned long>(flags));
     }
+    if(flags && bottom_mode_==BottomScreenMode::Game)cancel_input(state);
     if ((flags & kLifecycleSuspend) != 0U) {
       apply_lifecycle_decision(
           state, lifecycle_.signal(LifecycleSignal::Suspend, current), false);
@@ -1339,7 +1260,6 @@ class Runtime {
     if (decision.pause_audio) {
       for(int c=0;c<32;++c) { audio_paused_before_[c]=Mix_Paused(c)!=0; if(!audio_paused_before_[c])Mix_Pause(c); }
       music_paused_before_=Mix_PausedMusic()!=0;Mix_PauseMusic();
-      input_mapper_.reset();
     }
     if (decision.pause_simulation && resource_session_ != nullptr) {
       const auto suspended = resource_session_->suspend();
@@ -1364,7 +1284,7 @@ class Runtime {
     if (decision.resume_audio) {
       for(int c=0;c<32;++c)if(!audio_paused_before_[c])Mix_Resume(c);
       if(!music_paused_before_)Mix_ResumeMusic();
-      input_mapper_.reset();scheduler_.reset(now_us());last_tick_us_=now_us();
+      scheduler_.reset(now_us());last_tick_us_=now_us();
     }
     if (decision.request_autosave && asset_mode_ == "th3ds") {
       Action save;
@@ -1701,7 +1621,7 @@ class Runtime {
   Uint32 game_window_id_{0U};
   BottomScreenMode bottom_mode_{BottomScreenMode::Game};
   std::uint64_t overlay_until_us_{0U};
-  Vec2i last_game_pointer_{320, 240};
+  bool input_failed_{false};
   SDL_Window* bottom_window_{nullptr};
   SDL_Surface* bottom_surface_{nullptr};
   Uint32 bottom_window_id_{0U};
@@ -2107,6 +2027,7 @@ void report_fatal(const char* reason) noexcept {
     }
     gspWaitForVBlank();
   }
+  SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);
   boot_log_close();
 }
 
@@ -2147,7 +2068,7 @@ void runtime_after_frame() noexcept { runtime().after_frame(); }
 [[gnu::noinline]] bool runtime_assert_ready(lua_State* state) {return runtime().assert_ready(state);}
 bool runtime_audio_reserve(std::size_t bytes,const char* identity) noexcept {
   const auto h=heap_snapshot();const auto policy=memory_gate_policy(MemoryGate::Operation);
-  if(!evaluate_memory_gate(h.heap_total,h.heap_available_estimate,h.linear_total,policy).pass() || bytes>h.heap_available_estimate || policy.probe_reserve_bytes>h.heap_available_estimate-bytes) {
+  if(!evaluate_memory_gate(h.heap_total,h.heap_available_estimate,h.linear_total,policy).pass() || bytes>h.heap_available_estimate || !evaluate_memory_gate(h.heap_total,h.heap_available_estimate-bytes,h.linear_total,policy).pass() || policy.probe_reserve_bytes>h.heap_available_estimate-bytes) {
     report_allocation_failure("sound",identity,bytes,"regular","operation reserve gate");return false;
   }
   void* probe=std::malloc(bytes);if(!probe){report_allocation_failure("sound",identity,bytes,"regular","contiguous preflight");return false;}

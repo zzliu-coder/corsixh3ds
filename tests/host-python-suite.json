@@ -155,8 +155,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 158,
-  "selected_sorted_ids_sha256": "4d467717ae65127e3a85fa52914312b1e7a0651514e9f180816a8f0393ad02d0",
+  "selected_count": 159,
+  "selected_sorted_ids_sha256": "e340a2eb45f8e59ba8e74234fe5dc33c2f3fd3b8f838147f80fbe57a9738b137",
   "test_ids": [
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
     "test_build_scripts.BuildScriptTests.test_all_shell_scripts_parse_and_have_no_placeholders",

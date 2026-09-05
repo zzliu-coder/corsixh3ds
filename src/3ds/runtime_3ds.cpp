@@ -804,7 +804,7 @@ class Runtime {
     if (!probe_regular_heap("MAIN MENU",MemoryGate::MenuStable)) return false;
     ready_=true;boot_log_checkpoint("adapter_attach", "ready", "lua-owner");stage("S100", "READY");return true;
   }
-  bool assert_ready(lua_State* state) const {return initialized_&&ready_&&state==lua_state_;}
+  bool assert_ready(lua_State* state) const {return initialized_&&ready_&&!input_failed_&&state==lua_state_;}
   std::uint64_t epoch() const {return epoch_;}
 
   void shutdown() noexcept {
@@ -2178,8 +2178,9 @@ void runtime_flush_observations(bool force) noexcept {
   // A save/load may span the scheduled flush time; retain it until quiescent.
   for (const auto& stage : p.stages) if (stage.open != 0) return;
   const auto& d = p.intervals;
+  boot_log("frame-interval-sum: overflowed=%d",d.total_overflowed);
   boot_log("segment: scene=%s stable_eligible=%d software_submission_only=1 operation_rows=%lu overflow=%llu",
-    g_scene_identity.data(),!g_window_has_operation && g_scene_identity[0],(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
+    g_scene_identity.data(),!g_window_has_operation && g_scene_identity[0] && p.interval_coverage_begin_us>=p.window_begin_us,(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
   for(std::size_t i=0;i<g_operation_sample_count;++i){
     const auto& row=g_operation_samples[i];const auto& o=row.observation;const auto& m=o.sample;
     boot_log("operation-memory: site=%s phase=%s identity=%s timestamp=%llu heap_available=%llu arena=%llu lua=%llu lua_known=%d linear_free=%llu",
@@ -2236,7 +2237,7 @@ bool runtime_audio_reserve(std::size_t bytes,const char* identity) noexcept {
   void* probe=std::malloc(bytes);if(!probe){report_allocation_failure("sound",identity,bytes,"regular","contiguous preflight");return false;}
   std::free(probe);return true;
 }
-void runtime_tick(lua_State* state) { RuntimeTimingScope timing(TimingStage::Runtime); runtime().tick(state); }
+void runtime_tick(lua_State* state) { RuntimeTimingScope timing(TimingStage::Runtime); runtime().tick(state); timing.finish(runtime().assert_ready(state)); }
 void runtime_shutdown(lua_State*) noexcept { runtime_flush_observations(true); runtime().shutdown(); g_observation_state=nullptr; }
 bool runtime_consume_sdl_event(const SDL_Event& event) noexcept {
   return runtime().consumes_event(event);

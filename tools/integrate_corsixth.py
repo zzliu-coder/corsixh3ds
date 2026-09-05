@@ -2435,6 +2435,10 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
   '    if TH3DS then TH3DS.observe_memory("vspr_data", "read-before", name, "Operation") end\n'
   '    data_dat = self.app:readDataFile(dir, name .. ".dat")\n'
   '    if TH3DS then TH3DS.observe_memory("vspr_data", "read-after", name, "Operation", nil, #data_dat) end')]
+    operations.extend([
+        ('CorsixTH/Src/sdl_core.cpp', '        int res = lua_pcall(L, nargs + 1, 1, -3 - nargs);', '        int res = lua_pcall(L, nargs + 1, 1, -3 - nargs);\n#ifdef CORSIXTH_3DS\n        u3_event.finish(res == LUA_OK);\n#endif'),
+        ('CorsixTH/Src/sdl_core.cpp', '\n      int res = lua_pcall(L, 2, 1, -4);', '\n      int res = lua_pcall(L, 2, 1, -4);\n#ifdef CORSIXTH_3DS\n      u3_logic.finish(res == LUA_OK);\n#endif'),
+    ])
     pending = {}
     already_done = {relative for relative, _, _ in operations if "CORSIXTH_3DS_U3_OBSERVATIONS_V1" in read_text(root / relative)}
     for relative, before, after in operations:

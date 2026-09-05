@@ -1,15 +1,16 @@
-# Corsixh3ds 外部审查入口 · R19 / U2-U3-SYNC
+# Corsixh3ds 外部审查入口 · R19 / R18-SYNC
 
-**当前结论：R17诊断完成，启动/操作/保存与计时代码阻断已确认；P1/P2/P3仪表代码 FAIL，Old 3DS运行与内存 NOT_PROVEN。公开成功证据独立复算 PASS；E0正式验收仍 FAIL。** 请先审查启动、操作、保存恢复的实际阻塞，再看验证设施缺口。本文是截至 2026-09-05 的精简技术交接；状态不会随分支最新提交自动升级。
+**当前结论：R17诊断完成，启动/操作/保存与计时代码阻断已确认；P1/P2/P3仪表代码 FAIL，Old 3DS运行与内存 NOT_PROVEN。原844快照E0正式验收 FAIL；新R18候选公开10/10 PASS，R23独立验收中（NOT_PROVEN）。** 请先审查启动、操作、保存恢复的实际阻塞，再看验证设施缺口。本文是截至 2026-09-05 的精简技术交接；状态不会随分支最新提交自动升级。
 
 ## 1. 版本身份与目标
 
 | 对象 | 固定身份 |
 |---|---|
-| 本轮被审代码 | [`844121cd86e5905c8a53c4574fab399d11ea0849`](https://github.com/zzliu-coder/corsixh3ds/tree/844121cd86e5905c8a53c4574fab399d11ea0849)；产品与验证设施共同所在快照，尚未产品验收 |
-| 代码 tree / sole parent | `cfa70da3d4503ea9b997064fce4e75c6d65758ca` / `8e9df167da524c2a8bdc3296227544d559dc70dc` |
-| 代码定位分支 | `codex/e0-r14-fresh-evidence-retention-sibling`；审查链接均固定到上述完整 head |
-| 文档发布版本 | `GITHUB-REVIEW-CONTEXT-PUBLISH-R19 / U2-U3-SYNC`，专用分支 [`docs/review-context`](https://github.com/zzliu-coder/corsixh3ds/blob/docs/review-context/REVIEW_CONTEXT.md)，从上述代码 head 派生，首版为 `45453355d118374dc827a14638e831a488f8c61f`；本次非force追加于R17增量 `ca284668a3388c61124ff15c38cbe600b5ea1137`，仅维护本文及一份[R17细节](docs/review/R17-playable-path-diagnosis.md)；文档提交身份以本文件的 GitHub 永久链接所含 commit 为准 |
+| R17产品诊断基点（公开代码） | [`844121cd86e5905c8a53c4574fab399d11ea0849`](https://github.com/zzliu-coder/corsixh3ds/tree/844121cd86e5905c8a53c4574fab399d11ea0849)；产品与验证设施共同所在快照，尚未产品验收 |
+| 新E0验证设施候选 | [48cc842095d548f143f8674a6778fdb511292638](https://github.com/zzliu-coder/corsixh3ds/tree/48cc842095d548f143f8674a6778fdb511292638)；tree `d826490849f228096ab822765958d236eea6ebf3`，sole parent `8e9df167da524c2a8bdc3296227544d559dc70dc`；54产品路径未变，产品可玩性未证明 |
+| R17基点 tree / sole parent | `cfa70da3d4503ea9b997064fce4e75c6d65758ca` / `8e9df167da524c2a8bdc3296227544d559dc70dc` |
+| R17定位分支 | `codex/e0-r14-fresh-evidence-retention-sibling`；本行定位R17基点，R18候选链接另列 |
+| 文档发布版本 | `GITHUB-REVIEW-CONTEXT-PUBLISH-R19 / R18-SYNC`，专用分支 [`docs/review-context`](https://github.com/zzliu-coder/corsixh3ds/blob/docs/review-context/REVIEW_CONTEXT.md)，从R17诊断基点 `844121c` 派生，首版为 `45453355d118374dc827a14638e831a488f8c61f`；本次非force追加于U2/U3增量 `12af353ab5b73c6d52d87baff5332b2bd485df10`，本次更新本文并新增[R18修复说明](docs/review/R18-validation-repair.md)，既有[R17细节](docs/review/R17-playable-path-diagnosis.md)保留；文档提交身份以本文件的 GitHub 永久链接所含 commit 为准 |
 
 默认分支 `main`、最新提交和文档提交各有自己的身份。引用结论时附完整**代码 head**；文档提交只标识交接内容，不能替代产品候选。
 
@@ -19,9 +20,9 @@
 
 实现顺序应能追踪为：固定上游 → 组装后的实际程序 → 与真实 loader 一致的 SD 目录及配置 → 初始化必要依赖 → 适配器挂接一次 → 上述游戏路径。每步说明入口、输入及所有者、成功状态、失败时可观察结果和最小验证方法。忙医院、换关与长期运行仍需后续验收。
 
-## 2. 已有证据能证明什么
+## 2. R15/R16历史证据与R18施工进展
 
-下表继承已封存的 **R16 独立验收**。本次文档发布核对了报告、summary 和摘要清单，与 GitHub 的代码身份、run 和 release 元数据；未重新执行 R16 的大型下载或测试。R16 原报告 SHA256：`23757ebec0ab30b78199546ac3dba6e795e837ba555d63543bbf137106e868d7`。报告原文及负面输入留在本地，以下为可公开摘要；外部审查者可从公开源码复现这些最小变异。
+下表继承已封存的 **R16 独立验收**。R19首版已核对报告、summary 和摘要清单，与 GitHub 的代码身份、run 和 release 元数据；未重新执行 R16 的大型下载或测试。R16 原报告 SHA256：`23757ebec0ab30b78199546ac3dba6e795e837ba555d63543bbf137106e868d7`。报告原文及负面输入留在本地，以下为可公开摘要；外部审查者可从公开源码复现这些最小变异。
 
 | 证据层 | 状态与边界 |
 |---|---|
@@ -37,7 +38,7 @@ R16 负面测试共 195 项（168 PASS / 27 FAIL），追加边界14项（13 PAS
 
 ### 已复现的 R16-F01…F05
 
-以下行号全部对应固定 `844121c`。修复正在 R18 中进行，**尚无新的已验收候选**。
+以下行号和五类历史FAIL全部对应固定 `844121c`，保持R16原结论。R18已完成施工及同版本公开验证；**五类缺陷在R18中的正式关闭状态待R23独立验收（NOT_PROVEN）**。
 
 | 缺陷 | 根因与最小复现 | 现有修复边界 |
 |---|---|---|
@@ -47,11 +48,15 @@ R16 负面测试共 195 项（168 PASS / 27 FAIL），追加边界14项（13 PAS
 | **F04 · P2** 失败诊断遗漏、超时无独立记录 | [`ci_diagnostics.sh:647–669`](https://github.com/zzliu-coder/corsixh3ds/blob/844121cd86e5905c8a53c4574fab399d11ea0849/scripts/ci_diagnostics.sh#L647-L669) 只留固定文件，遗漏 journal 引用的已有 stderr；[workflow:469–503](https://github.com/zzliu-coder/corsixh3ds/blob/844121cd86e5905c8a53c4574fab399d11ea0849/.github/workflows/old3ds-validation.yml#L469-L503) 只转交 failure outcome，无法明确记录内层 timeout | 在现有有界失败包中保留安全引用的诊断字节、内层超时/退出记录；runner 丢失和整个 job 硬超时可用性仍 NOT_PROVEN |
 | **F05 · P2** JSON 类型错误没有稳定失败结果 | [`ci_diagnostics.sh:570–575`](https://github.com/zzliu-coder/corsixh3ds/blob/844121cd86e5905c8a53c4574fab399d11ea0849/scripts/ci_diagnostics.sh#L570-L575)、[776–783](https://github.com/zzliu-coder/corsixh3ds/blob/844121cd86e5905c8a53c4574fab399d11ea0849/scripts/ci_diagnostics.sh#L776-L783)：manifest 换为合法 JSON `[]` 后 `.get` 抛异常，退出1且只有 traceback | 先检查容器/字段类型，再输出既有稳定 FAIL/code。此例已经拒绝输入，缺陷在失败输出合同 |
 
-R18 仅允许修改 `.github/workflows/old3ds-validation.yml`、`scripts/ci_diagnostics.sh`、`tests/test_ci_diagnostics.py`；保留 R15 成果和 R16 原始证据，修复不扩张为产品代码或新验证协议。
+### R18施工完成；R23独立验收中
+
+新E0候选[`48cc842`](https://github.com/zzliu-coder/corsixh3ds/tree/48cc842095d548f143f8674a6778fdb511292638)相对R15仅修改`.github/workflows/old3ds-validation.yml`、`scripts/ci_diagnostics.sh`和`tests/test_ci_diagnostics.py`，54产品路径指纹保持不变。[同版本公开运行33938765229](https://github.com/zzliu-coder/corsixh3ds/actions/runs/33938765229) attempt1为10/10 success；[Fresh artifact9961199388](https://github.com/zzliu-coder/corsixh3ds/actions/runs/33938765229/artifacts/9961199388)的ZIP SHA256为`73839365d81caf6b5e6e0a4e2751ad6f685389609c4232a8ae212b13ad20f258`。
+
+原195+14项复验、293项公开原始复算通过，均为**施工证据**。R19核对79项封存摘要和公开身份/API，未重跑这些验证。R23（GPT-6 high）正在依据既有R14合同及五类缺陷开展独立验收，正式结果仍 **NOT_PROVEN/进行中**。修复内容与证明边界见[R18精简说明](docs/review/R18-validation-repair.md)。保留R15/R16历史成果、RH07/RH09 FAIL及真机运行/内存NOT_PROVEN。
 
 ## 3. R17 已完成的产品路径诊断
 
-[R17详细诊断](docs/review/R17-playable-path-diagnosis.md)来自已封存报告、真实固定上游组装、组件执行及源码比对。原外部AI转述仅用于提出问题；R17的独立证据支持以下限定结论。本次发布核对回执及107项摘要，未重跑构建或设备检查。
+[R17详细诊断](docs/review/R17-playable-path-diagnosis.md)来自已封存报告、真实固定上游组装、组件执行及源码比对。原外部AI转述仅用于提出问题；R17的独立证据支持以下限定结论。R17同步版已核对回执及107项摘要，未重跑构建或设备检查。
 
 | 已执行层 | R17结果与边界 |
 |---|---|
@@ -84,7 +89,8 @@ R18 仅允许修改 `.github/workflows/old3ds-validation.yml`、`scripts/ci_diag
 | 任务 | 当前状态与责任 |
 |---|---|
 | R17 · GPT-6 max | **诊断完成，合同已封存**；产品仍PRODUCT_BLOCKED。已完成本次资料同步 |
-| R18 · GPT-6 high | 五类E0验证器缺口返修进行中；保持既有三个验证文件边界 |
+| R18 · GPT-6 high | **施工及同版本公开验证完成**；保持三个验证文件边界，正式关闭待R23 |
+| R23 · GPT-6 high | **独立验收中 / NOT_PROVEN**：依据既有R14合同及R16五类缺陷重新验收R18 |
 | R20 / U1 · GPT-6 high | **施工中**：启动＋English/音效内存前置＋保存/生命周期；唯一拥有共享runtime/platform/integrator及最终集成 |
 | R21 / U2 · GPT-6 high | **组件完成，已交U1待实际集成**：独立InputMapper与输入回归；共享桥接补丁及接线清单由U1顺序合入 |
 | R22 / U3 · GPT-6 high | **组件完成，已交U1待实际集成**：公共telemetry与独立测试；共享插桩补丁/API由U1接入实际消费者，仍是第一轮设备候选前置 |
@@ -95,9 +101,9 @@ U3本地组件身份：`fbf8fcd4f164f93ac495f8b10389152fc1d56ecb`，仅6文件�
 
 以上两个commit仅在本地，公开仓库尚未包含其组件代码，因而不提供GitHub组件commit链接。根任务已将组件、共享补丁及API交给同一U1集成人；U1完成当前基础事务后顺序合入U2、U3，再交付同一实际生成源码/交叉构建/SD候选供独立验收。待U1推送真实集成版本后再更新代码审查链接。R17详细报告保留当时快照，施工最新状态以本节为准。
 
-当前仍审`844121c`，尚无新的已验收产品候选。U2/U3组件已交付，共享文件由U1顺序集成；E0返修并行，最终同一候选hash合流并分别完成主机、构建、设备验收，旧10/10不替代新候选回归。保留原计划和已有成果，长期、多关卡及完整资源架构门槛继续留账；暂缓通用框架扩张、全loader重写、额外协议、全GPU、自绘UI与复杂多线程。
+产品成功路径继续以`844121c`为R17诊断基点；`48cc842`单列为新E0验证设施候选。U1/U2/U3实际产品组合尚未封存/公开，两个本地组件身份保持原限定。U2/U3组件已交付，共享文件由U1顺序集成；E0独立验收与产品集成并行，最终同一候选hash合流并分别完成主机、构建、设备验收，旧10/10不替代新候选回归。保留原计划和已有成果，长期、多关卡及完整资源架构门槛继续留账；暂缓通用框架扩张、全loader重写、额外协议、全GPU、自绘UI与复杂多线程。
 
-后续新候选可在“**施工完成、独立验收NOT_PROVEN**”状态提前公开供审查，文档head与产品head分别记录；验收通过再升级状态。本次不等待R18/R20等施工结果，后续由根任务持封存回执驱动增量同步。
+后续新候选可在“**施工完成、独立验收NOT_PROVEN**”状态提前公开供审查，文档head与产品head分别记录；验收通过再升级状态。本次不等待R23验收或U1产品组合结果，后续由根任务持封存回执驱动增量同步。
 
 请外部审查者围绕固定 head 提供：**触发输入 → 实际调用与状态/所有权变化 → 可观察失败 → 被阻断的成功路径步骤**，附精确文件/行、可复现方法及最小修复边界；分别报告主机、构建、设备的 `PASS / FAIL / NOT_PROVEN`，说明未执行项。优先找成功路径阻塞，沿用现有验证体系。
 

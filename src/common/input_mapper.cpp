@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 #include "cth3ds/screen_layout.hpp"
@@ -26,9 +27,16 @@ Action make_simple(ActionType type) {
   return action;
 }
 
+std::uint64_t deadline(std::uint64_t now, std::uint64_t delay) noexcept {
+  const auto maximum = std::numeric_limits<std::uint64_t>::max();
+  return delay > maximum - now ? maximum : now + delay;
+}
+
 }  // namespace
 
-InputMapper::InputMapper(InputMapperConfig config) : config_(std::move(config)) {}
+InputMapper::InputMapper(InputMapperConfig config) : config_(std::move(config)) {
+  config_.repeat_interval_us = std::max(std::uint64_t{1}, config_.repeat_interval_us);
+}
 
 void InputMapper::reset() noexcept {
   repeat_states_ = {};
@@ -39,6 +47,105 @@ void InputMapper::reset() noexcept {
   long_press_emitted_ = false;
   last_tap_us_ = 0;
   last_tap_position_ = {};
+  previous_held_ = 0;
+  blocked_buttons_ = 0;
+  blocked_touch_ = false;
+  blocked_circle_ = false;
+  mixed_timestamp_us_ = 0;
+}
+
+bool InputMapper::cancel_mixed(const ActionDispatcher& dispatch) {
+  // Retain the outstanding release if the bridge fails so the caller can
+  // retry cleanup or tear down the UI explicitly.
+  if (was_touching_) {
+    Action cancel = make_simple(ActionType::PointerUp);
+    cancel.value = 1; // Bridge cancels UI press/drag without activating a click.
+    if (!dispatch(cancel)) return false;
+  }
+  reset();
+  blocked_buttons_ = std::numeric_limits<std::uint32_t>::max();
+  blocked_touch_ = true;
+  blocked_circle_ = true;
+  return true;
+}
+
+bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
+                                  float delta_seconds,
+                                  const ContextReader& read_context,
+                                  const ActionDispatcher& dispatch) {
+  // Clock rewind is a lifecycle boundary. Do not replay held input.
+  if (input.timestamp_us < mixed_timestamp_us_ && !cancel_mixed(dispatch)) {
+    return false;
+  }
+  mixed_timestamp_us_ = input.timestamp_us;
+  blocked_buttons_ &= input.held;
+  blocked_touch_ = blocked_touch_ && input.touching;
+  RawInputSnapshot sample = input;
+  sample.held &= ~blocked_buttons_;
+  sample.down = sample.held & ~previous_held_;
+  sample.up = previous_held_ & ~sample.held;
+  previous_held_ = sample.held;
+  sample.touching = input.touching && !blocked_touch_;
+
+  // Real mouse events only. Gesture-derived taps would duplicate the click.
+  const Vec2i point = ScreenLayout::clamp_bottom_touch(sample.touch);
+  if (sample.touching && (!was_touching_ || point != last_touch_)) {
+    Action motion = make_simple(ActionType::PointerMove);
+    motion.position = point;
+    if (!dispatch(motion)) return false;
+    last_touch_ = point;
+  }
+  if (sample.touching && !was_touching_) {
+    Action down = make_simple(ActionType::PointerDown);
+    down.position = point;
+    // A failing dispatch may have partly pressed the UI; cancellation releases it.
+    was_touching_ = true;
+    if (!dispatch(down)) return false;
+  } else if (!sample.touching && was_touching_) {
+    // No cached coordinate: a D-pad step during a drag may have moved App.ui.
+    if (!dispatch(make_simple(ActionType::PointerUp))) return false;
+    was_touching_ = false;
+  }
+
+  const InputContext context = read_context();
+  const Vec2f circle = normalized_circle(sample);
+  const bool circle_active = std::abs(circle.x) > 0.0001F || std::abs(circle.y) > 0.0001F;
+  blocked_circle_ = blocked_circle_ && circle_active;
+  if (circle_active && !blocked_circle_ && std::isfinite(delta_seconds) &&
+      delta_seconds > 0.0F) {
+    Action pan;
+    const bool cursor = context == InputContext::Menu || context == InputContext::Dialog ||
+                        context == InputContext::TextInput;
+    pan.type = cursor ? ActionType::CursorStep : ActionType::PanCamera;
+    const float distance = config_.camera_pixels_per_second *
+                           std::min(delta_seconds, 0.1F) / (cursor ? 16.0F : 1.0F);
+    pan.vector = {circle.x * distance, circle.y * distance};
+    if (!dispatch(pan)) return false;
+  }
+  std::vector<Action> actions;
+  actions.reserve(4);
+  append_dpad_actions(actions, sample);
+  for (const Action& action : actions) {
+    if (!dispatch(action)) return false;
+  }
+
+  // Re-read even if there are no face edges. Each face action may replace UI;
+  // later buttons in the same sample must see that replacement too.
+  InputContext face_context = read_context();
+  constexpr std::array<Button, 8> buttons{Button::A, Button::B, Button::X, Button::Y,
+                                         Button::Start, Button::Select, Button::L, Button::R};
+  for (const Button button : buttons) {
+    if (!has_button(sample.down, button)) continue;
+    actions.clear();
+    RawInputSnapshot edge = sample;
+    edge.down = button_mask(button);
+    append_button_actions(actions, edge, face_context);
+    for (const Action& action : actions) {
+      if (!dispatch(action)) return false;
+    }
+    face_context = read_context();
+  }
+  return true;
 }
 
 Vec2f InputMapper::normalized_circle(const RawInputSnapshot& input) const noexcept {
@@ -140,16 +247,17 @@ void InputMapper::append_dpad_actions(std::vector<Action>& actions,
       action.vector = kDpadVectors[i];
       actions.push_back(action);
       state.active = true;
-      state.next_repeat_us = input.timestamp_us + config_.repeat_delay_us;
+      state.next_repeat_us = deadline(input.timestamp_us, config_.repeat_delay_us);
     } else if (held && state.active && input.timestamp_us >= state.next_repeat_us) {
       Action action;
       action.type = ActionType::CursorStep;
       action.vector = kDpadVectors[i];
       action.repeated = true;
       actions.push_back(action);
-      do {
-        state.next_repeat_us += config_.repeat_interval_us;
-      } while (state.next_repeat_us <= input.timestamp_us);
+      const auto remainder = (input.timestamp_us - state.next_repeat_us) %
+                             config_.repeat_interval_us;
+      state.next_repeat_us = deadline(input.timestamp_us,
+                                      config_.repeat_interval_us - remainder);
     }
 
     if (up || !held) {

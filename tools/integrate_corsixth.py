@@ -269,7 +269,7 @@ target_sources(CorsixTH_lib PRIVATE
   "${CTH3DS_PLATFORM_ROOT}/runtime_3ds.cpp"
   "${CTH3DS_PLATFORM_ROOT}/runtime_3ds.hpp")
 
-target_include_directories(CorsixTH_lib PRIVATE
+target_include_directories(CorsixTH_lib PUBLIC
   "${CTH3DS_PLATFORM_ROOT}"
   "${CTH3DS_PLATFORM_ROOT}/include")
 

@@ -1,18 +1,19 @@
-# Corsixh3ds 外部审查入口 · R19 / R24-R25-SYNC
+# Corsixh3ds 外部审查入口 · R19 / R27-SYNC
 
-**当前公开产品仍固定 [`e3f2c4a`](https://github.com/zzliu-coder/corsixh3ds/tree/e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e)。** U1/U2/U3施工已封存，完整本地Python与同head公网CI **FAIL**；R25诊断已完成，R27在独立准备分支按五文件计划施工，尚无最终封存回执。新E0候选[`1a1730e`](https://github.com/zzliu-coder/corsixh3ds/tree/1a1730e8ad12a8dce37e7d2c4432f0d22ee4ddf0)的R24来源关系返修及同head正式公网10/10完成，**正式独立验收待R28**。产品独立验收尚未完成、没有最终回执；第一关就诊、保存重启、真实内存与设备仍 **NOT_PROVEN**。R23对旧E0候选`48cc842`的正式FAIL保留。
+**最新回归准备源码为 [`622c60f`](https://github.com/zzliu-coder/corsixh3ds/tree/622c60fdb268ef22a3470b228d9dda51c4741e6f)：同head公网9个适用job成功，Fresh按原手动入口条件预期跳过。** R27已封存，仅改5个测试/工作流文件，运行时代码未变；运行时组合来源与原R20二进制/私有SD包仍固定`e3f2c4a`。新E0候选`1a1730e`尚未导入，R28仍按既有E0合同独立验收。产品独立验收尚未完成、没有最终回执；第一关就诊、保存重启、真实内存与设备仍 **NOT_PROVEN**。旧e3f2公网FAIL、R23对旧E0候选48cc842的正式FAIL分别保留。
 
 ## 1. 版本身份与目标
 
 | 对象 | 固定身份与用途 |
 |---|---|
-| **当前公开产品组合** | [`e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e`](https://github.com/zzliu-coder/corsixh3ds/tree/e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e)；tree `dc7469658218ea84ca2a34bdb8e9a218a3e4d7a2`；sole parent `fe569cf563ab9a01848686d3fef47c4c4b82d3bd`。分支`codex/product-u1-boot-assets-save-r20`；相对R17基点40文件；施工已封存，独立产品验收尚未完成、没有最终回执 |
+| **最新回归准备源码** | [`622c60fdb268ef22a3470b228d9dda51c4741e6f`](https://github.com/zzliu-coder/corsixh3ds/tree/622c60fdb268ef22a3470b228d9dda51c4741e6f)；tree `cf8c1949105848c198bfa9f363449a673e247c3c`；sole parent `e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e`。分支`codex/product-regression-entry-closure-r27`；5文件准备增量，公网9个适用job成功；E0尚未导入 |
+| **运行时组合及原包来源** | [`e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e`](https://github.com/zzliu-coder/corsixh3ds/tree/e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e)；tree `dc7469658218ea84ca2a34bdb8e9a218a3e4d7a2`；sole parent `fe569cf563ab9a01848686d3fef47c4c4b82d3bd`。分支`codex/product-u1-boot-assets-save-r20`；相对R17基点40文件；原R20二进制与私有SD包保持冻结。R27运行时代码与此相同，独立产品验收尚未完成 |
 | R17历史产品诊断基点 | [`844121cd86e5905c8a53c4574fab399d11ea0849`](https://github.com/zzliu-coder/corsixh3ds/tree/844121cd86e5905c8a53c4574fab399d11ea0849)；tree `cfa70da3d4503ea9b997064fce4e75c6d65758ca`；parent `8e9df167da524c2a8bdc3296227544d559dc70dc`。本文R16/R17历史发现仍固定此快照 |
 | R18历史E0候选 | [`48cc842095d548f143f8674a6778fdb511292638`](https://github.com/zzliu-coder/corsixh3ds/tree/48cc842095d548f143f8674a6778fdb511292638)；tree `d826490849f228096ab822765958d236eea6ebf3`；sole parent `8e9df167da524c2a8bdc3296227544d559dc70dc`。相对844只改三个验证文件、54产品路径未变；R23正式FAIL，原结论与成功证据保留 |
 | **新E0来源关系候选** | [`1a1730e8ad12a8dce37e7d2c4432f0d22ee4ddf0`](https://github.com/zzliu-coder/corsixh3ds/tree/1a1730e8ad12a8dce37e7d2c4432f0d22ee4ddf0)；tree `71a8418edbe70af132358301e29201dc0c8eb1f0`；sole parent `8e9df167da524c2a8bdc3296227544d559dc70dc`。分支`codex/e0-r24-source-binding-sibling`；相对R18仅diagnostics及其测试2文件，workflow不变；正式验收待R28 |
-| 文档修订 | `GITHUB-REVIEW-CONTEXT-PUBLISH-R19 / R24-R25-SYNC`；[`docs/review-context`](https://github.com/zzliu-coder/corsixh3ds/blob/docs/review-context/REVIEW_CONTEXT.md)，从上一资料提交`e3b51f358364944c98fcf368e4dddbddc376b374`非force追加。文档历史保留；本文件永久链接的commit只标识资料，不充当产品候选 |
+| 文档修订 | `GITHUB-REVIEW-CONTEXT-PUBLISH-R19 / R27-SYNC`；[`docs/review-context`](https://github.com/zzliu-coder/corsixh3ds/blob/docs/review-context/REVIEW_CONTEXT.md)，从上一资料提交`8ee24eb653b3c31b85d3c1654c86906a9f7099f6`非force追加。文档历史保留；本文件永久链接的commit只标识资料，不充当产品候选 |
 
-当前详细入口：[R24施工与待验收边界](docs/review/R24-source-binding-closure.md)、[R25诊断与产品衔接计划](docs/review/R25-product-integration-diagnosis.md)。[U1产品组合](docs/review/U1-combined-product-candidate.md)、[R23正式验收](docs/review/R23-independent-acceptance.md)、[R17诊断](docs/review/R17-playable-path-diagnosis.md)与[R18施工](docs/review/R18-validation-repair.md)保留各自封存时状态，当前状态以本文及新说明为准。
+当前详细入口：[R27回归准备与9个适用job结果](docs/review/R27-regression-preparation.md)、[R24施工与待验收边界](docs/review/R24-source-binding-closure.md)、[R25诊断与产品衔接计划](docs/review/R25-product-integration-diagnosis.md)。[U1产品组合](docs/review/U1-combined-product-candidate.md)、[R23正式验收](docs/review/R23-independent-acceptance.md)、[R17诊断](docs/review/R17-playable-path-diagnosis.md)与[R18施工](docs/review/R18-validation-repair.md)保留各自封存时状态，当前状态以本文及新说明为准。
 
 默认分支 `main`、最新提交和文档提交各有自己的身份。引用结论时附完整**代码 head**；文档提交只标识交接内容，不能替代产品候选。
 
@@ -22,7 +23,7 @@
 
 实现顺序应能追踪为：固定上游 → 组装后的实际程序 → 与真实 loader 一致的 SD 目录及配置 → 初始化必要依赖 → 适配器挂接一次 → 上述游戏路径。每步说明入口、输入及所有者、成功状态、失败时可观察结果和最小验证方法。忙医院、换关与长期运行仍需后续验收。
 
-## 2. 历史证据、R23正式验收与当前产品结果
+## 2. 历史证据、E0验收边界与分版本产品结果
 
 下表继承已封存的 **R16 独立验收**。R19首版已核对报告、summary 和摘要清单，与 GitHub 的代码身份、run 和 release 元数据；未重新执行 R16 的大型下载或测试。R16 原报告 SHA256：`23757ebec0ab30b78199546ac3dba6e795e837ba555d63543bbf137106e868d7`。报告原文及负面输入留在本地，以下为可公开摘要；外部审查者可从公开源码复现这些最小变异。
 
@@ -62,7 +63,7 @@ R24施工记录：原195+14回归通过，R23五正式样本在两入口10次全
 
 **来源证明上限：** 跨文档字段互等与完整bundle字节核对分层。成功ZIP不含全部动态资源；一致伪造字段的真实性不能由互等证明。R28依原合同判断该边界，新增豁免不自动成立。boolean/zero观察保持NOT_PROVEN。RH07/RH09保留FAIL，真机运行/内存NOT_PROVEN。见[R24说明](docs/review/R24-source-binding-closure.md)。
 
-### 当前产品组合：施工封存与后续公网结果分开
+### e3f2运行时组合：原施工封存与公网FAIL保留
 
 **施工封存（2026-09-05T03:53:34.907863+00:00）：** [`e3f2c4a`](https://github.com/zzliu-coder/corsixh3ds/tree/e3f2c4a80f60f82aae9935f9ef5c7cb35930f03e)已整合English闭包、文件支撑有界按需音效、唯一输入位置、checked保存/暂停及实际资源/完整帧测量。C++134/134、生成代码、本地交叉构建和loose包为施工PASS；完整Python166 selected：164 PASS、1 ERROR、1允许的大小写文件系统skip，整体 **FAIL**。已定位本地错误`CANDIDATE_PARENT_MISMATCH`：产品历史直接父为`fe569cf...`，不符合保留E0合同的直接R9父要求。R25现已完成清单对账：143 baseline未变，149个旧selected ID全部在，新增17项，共166。
 
@@ -70,7 +71,13 @@ R24施工记录：原195+14回归通过，R23五正式样本在两入口10次全
 
 **R25已完成诊断：** 三个GCC job在`tests/test_atomic_save.cpp:79`因misleading-indentation编译错误停止；Clang及两Python暴露U3缺`CTH3DS_U3_UPSTREAM`（影响5个ID）和E0正例误用产品checkout；authority-negative同样受错误正例影响。Fresh跳过由原workflow_dispatch+bundle入口条件在push下为false触发。写死149的workflow尾检及其源码断言是尚未执行到的后继阻断。诊断PASS不改变当前产品CI FAIL。
 
-**R27施工边界：** 原U1集成人在独立准备分支按R25五文件计划提前编码；正式导入已验收E0及最终放行留待相应验收。当前没有最终封存回执，公开受审产品head保持e3f2。最终产品测试/产物绑定自己的新候选身份，E0证据保持E0身份。五文件修复与既有E0导入合计七路径是本次局部计划，保留生产verifier、R12权威、schema、锁与oracle原约束。见[R25说明](docs/review/R25-product-integration-diagnosis.md)。
+### R27准备完成：622c60f的9个适用job成功
+
+R27最终状态 **PREPARED_PUBLIC_9_PASS_PENDING_E0_IMPORT**。五文件改动完成保存测试编译修正、固定源码自足的生成路径测试、真实历史E0身份正控，以及绑定当前manifest/候选身份和逐项结果的CI尾检及其原测试subcases。生产verifier、R12权威、schema、锁、oracle、diagnostics两文件与全部运行时代码保持原约束/字节；R20二进制和私有包保持冻结。
+
+[run33946473666 / attempt1](https://github.com/zzliu-coder/corsixh3ds/actions/runs/33946473666/attempts/1)为push、exact-head622c60f：**9个适用job success，Fresh skipped**，跳过原因仍是原workflow_dispatch+非空bundle输入条件。两指定Python实际回执各166唯一ID全部PASS、0失败/错误/跳过，6类mismatch列表为空；149旧ID及143 baseline保留。新版本结果不能回写e3f2旧运行的FAIL。见[R27说明](docs/review/R27-regression-preparation.md)。
+
+**后续边界：** E0尚未导入，R28仅验1a1730e的既有E0合同；产品独立验收尚未完成、没有最终回执。原U1保持唯一共享文件集成人。正式导入以获独立验收的E0 workflow为基底，只迁移R27尾检增量；最终产品用自身新候选身份，E0 Fresh/bundle保留E身份。五文件准备与后续E0导入净七路径沿用局部计划。
 
 按需音效的主机已知所有者峰值3,145,539B，实际英语747索引/746可播放槽，启动PCM=0，100回收循环；不包含全部SDL、分配器及未知暂存，设备总内存仍未证明。[产品说明](docs/review/U1-combined-product-candidate.md)列明测试替身和其他限制。实际完整游戏、真机P1/P2/P3、稳定性能/内存仍 **NOT_PROVEN**，设备准入未放行。
 
@@ -115,10 +122,12 @@ R24施工记录：原195+14回归通过，R23五正式样本在两入口10次全
 | R21 / U2、R22 / U3 · GPT-6 high | 组件已纳入e3f2；来源分别为`6ce399899b64d853ae71f88ec94de04fe0ccd64e`、`fbf8fcd4f164f93ac495f8b10389152fc1d56ecb` |
 | R25 · GPT-6 max | 只读诊断完成：七失败归因、测试清单对账及五文件最小计划已封存 |
 | R26 · GPT-6 high | 独立产品验收尚未完成、没有最终回执；设备准入未放行 |
-| R27 · GPT-6 high | 独立准备分支提前施工；等待最终封存回执；正式E0导入及最终放行另待相应验收 |
+| R27 · GPT-6 high | 已封存622c60f；公网9个适用job成功、Fresh预期跳过；5文件准备完成，E0尚未导入，正式产品/设备验收待证明 |
 | R28 · GPT-6 high | 新E0独立验收进行中，仅审既有E0合同；产品验收单独处理 |
 
-历史封存记录保留。新施工候选由根收到最终回执后再同步，普通进度消息不足以更换受审产品head。最终产品用自己的candidate身份，E0证据保持E身份；完整游戏、多关卡、长期运行、真实内存与设备均待证明。暂缓通用框架扩张、全loader重写、额外协议、全GPU、自绘UI与复杂多线程。
+历史封存记录保留。R27最终回执已核对，最新准备源码622c60f与运行时/原包来源e3f2分列；后续候选仍需最终回执确认。最终产品用自己的candidate身份，E0证据保持E身份；完整游戏、多关卡、长期运行、真实内存与设备均待证明。暂缓通用框架扩张、全loader重写、额外协议、全GPU、自绘UI与复杂多线程。
+
+启动与内存由同一责任单元收口；English实际语言闭包和文件支撑的有界按需音效是前置条件。首个真机候选必须包含完整帧计时及真实加载峰值测量；同一二进制的冷启动、第一关就诊、保存退出和重启恢复仍待完整证明。通用框架扩张继续冻结。
 
 请外部审查者围绕固定 head 提供：**触发输入 → 实际调用与状态/所有权变化 → 可观察失败 → 被阻断的成功路径步骤**，附精确文件/行、可复现方法及最小修复边界；分别报告主机、构建、设备的 `PASS / FAIL / NOT_PROVEN`，说明未执行项。优先找成功路径阻塞，沿用现有验证体系。
 

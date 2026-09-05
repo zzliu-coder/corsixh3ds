@@ -146,3 +146,64 @@ TEST(memory_checkpoint_and_resource_names_are_bounded) {
   EXPECT_EQ(cth3ds::checkpoint_resource_category("vspr_decode"),
             cth3ds::ResourceMemoryCategory::VsprDecoded);
 }
+
+TEST(memory_actual_samples_never_add_lua_or_resource_subsets_to_heap) {
+  cth3ds::MemoryTelemetry t;
+  cth3ds::MemorySample s{100, 52U*cth3ds::kMiB, 30U*cth3ds::kMiB,
+    25U*cth3ds::kMiB, 5U*cth3ds::kMiB, 8U*cth3ds::kMiB, 6U*cth3ds::kMiB,
+    10U*cth3ds::kMiB, true};
+  auto observation = cth3ds::memory_observation(s, cth3ds::MemoryGate::Operation,
+    "audio", "decode-after", "clip:17", 1024, true, 2048, true);
+  EXPECT_TRUE(t.observe("sound_decode", observation));
+  const auto& a = t.checkpoints()[4];
+  EXPECT_EQ(a.maximum_heap_used, 25U*cth3ds::kMiB);
+  EXPECT_EQ(a.minimum_heap_available, 27U*cth3ds::kMiB);
+  EXPECT_EQ(a.maximum_lua_bytes, 10U*cth3ds::kMiB);
+  EXPECT_EQ(a.maximum_known_held_bytes, 2048U);
+  EXPECT_EQ(a.unknown_temporary_samples, 1U);
+  observation.sample.timestamp_us = 200; observation.held_bytes = 0;
+  observation.sample.fordblks = 6U*cth3ds::kMiB;
+  EXPECT_TRUE(t.observe("sound_decode", observation));
+  EXPECT_EQ(a.latest.held_bytes, 0U); EXPECT_TRUE(a.latest.held_known);
+  EXPECT_EQ(a.maximum_heap_used, 25U*cth3ds::kMiB);
+  EXPECT_EQ(a.first_us, 100U); EXPECT_EQ(a.last_us, 200U); EXPECT_EQ(a.samples, 2U);
+}
+TEST(memory_failed_request_identity_survives_release_and_unknown_is_explicit) {
+  cth3ds::MemoryTelemetry t; cth3ds::MemorySample sample;
+  sample.timestamp_us = 4;
+  auto o = cth3ds::memory_observation(sample, cth3ds::MemoryGate::Operation,
+      "save", "allocation-failed", "serialized-state", 4000001, true, 0, false, true);
+  EXPECT_TRUE(t.observe("save", o));
+  o.allocation_failed = false; o.requested_known = false; o.sample.timestamp_us = 5;
+  EXPECT_TRUE(t.observe("release", o));
+  EXPECT_TRUE(t.has_failure());
+  EXPECT_EQ(t.last_failure().requested_bytes, 4000001U);
+  EXPECT_EQ(std::string_view(t.last_failure().resource.data()), std::string_view("serialized-state"));
+  EXPECT_FALSE(t.last_failure().held_known); EXPECT_FALSE(t.last_failure().sample.lua_known);
+  EXPECT_FALSE(t.observe("not-a-site", o));
+  o.sample.timestamp_us = 3; EXPECT_FALSE(t.observe("release", o));
+  EXPECT_EQ(t.invalid_events(), 2U);
+  t.clear(); EXPECT_FALSE(t.has_failure()); EXPECT_EQ(t.invalid_events(), 0U);
+  EXPECT_TRUE(sizeof(t) <= 16U * 1024U);
+}
+TEST(memory_resource_identity_copy_is_bounded_and_reports_truncation) {
+  auto o = cth3ds::memory_observation({}, cth3ds::MemoryGate::MenuStable,
+      "menu", "stable", std::string(200, 'x'));
+  EXPECT_TRUE(o.identity_truncated); EXPECT_EQ(o.resource.back(), '\0');
+}
+TEST(memory_gate_probe_uses_explicit_stage_in_probe_and_error_text) {
+  for (const auto gate : {cth3ds::MemoryGate::MenuStable, cth3ds::MemoryGate::LevelStable,
+                         cth3ds::MemoryGate::Operation}) {
+    const auto p = cth3ds::memory_gate_probe_policy(gate);
+    FakeAllocator allocator{p.minimum_success_bytes - p.granularity_bytes};
+    const auto result = cth3ds::probe_largest_contiguous(20U * cth3ds::kMiB, p,
+        fake_allocate, fake_release, &allocator);
+    EXPECT_FALSE(result.met_minimum); EXPECT_EQ(allocator.live_allocations, 0U);
+    EXPECT_EQ(result.attempted_limit_bytes, p.maximum_probe_bytes);
+    char message[256]; cth3ds::format_memory_gate_probe(message, sizeof(message), gate, result);
+    const std::string text(message);
+    EXPECT_TRUE(text.find(std::string(cth3ds::memory_gate_name(gate))) != std::string::npos);
+    EXPECT_TRUE(text.find("required_probe=" + std::to_string(p.minimum_success_bytes)) != std::string::npos);
+    EXPECT_TRUE(text.find("result=FAIL") != std::string::npos);
+  }
+}

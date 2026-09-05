@@ -285,7 +285,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('CTH3DS_PACKAGE_ASSET_MODE:-loose', script)
         self.assertIn('--asset-mode ${PACKAGE_ASSET_MODE}', script)
         self.assertIn('--theme-hospital /theme-hospital', script)
-        self.assertIn('loose diagnostic package only', script)
+        self.assertIn('loose product-candidate package; device NOT_PROVEN', script)
 
     def test_public_cross_build_does_not_claim_a_package_without_game_data(self) -> None:
         workflow = (ROOT / ".github/workflows/old3ds-validation.yml").read_text(

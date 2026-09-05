@@ -1,9 +1,9 @@
-name: E0 R14 Fresh-evidence verifier bundle builder
+name: E0 R18 Fresh-evidence verifier bundle builder
 
 on:
   push:
     branches:
-      - codex/e0-r11-bundle-builder-h11
+      - codex/e0-r18-bundle-builder
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ jobs:
       - name: Check out immutable candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 844121cd86e5905c8a53c4574fab399d11ea0849
+          ref: 48cc842095d548f143f8674a6778fdb511292638
           fetch-depth: 0
           path: candidate
 
@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="$RUNNER_TEMP/e0-r14-builder"
+          base="$RUNNER_TEMP/e0-r18-builder"
           mkdir -p "$base/original" "$base/downloads" "$base/runtime39" "$base/runtime314" "$base/toolchain"
           curl --fail --location --retry 5 --retry-all-errors \
             --output "$base/original.tar" \
@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="$RUNNER_TEMP/e0-r14-builder"
+          base="$RUNNER_TEMP/e0-r18-builder"
           test "$(uname -m)" = x86_64
           test "$($base/runtime39/python/bin/python3.9 -I -c 'import platform,sys; print(sys.version.split()[0]+" "+platform.machine())')" = '3.9.25 x86_64'
           test "$($base/runtime314/python/bin/python3.14 -I -c 'import platform,sys; print(sys.version.split()[0]+" "+platform.machine())')" = '3.14.6 x86_64'
@@ -65,9 +65,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="$RUNNER_TEMP/e0-r14-builder"
+          base="$RUNNER_TEMP/e0-r18-builder"
           bundle_root="$(cat "$base/bundle-root.txt")"
-          output="$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-844121cd86e5"
+          output="$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-48cc842095d5"
           python3 candidate/scripts/build_verifier_input_bundle.py \
             --output "$output" \
             --candidate-repo "$GITHUB_WORKSPACE/candidate" \
@@ -86,8 +86,8 @@ jobs:
             --ci-host-container 'ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4' \
             --ci-old3ds-container 'devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5'
           python3 candidate/scripts/build_verifier_input_bundle.py --verify "$output" > "$RUNNER_TEMP/bundle-verification.json"
-          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-844121cd86e5.tar" "$(basename "$output")"
-          sha256sum "$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-844121cd86e5.tar" | tee "$RUNNER_TEMP/transport-sha256.txt"
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-48cc842095d5.tar" "$(basename "$output")"
+          sha256sum "$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-48cc842095d5.tar" | tee "$RUNNER_TEMP/transport-sha256.txt"
 
       - name: Publish candidate-bound bundle release
         env:
@@ -95,14 +95,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag='e0-r14-fresh-evidence-844121cd86e5'
-          tarfile="$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-844121cd86e5.tar"
+          tag='e0-r14-fresh-evidence-48cc842095d5'
+          tarfile="$RUNNER_TEMP/input-bundle-r14-fresh-evidence-linux-x86_64-48cc842095d5.tar"
           digest="$(sha256sum "$tarfile" | awk '{print $1}')"
           gh release create "$tag" \
-            "$tarfile#input-bundle-r14-fresh-evidence-linux-x86_64-844121cd86e5.tar" \
+            "$tarfile#input-bundle-r14-fresh-evidence-linux-x86_64-48cc842095d5.tar" \
             --repo "$GITHUB_REPOSITORY" \
-            --target 844121cd86e5905c8a53c4574fab399d11ea0849 \
-            --title 'E0 R14 Fresh-evidence portable verifier bundle' \
+            --target 48cc842095d548f143f8674a6778fdb511292638 \
+            --title 'E0 R18 Fresh-evidence portable verifier bundle' \
             --notes "Candidate-bound portable verifier input bundle. Transport SHA256: $digest. Python runtimes: 3.9.25 and 3.14.6, x86_64 Linux, verified in the exact Fresh container."
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,tagName,targetCommitish,assets
 

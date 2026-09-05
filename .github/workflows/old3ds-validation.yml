@@ -4,18 +4,35 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      verifier_bundle_url:
+        description: Immutable URL for a Linux x86_64 verifier input-bundle tar
+        required: false
+        type: string
+      verifier_bundle_sha256:
+        description: SHA-256 of verifier_bundle_url
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CTH3DS_HOST_CONTAINER: ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4
+  CTH3DS_OLD3DS_CONTAINER: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
 
 jobs:
   host-python:
     name: host-python-${{ matrix.python }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4
     needs: old3ds-cross-build
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.9.25', '3.14']
+        python: ['3.9.25', '3.14.6']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Verify complete source identity
@@ -26,13 +43,18 @@ jobs:
           git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
           git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
           git rev-list --topo-order HEAD >> artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python }}
+      - name: Install locked host test dependencies
+        run: >-
+          python3 -m pip --isolated --disable-pip-version-check install --no-input
+          --index-url https://pypi.org/simple --require-hashes --only-binary=:all:
+          -r requirements/verifier.lock
       - name: Install native host runtime inputs
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ lua5.4 liblua5.4-0
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ lua5.4 liblua5.4-0 python3-venv
           mkdir -p "$RUNNER_TEMP/cth3ds-bin"
           ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua"
           echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"
@@ -44,8 +66,17 @@ jobs:
             -DCTH3DS_WARNINGS_AS_ERRORS=ON
           cmake --build "$RUNNER_TEMP/cth3ds-host-python" --parallel 2 \
             --target cth3ds-simulator cth3ds-runtime-probe
+          {
+            echo "runner_image_os=${ImageOS:-unset}"
+            echo "runner_image_version=${ImageVersion:-unset}"
+            echo "container=$CTH3DS_HOST_CONTAINER"
+            cat /etc/os-release
+            dpkg-query -W cmake ninja-build g++ lua5.4 liblua5.4-0
+            python --version
+            python -m pip freeze
+          } > artifacts/ci/environment-lock-host-python-${{ matrix.python }}.txt
       - name: Download exact-head cross runtime proof
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: corsixth-old3ds
           path: ${{ runner.temp }}/cth3ds-cross-evidence
@@ -89,19 +120,21 @@ jobs:
           PY
       - name: Upload host Python receipt
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: host-python-${{ matrix.python }}-evidence
           if-no-files-found: error
           path: |
             artifacts/verification/host-python-${{ matrix.python }}.json
             artifacts/ci/source-identity-host-python-${{ matrix.python }}.txt
+            artifacts/ci/environment-lock-host-python-${{ matrix.python }}.txt
 
   protocol-self-test:
     name: runtime-core-protocol-self-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Verify complete source identity
@@ -113,7 +146,7 @@ jobs:
           git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-protocol-self-test.txt
           git rev-list --topo-order HEAD >> artifacts/ci/source-identity-protocol-self-test.txt
       - name: Select the minimum verifier Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.9.25'
           cache: pip
@@ -140,7 +173,7 @@ jobs:
           } > artifacts/verification/protocol-self-test/exact-head-identity.txt
       - name: Upload protocol self-test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: runtime-core-protocol-self-test-evidence
           if-no-files-found: error
@@ -151,9 +184,10 @@ jobs:
 
   verifier-authority-negative:
     name: verifier-authority-negative
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Verify complete source identity
@@ -164,7 +198,7 @@ jobs:
           git rev-parse HEAD HEAD^{tree} HEAD^ > artifacts/ci/source-identity-verifier-authority-negative.txt
           git rev-list --parents -n 1 HEAD >> artifacts/ci/source-identity-verifier-authority-negative.txt
           git rev-list --topo-order HEAD >> artifacts/ci/source-identity-verifier-authority-negative.txt
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.9.25'
       - name: Execute W0-N01 through W0-N18
@@ -185,7 +219,7 @@ jobs:
           } > artifacts/verification/authority-negative/exact-head-identity.txt
       - name: Upload verifier authority negative evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verifier-authority-negative-evidence
           if-no-files-found: error
@@ -195,7 +229,8 @@ jobs:
 
   host:
     name: host-${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: ghcr.io/actions/actions-runner@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4
     strategy:
       fail-fast: false
       matrix:
@@ -209,7 +244,7 @@ jobs:
           - name: clang-debug
             run_common: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Verify complete source identity
@@ -225,7 +260,31 @@ jobs:
           ./scripts/run_ci_command.sh host-${{ matrix.name }}-setup
           artifacts/ci/host-${{ matrix.name }}-setup --
           bash -c 'sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          cmake ninja-build gcc-13 g++-13 clang liblua5.4-0 python3'
+          cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 python3 python3-venv &&
+          mkdir -p "$RUNNER_TEMP/cth3ds-bin" &&
+          ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua" &&
+          echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"'
+      - name: Install locked host test dependencies
+        run: |
+          test_env="$RUNNER_TEMP/cth3ds-host-test-python"
+          python3 -m venv "$test_env"
+          "$test_env/bin/python" -m pip --isolated --disable-pip-version-check \
+            install --no-input --index-url https://pypi.org/simple \
+            --require-hashes --only-binary=:all: -r requirements/verifier.lock
+          echo "$test_env/bin" >> "$GITHUB_PATH"
+      - name: Persist exact host environment identity
+        run: |
+          {
+            echo "runner_image_os=${ImageOS:-unset}"
+            echo "runner_image_version=${ImageVersion:-unset}"
+            echo "container=$CTH3DS_HOST_CONTAINER"
+            cat /etc/os-release
+            dpkg-query -W cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 python3 python3-venv
+            sha256sum "$(command -v cmake)" "$(command -v ninja)" \
+              "$(command -v gcc-13)" "$(command -v g++-13)" "$(command -v clang)" \
+              "$(command -v lua)"
+            python3 -m pip freeze
+          } > artifacts/ci/environment-lock-host-${{ matrix.name }}.txt
       - name: Verify setup preserves repository cleanliness
         run: test -z "$(git status --porcelain=v1 --untracked-files=all)"
       - name: Run isolated host verification
@@ -239,7 +298,7 @@ jobs:
         run: ./scripts/test_all.sh
       - name: Upload host evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: host-${{ matrix.name }}-evidence
           if-no-files-found: error
@@ -248,14 +307,14 @@ jobs:
             artifacts/ci
 
   old3ds-cross-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
     env:
       CTH3DS_CONTAINER_IMAGE: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
       DEVKITPRO: /opt/devkitpro
       DEVKITARM: /opt/devkitpro/devkitARM
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Persist source and ARM toolchain identity
@@ -286,14 +345,24 @@ jobs:
           ./scripts/run_ci_command.sh old3ds-packages
           artifacts/ci/old3ds-packages --
           dkp-pacman -S --needed --noconfirm
-          3ds-dev 3ds-cmake 3ds-pkg-config 3ds-zlib 3ds-libpng 3ds-freetype 3ds-bzip2
+          3ds-cmake=1.5.2-1 3ds-pkg-config=0.28-5 3ds-zlib=1.3.1-1
+          3ds-libpng=1.6.53-1 3ds-freetype=2.14.1-1 3ds-bzip2=1.0.8-1
+      - name: Persist exact Old 3DS environment identity
+        run: |
+          {
+            echo "container=$CTH3DS_OLD3DS_CONTAINER"
+            dkp-pacman -Q 3ds-cmake 3ds-pkg-config 3ds-zlib 3ds-libpng \
+              3ds-freetype 3ds-bzip2 devkitARM libctru
+            arm-none-eabi-gcc --version
+            sha256sum "$DEVKITARM/bin/arm-none-eabi-gcc"
+          } > artifacts/ci/environment-lock-old3ds.txt
       - name: Build CorsixTH for Nintendo 3DS
         env:
           CTH3DS_JOBS: "2"
         run: ./scripts/build_3ds.sh
       - name: Upload cross-build diagnostics and outputs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: corsixth-old3ds
           if-no-files-found: error
@@ -308,3 +377,175 @@ jobs:
             build-3ds/deps/cth3ds-dependencies.json
             external/CorsixTH/CorsixTH/Src/3ds/integration-manifest.json
             config/upstream-pins.json
+
+  fresh-chain-final-seal:
+    name: official-fresh-chain-final-seal
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.verifier_bundle_url != '' &&
+      inputs.verifier_bundle_sha256 != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    container: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
+    env:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITARM: /opt/devkitpro/devkitARM
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Prepare official Fresh Chain environment
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p artifacts/verification/fresh-chain-final-seal
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl ca-certificates tar make cmake ninja-build g++ clang \
+            lua5.4 liblua5.4-0 python3 python3-venv
+          dkp-pacman -S --needed --noconfirm \
+            3ds-cmake=1.5.2-1 3ds-pkg-config=0.28-5 3ds-zlib=1.3.1-1 \
+            3ds-libpng=1.6.53-1 3ds-freetype=2.14.1-1 3ds-bzip2=1.0.8-1
+          mkdir -p "$RUNNER_TEMP/cth3ds-bin"
+          ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua"
+          echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"
+      - name: Fetch exact input bundle transport
+        env:
+          BUNDLE_URL: ${{ inputs.verifier_bundle_url }}
+          BUNDLE_SHA256: ${{ inputs.verifier_bundle_sha256 }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/cth3ds-input" artifacts/verification/fresh-chain-final-seal
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/cth3ds-input-bundle.tar" "$BUNDLE_URL"
+          echo "$BUNDLE_SHA256  $RUNNER_TEMP/cth3ds-input-bundle.tar" | sha256sum -c -
+          tar -xf "$RUNNER_TEMP/cth3ds-input-bundle.tar" -C "$RUNNER_TEMP/cth3ds-input"
+          bundle_root="$(find "$RUNNER_TEMP/cth3ds-input" -name manifest.json -type f -print -quit | xargs dirname)"
+          test -n "$bundle_root"
+          python3 scripts/build_verifier_input_bundle.py --verify "$bundle_root" \
+            > artifacts/verification/fresh-chain-final-seal/bundle-verification.json
+          python3 - "$bundle_root" "$GITHUB_SHA" "$(git rev-parse HEAD^{tree})" \
+            "$(git rev-parse HEAD^)" \
+            artifacts/verification/fresh-chain-final-seal/authority-binding.json <<'PY'
+          import hashlib, json, pathlib, sys
+          bundle = pathlib.Path(sys.argv[1])
+          head, tree, parent = sys.argv[2:5]
+          output = pathlib.Path(sys.argv[5])
+          manifest = json.loads((bundle / "manifest.json").read_text())
+          binding = manifest["validation_change_authority"]
+          inputs = {row["role"]: row for row in manifest["inputs"]}
+          dag_raw = (bundle / inputs[binding["dag_input_role"]]["bundle_relative_path"]).read_bytes()
+          dag_sha = hashlib.sha256(dag_raw).hexdigest()
+          dag = json.loads(dag_raw)
+          pointer = binding["dag_authority_json_pointer"]
+          authority = dag[pointer.removeprefix("/")]
+          canonical = (json.dumps(authority, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          paths = authority["authorized_diff_exact"]
+          lines_sha = hashlib.sha256(("\n".join(paths) + "\n").encode()).hexdigest()
+          identity = manifest["candidate_identity"]
+          checks = {
+              "dag_input_hash": dag_sha == binding["dag_input_sha256"] ==
+                  inputs[binding["dag_input_role"]]["sha256_or_tree_digest"],
+              "authority_projection": authority == binding["projection"],
+              "authority_projection_hash": hashlib.sha256(canonical).hexdigest() ==
+                  binding["authority_canonical_sha256"],
+              "path_count": len(paths) == authority["authorized_diff_count"] ==
+                  binding["authorized_diff_count"],
+              "path_list": paths == binding["authorized_diff_exact"],
+              "path_digest": lines_sha == authority["authorized_diff_lines_sha256"] ==
+                  binding["authorized_diff_lines_sha256"],
+              "exact_head": identity["head"] == head and identity["tree"] == tree and
+                  identity["parents"] == [parent] == [authority["baseline"]["commit"]],
+          }
+          if not all(checks.values()):
+              raise SystemExit("bundle authority or exact-head binding mismatch: " +
+                               json.dumps(checks, sort_keys=True))
+          output.write_text(json.dumps({"schema": "cth3ds.ci-authority-binding/v1",
+              "status": "PASS", "checks": checks, "head": head, "tree": tree,
+              "parent": parent, "dag_sha256": dag_sha,
+              "authority_canonical_sha256": binding["authority_canonical_sha256"]},
+              indent=2, sort_keys=True) + "\n")
+          PY
+          printf '%s\n' "$bundle_root" > "$RUNNER_TEMP/cth3ds-input/bundle-root.txt"
+      - name: Run official Fresh Chain from the immutable bundle
+        id: fresh
+        continue-on-error: true
+        timeout-minutes: 150
+        shell: bash
+        run: |
+          bundle_root="$(cat "$RUNNER_TEMP/cth3ds-input/bundle-root.txt")"
+          . scripts/ci_diagnostics.sh
+          cth3ds_run_fresh_command \
+            "$PWD/artifacts/verification/fresh-chain-final-seal/fresh-command-outcome.json" \
+            8940 ./scripts/run_verifier_python.sh \
+            --input-bundle "$bundle_root" \
+            --runtime-version 3.9.25 \
+            --env-dir "$RUNNER_TEMP/cth3ds-fresh-env39" \
+            --evidence-dir "$PWD/artifacts/verification/fresh-chain-final-seal/environment" \
+            fresh-chain \
+            --input-bundle "$bundle_root" \
+            --expected-candidate-head "$GITHUB_SHA" \
+            --expected-candidate-tree "$(git rev-parse HEAD^{tree})" \
+            --session-root "$RUNNER_TEMP/cth3ds-fresh-session"
+      - name: Stage canonical public Fresh evidence
+        id: stage_fresh_evidence
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          FRESH_OUTCOME: ${{ steps.fresh.outcome }}
+          BUNDLE_URL: ${{ inputs.verifier_bundle_url }}
+          BUNDLE_SHA256: ${{ inputs.verifier_bundle_sha256 }}
+        run: |
+          . scripts/ci_diagnostics.sh
+          artifact_name="official-fresh-chain-evidence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          cth3ds_stage_fresh_evidence \
+            "$RUNNER_TEMP/cth3ds-fresh-session" \
+            "$PWD/artifacts/verification/fresh-chain-final-seal" \
+            "$RUNNER_TEMP/cth3ds-public-fresh-evidence" \
+            "$FRESH_OUTCOME" \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" \
+            "$artifact_name" "$GITHUB_SHA" "$(git rev-parse HEAD^{tree})" \
+            "$(git rev-parse HEAD^)" "$BUNDLE_URL" "$BUNDLE_SHA256"
+      - name: Validate canonical public Fresh evidence
+        id: validate_fresh_evidence
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          BUNDLE_URL: ${{ inputs.verifier_bundle_url }}
+          BUNDLE_SHA256: ${{ inputs.verifier_bundle_sha256 }}
+        run: |
+          . scripts/ci_diagnostics.sh
+          artifact_name="official-fresh-chain-evidence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          cth3ds_validate_fresh_evidence \
+            "$RUNNER_TEMP/cth3ds-public-fresh-evidence" \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" \
+            "$artifact_name" "$GITHUB_SHA" "$(git rev-parse HEAD^{tree})" \
+            "$(git rev-parse HEAD^)" "$BUNDLE_URL" "$BUNDLE_SHA256"
+      - name: Upload canonical public Fresh evidence
+        id: upload_fresh_evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: official-fresh-chain-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          if-no-files-found: error
+          path: ${{ runner.temp }}/cth3ds-public-fresh-evidence
+          retention-days: 90
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+      - name: Enforce Fresh execution and artifact finalization
+        if: always()
+        shell: bash
+        env:
+          FRESH_OUTCOME: ${{ steps.fresh.outcome }}
+          STAGE_OUTCOME: ${{ steps.stage_fresh_evidence.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate_fresh_evidence.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload_fresh_evidence.outcome }}
+          ARTIFACT_ID: ${{ steps.upload_fresh_evidence.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload_fresh_evidence.outputs.artifact-url }}
+        run: |
+          . scripts/ci_diagnostics.sh
+          cth3ds_enforce_fresh_evidence "$FRESH_OUTCOME" "$STAGE_OUTCOME" \
+            "$VALIDATION_OUTCOME" "$UPLOAD_OUTCOME" "$ARTIFACT_ID" "$ARTIFACT_URL"

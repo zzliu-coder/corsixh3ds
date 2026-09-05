@@ -1,4 +1,4 @@
-# Corsixh3ds 外部审查入口 · R19 / R17_SYNC
+# Corsixh3ds 外部审查入口 · R19 / U2-U3-SYNC
 
 **当前结论：R17诊断完成，启动/操作/保存与计时代码阻断已确认；P1/P2/P3仪表代码 FAIL，Old 3DS运行与内存 NOT_PROVEN。公开成功证据独立复算 PASS；E0正式验收仍 FAIL。** 请先审查启动、操作、保存恢复的实际阻塞，再看验证设施缺口。本文是截至 2026-09-05 的精简技术交接；状态不会随分支最新提交自动升级。
 
@@ -9,7 +9,7 @@
 | 本轮被审代码 | [`844121cd86e5905c8a53c4574fab399d11ea0849`](https://github.com/zzliu-coder/corsixh3ds/tree/844121cd86e5905c8a53c4574fab399d11ea0849)；产品与验证设施共同所在快照，尚未产品验收 |
 | 代码 tree / sole parent | `cfa70da3d4503ea9b997064fce4e75c6d65758ca` / `8e9df167da524c2a8bdc3296227544d559dc70dc` |
 | 代码定位分支 | `codex/e0-r14-fresh-evidence-retention-sibling`；审查链接均固定到上述完整 head |
-| 文档发布版本 | `GITHUB-REVIEW-CONTEXT-PUBLISH-R19 / R17_SYNC`，专用分支 [`docs/review-context`](https://github.com/zzliu-coder/corsixh3ds/blob/docs/review-context/REVIEW_CONTEXT.md)，从上述代码 head 派生，本次非force追加于首版 `45453355d118374dc827a14638e831a488f8c61f`，仅维护本文及一份[R17细节](docs/review/R17-playable-path-diagnosis.md)；文档提交身份以本文件的 GitHub 永久链接所含 commit 为准 |
+| 文档发布版本 | `GITHUB-REVIEW-CONTEXT-PUBLISH-R19 / U2-U3-SYNC`，专用分支 [`docs/review-context`](https://github.com/zzliu-coder/corsixh3ds/blob/docs/review-context/REVIEW_CONTEXT.md)，从上述代码 head 派生，首版为 `45453355d118374dc827a14638e831a488f8c61f`；本次非force追加于R17增量 `ca284668a3388c61124ff15c38cbe600b5ea1137`，仅维护本文及一份[R17细节](docs/review/R17-playable-path-diagnosis.md)；文档提交身份以本文件的 GitHub 永久链接所含 commit 为准 |
 
 默认分支 `main`、最新提交和文档提交各有自己的身份。引用结论时附完整**代码 head**；文档提交只标识交接内容，不能替代产品候选。
 
@@ -86,10 +86,16 @@ R18 仅允许修改 `.github/workflows/old3ds-validation.yml`、`scripts/ci_diag
 | R17 · GPT-6 max | **诊断完成，合同已封存**；产品仍PRODUCT_BLOCKED。已完成本次资料同步 |
 | R18 · GPT-6 high | 五类E0验证器缺口返修进行中；保持既有三个验证文件边界 |
 | R20 / U1 · GPT-6 high | **施工中**：启动＋English/音效内存前置＋保存/生命周期；唯一拥有共享runtime/platform/integrator及最终集成 |
-| R21 / U2 · GPT-6 high | **施工中**：独立InputMapper与输入回归；native/Lua桥接补丁交U1顺序合入 |
-| R22 / U3 · GPT-6 high | **施工中**：公共telemetry与独立测试；实际引擎插桩补丁交U1，接入是第一轮设备候选前置 |
+| R21 / U2 · GPT-6 high | **组件完成，已交U1待实际集成**：独立InputMapper与输入回归；共享桥接补丁及接线清单由U1顺序合入 |
+| R22 / U3 · GPT-6 high | **组件完成，已交U1待实际集成**：公共telemetry与独立测试；共享插桩补丁/API由U1接入实际消费者，仍是第一轮设备候选前置 |
 
-当前仍审`844121c`，尚无新的已验收产品候选。U2/U3按接口独立准备，共享文件由U1顺序集成；E0返修并行，最终同一候选hash合流并分别完成主机、构建、设备验收，旧10/10不替代新候选回归。保留原计划和已有成果，长期、多关卡及完整资源架构门槛继续留账；暂缓通用框架扩张、全loader重写、额外协议、全GPU、自绘UI与复杂多线程。
+U2本地组件身份：`6ce399899b64d853ae71f88ec94de04fe0ccd64e`，仅3文件。封存主机结果为119项C++、17项ASan/UBSan及9项带原生/引擎测试替身的Lua桥接观测通过。组件候选的共享runtime/platform仍是冻结版，旧光标偏移仍可复现；实际native/HID/SDL/GameUI接线、混合操作与P2端到端继续 **NOT_PROVEN**。
+
+U3本地组件身份：`fbf8fcd4f164f93ac495f8b10389152fc1d56ecb`，仅6文件。119项C++、24项ASan/UBSan、10项相关Python及5项带SDL/Lua测试缝的生成函数测量检查通过。组件已实现成功双屏软件提交间隔、长停顿、阶段耗时、采样内存及未知暂存的记录；ARM检查仅语法，完整交叉链接和设备未做。新lazy音效入口的实际观测、组合候选、设备性能/内存仍 **NOT_PROVEN**。
+
+以上两个commit仅在本地，公开仓库尚未包含其组件代码，因而不提供GitHub组件commit链接。根任务已将组件、共享补丁及API交给同一U1集成人；U1完成当前基础事务后顺序合入U2、U3，再交付同一实际生成源码/交叉构建/SD候选供独立验收。待U1推送真实集成版本后再更新代码审查链接。R17详细报告保留当时快照，施工最新状态以本节为准。
+
+当前仍审`844121c`，尚无新的已验收产品候选。U2/U3组件已交付，共享文件由U1顺序集成；E0返修并行，最终同一候选hash合流并分别完成主机、构建、设备验收，旧10/10不替代新候选回归。保留原计划和已有成果，长期、多关卡及完整资源架构门槛继续留账；暂缓通用框架扩张、全loader重写、额外协议、全GPU、自绘UI与复杂多线程。
 
 后续新候选可在“**施工完成、独立验收NOT_PROVEN**”状态提前公开供审查，文档head与产品head分别记录；验收通过再升级状态。本次不等待R18/R20等施工结果，后续由根任务持封存回执驱动增量同步。
 

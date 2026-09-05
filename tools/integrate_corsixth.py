@@ -1209,6 +1209,8 @@ def patch_product_sources(root: Path, dry_run: bool) -> list[Change]:
          r'''#ifdef CORSIXTH_3DS
  public:
   size_t cached_bytes() const {return cache_bytes;}
+  size_t owner_bytes() const {return cache_bytes+(archive?archive->metadata_bytes():0)+sound_count*sizeof(Mix_Chunk*)+used_at.capacity()*sizeof(uint64_t)+allocated_bytes.capacity()*sizeof(size_t)+sizeof(*this);}
+  size_t pinned_bytes() const {size_t total=0;for(size_t j=0;j<sound_count;++j){bool pin=false;for(int c=0;c<number_of_channels;++c)if(channels[c]!=null_handle&&channel_sound[c]==j)pin=true;if(pin)total+=allocated_bytes[j]+sizeof(Mix_Chunk);}return total;}
   size_t decoded_clip_count() const {size_t n=0;for(size_t i=0;i<sound_count;++i)if(sounds[i])++n;return n;}
  private:
   sound_archive* archive{nullptr}; // Lua soundEffects environment retains archive.
@@ -1234,6 +1236,9 @@ def patch_product_sources(root: Path, dry_run: bool) -> list[Change]:
 #endif
 #ifdef CORSIXTH_3DS
 namespace {
+void sound_observe(const char* site,const char* phase,const char* id,size_t request,size_t held,bool failed=false) {
+  cth3ds::runtime_observe_memory(site,phase,id,cth3ds::MemoryGate::Operation,request,true,held,true,failed,true);
+}
 struct SoundSlice { FILE* file; Sint64 start, length, cursor; };
 Sint64 slice_size(SDL_RWops* rw) { return static_cast<SoundSlice*>(rw->hidden.unknown.data1)->length; }
 Sint64 slice_seek(SDL_RWops* rw, Sint64 offset, int whence) {
@@ -1247,7 +1252,10 @@ size_t slice_read(SDL_RWops* rw, void* ptr, size_t size, size_t count) {
   auto* s = static_cast<SoundSlice*>(rw->hidden.unknown.data1);
   if (!size) return 0;
   count = std::min(count, static_cast<size_t>(s->length-s->cursor)/size);
-  size_t n = std::fread(ptr,size,count,s->file); s->cursor += n*size; return n;
+  char identity[96];std::snprintf(identity,sizeof(identity),"offset=%lld length=%lld cursor=%lld",(long long)s->start,(long long)s->length,(long long)s->cursor);
+  sound_observe("sound_read","before",identity,size*count,0);
+  size_t n=std::fread(ptr,size,count,s->file);s->cursor+=n*size;
+  sound_observe("sound_read","after",identity,size*count,n*size,n!=count);return n;
 }
 size_t slice_write(SDL_RWops*, const void*, size_t, size_t) { return 0; }
 int slice_close(SDL_RWops* rw) {
@@ -1297,7 +1305,9 @@ bool sound_archive::load_from_file(const char* path) {
   uint32_t hp=bytes_to_uint32_le(h);if(uint64_t(hp)+234>uint64_t(length)-4 || !read(hp,h,234))return false;
   uint32_t tp=bytes_to_uint32_le(h+50),tl=bytes_to_uint32_le(h+58);
   if(!tl || tl%32 || tl/32>4096 || uint64_t(tp)+tl>uint64_t(length)-4 || (tp<uint64_t(hp)+234 && hp<uint64_t(tp)+tl))return false;
-  std::vector<sound_dat_sound_info> index(tl/32);
+  sound_observe("sound_index","before",path,tl,0);
+  std::vector<sound_dat_sound_info> index;
+  try{index.resize(tl/32);}catch(const std::bad_alloc&){sound_observe("sound_index","allocation-failed",path,tl,0,true);throw;}
   for(size_t i=0;i<index.size();++i) {
     uint8_t e[32];if(!read(tp+i*32,e,32))return false;
     auto& v=index[i];std::copy_n(e,18,v.sound_name.begin());
@@ -1315,7 +1325,8 @@ bool sound_archive::load_from_file(const char* path) {
     }
   }
   data.clear();data.shrink_to_fit();file_path=path;sound_files.swap(index);
-  cth3ds::report_memory_checkpoint("sound_index","ready",path,metadata_bytes(),0);
+  sound_observe("sound_index","after",path,tl,metadata_bytes());
+  sound_observe("sound_archive_copy","file-backed",path,0,0);
   return true;
 }
 size_t sound_archive::metadata_bytes() const {return sound_files.capacity()*sizeof(sound_dat_sound_info)+file_path.capacity()+sizeof(*this);}
@@ -1364,13 +1375,14 @@ bool sound_archive::pcm_requirement(size_t index,size_t& converted,size_t& scrat
 #ifdef CORSIXTH_3DS
   Mix_HaltChannel(-1); // synchronous: no callback can access the freed bank
   for(int c=0;c<number_of_channels;++c) {finished[c].store(false);release_channel(c);}
-  archive=pArchive;cache_bytes=0;used_at.clear();
+  sound_observe("sound_release","bank-before","bank",0,owner_bytes());
+  archive=pArchive;cache_bytes=0;used_at.clear();used_at.shrink_to_fit();allocated_bytes.clear();allocated_bytes.shrink_to_fit();
 #endif'''),
         ('  sounds = new Mix_Chunk*[pArchive->get_number_of_sounds()];',
          r'''#ifdef CORSIXTH_3DS
   sound_count=pArchive->get_number_of_sounds();
   sounds=new Mix_Chunk*[sound_count]();used_at.resize(sound_count);allocated_bytes.resize(sound_count);
-  cth3ds::report_memory_checkpoint("sound_cache","metadata-only",nullptr,pArchive->metadata_bytes()+sound_count*(sizeof(Mix_Chunk*)+sizeof(uint64_t)+sizeof(size_t)),0);
+  sound_observe("sound_index","player-metadata","bank",0,owner_bytes());
   return;
 #endif
   sounds = new Mix_Chunk*[pArchive->get_number_of_sounds()];'''),
@@ -1388,6 +1400,7 @@ bool sound_archive::pcm_requirement(size_t index,size_t& converted,size_t& scrat
   channels[iChannel] = null_handle;
 #ifdef CORSIXTH_3DS
   channel_sound[iChannel]=SIZE_MAX;
+  sound_observe("sound_release","channel-after","pins",0,pinned_bytes());
 #endif'''),
         ('  int iChannel = reserve_channel();',
          r'''#ifdef CORSIXTH_3DS
@@ -1405,9 +1418,18 @@ bool sound_archive::pcm_requirement(size_t index,size_t& converted,size_t& scrat
   channel_sound[iChannel]=iIndex;
 #endif
   Mix_Volume(iChannel, iVolume);
+#ifdef CORSIXTH_3DS
+  sound_observe("sound_play","pin-before",archive->get_sound_name(iIndex),0,pinned_bytes());
+#endif
   if (Mix_PlayChannel(iChannel, sounds[iIndex], loops)<0) {
+#ifdef CORSIXTH_3DS
+    sound_observe("sound_play","play-failed",archive->get_sound_name(iIndex),0,pinned_bytes(),true);
+#endif
     release_channel(iChannel);return null_handle;
-  }'''),
+  }
+#ifdef CORSIXTH_3DS
+  sound_observe("sound_play","pin-after",archive->get_sound_name(iIndex),0,pinned_bytes());
+#endif'''),
         (r'''  std::scoped_lock lock(channel_mutex);
 
   if (handle == null_handle)''',
@@ -1417,6 +1439,10 @@ bool sound_archive::pcm_requirement(size_t index,size_t& converted,size_t& scrat
   std::scoped_lock lock(channel_mutex);
 
   if (handle == null_handle)'''),
+        ('  if (pArchive == nullptr) return;', '''#ifdef CORSIXTH_3DS
+  sound_observe("sound_release","bank-after","bank",0,owner_bytes());
+#endif
+  if (pArchive == nullptr) return;'''),
         ('sound_player* sound_player::singleton = nullptr;',
          r'''#ifdef CORSIXTH_3DS
 void sound_player::drain_finished() {
@@ -1435,7 +1461,7 @@ bool sound_player::ensure_sound(size_t index) {
   size_t pcm=0,scratch=0;
   if(!archive->pcm_requirement(index,pcm,scratch)) {SDL_SetError("invalid required sound slice/WAV/mixer");return false;}
   constexpr size_t limit=3*1024*1024;
-  size_t metadata=archive->metadata_bytes()+sound_count*(sizeof(Mix_Chunk*)+sizeof(uint64_t)+sizeof(size_t))+sizeof(*this);
+  size_t metadata=owner_bytes()-cache_bytes;
   if(pcm+sizeof(Mix_Chunk)>limit || metadata>limit-pcm-sizeof(Mix_Chunk)) {SDL_SetError("required sound exceeds 3MiB PCM+metadata");return false;}
   while(cache_bytes+metadata+pcm+sizeof(Mix_Chunk)>limit) {
     size_t victim=sound_count;uint64_t oldest=UINT64_MAX;
@@ -1444,17 +1470,20 @@ bool sound_player::ensure_sound(size_t index) {
       if(sounds[j]&&!pinned&&used_at[j]<oldest){oldest=used_at[j];victim=j;}
     }
     if(victim==sound_count){SDL_SetError("audio cache pinned: required clip rejected");return false;}
+    sound_observe("sound_evict","before",archive->get_sound_name(victim),allocated_bytes[victim]+sizeof(Mix_Chunk),owner_bytes());
     cache_bytes-=allocated_bytes[victim]+sizeof(Mix_Chunk);Mix_FreeChunk(sounds[victim]);sounds[victim]=nullptr;
+    sound_observe("sound_evict","after",archive->get_sound_name(victim),0,owner_bytes());
   }
   // Actual conversion scratch plus operation reserve must coexist with cache.
   if(!cth3ds::runtime_audio_reserve(scratch+pcm+sizeof(Mix_Chunk),archive->get_sound_name(index)))return false;
-  cth3ds::report_memory_checkpoint("sound_decode","begin",archive->get_sound_name(index),cache_bytes+metadata,scratch+pcm);
+  sound_observe("sound_decode","before",archive->get_sound_name(index),scratch+pcm,owner_bytes());
   SDL_RWops* rw=archive->load_sound(index);if(!rw)return false;
-  Mix_Chunk* chunk=Mix_LoadWAV_RW(rw,1);if(!chunk)return false;
+  Mix_Chunk* chunk=Mix_LoadWAV_RW(rw,1);if(!chunk){sound_observe("sound_decode","decode-failed",archive->get_sound_name(index),scratch+pcm,owner_bytes(),true);return false;}
   if(chunk->alen>pcm || cache_bytes+metadata+chunk->alen+sizeof(Mix_Chunk)>limit){Mix_FreeChunk(chunk);SDL_SetError("mixer output exceeded preflight");return false;}
   sounds[index]=chunk;allocated_bytes[index]=pcm;cache_bytes+=pcm+sizeof(Mix_Chunk);used_at[index]=++cache_clock;
   Mix_VolumeChunk(chunk,MIX_MAX_VOLUME);
-  cth3ds::report_memory_checkpoint("sound_decode","complete",archive->get_sound_name(index),cache_bytes+metadata,0);
+  sound_observe("sound_decode","chunk-after",archive->get_sound_name(index),pcm,chunk->alen+sizeof(Mix_Chunk));
+  sound_observe("sound_decode","owner-after",archive->get_sound_name(index),0,owner_bytes());
   return true;
 }
 #endif
@@ -1559,7 +1588,7 @@ int l_soundarc_count(lua_State* L) {'''),
     -- CORSIXTH_3DS_END: platform-attach
     self.audio:playRandomBackgroundTrack()'''),
         ('  if IS_3DS and not TH3DS.probe_regular_heap("LEVEL READY") then',
-         '  if IS_3DS and not TH3DS.probe_regular_heap("LEVEL READY", "level") then'),
+         '  if IS_3DS and not TH3DS.probe_regular_heap("LEVEL READY", "LevelStable") then'),
         ('    error("E-HEAP-PROBE: level has less than 2 MiB contiguous heap")',
          '    error("E-HEAP-PROBE: LevelStable policy failed; see requested probe and reserve in boot.log")'),
         ('  th3ds_stage("S120", "LEVEL READY")',
@@ -1809,6 +1838,629 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
     return errors
 
 
+def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
+    """U3 generated sites, pinned-source anchors; applied after U1/U2 semantics."""
+    if dry_run:
+        with tempfile.TemporaryDirectory(prefix="cth3ds-u3-preview-") as temp:
+            preview=Path(temp)/"upstream"
+            shutil.copytree(root,preview,ignore=shutil.ignore_patterns(".git"))
+            patch_sources(preview,False);patch_product_sources(preview,False)
+            return patch_u3_observations(preview,False)
+    changes = []
+    operations = [('CorsixTH/Src/sdl_core.cpp',
+  '    do {\n      // CORSIXTH_3DS_BEGIN: bottom-event-filter',
+  '    do {\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '      cth3ds::RuntimeTimingScope u3_event(cth3ds::TimingStage::Event);\n'
+  '#endif\n'
+  '      // CORSIXTH_3DS_BEGIN: bottom-event-filter'),
+ ('CorsixTH/Src/sdl_core.cpp',
+  '    if (do_timer) {\n',
+  '    if (do_timer) {\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '      cth3ds::RuntimeTimingScope u3_logic(cth3ds::TimingStage::Logic);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/sdl_core.cpp',
+  '      do {\n        if (fps.track_fps) {',
+  '      do {\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '        cth3ds::runtime_begin_frame();\n'
+  '        cth3ds::RuntimeTimingScope u3_render(cth3ds::TimingStage::Render);\n'
+  '#endif\n'
+  '        if (fps.track_fps) {'),
+ ('CorsixTH/Src/sdl_core.cpp',
+  '        cth3ds::runtime_after_frame();',
+  '        u3_render.finish(res == LUA_OK);\n        cth3ds::runtime_after_frame(res == LUA_OK);'),
+ ('CorsixTH/Src/sdl_core.cpp',
+  '    // No events pending - a good time to do a bit of garbage collection\n    lua_gc(L, LUA_GCSTEP, 2);',
+  '#ifdef CORSIXTH_3DS\n'
+  '    if (!do_frame && fps.limit_fps) cth3ds::runtime_frame_skipped();\n'
+  '    {\n'
+  '      cth3ds::RuntimeTimingScope u3_gc(cth3ds::TimingStage::GC);\n'
+  '      cth3ds::runtime_observe_memory("gc", "before", "incremental", cth3ds::MemoryGate::Operation);\n'
+  '#endif\n'
+  '    // No events pending - a good time to do a bit of garbage collection\n'
+  '    lua_gc(L, LUA_GCSTEP, 2);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '      cth3ds::runtime_observe_memory("gc", "after", "incremental", cth3ds::MemoryGate::Operation);\n'
+  '    }\n'
+  '    cth3ds::runtime_flush_observations();\n'
+  '#endif'),
+ ('CorsixTH/Src/sdl_core.cpp',
+  'leave_loop:\n',
+  'leave_loop:\n#ifdef CORSIXTH_3DS\n  cth3ds::runtime_flush_observations(true);\n#endif\n'),
+ ('CorsixTH/Src/th_map.cpp',
+  '#include "th_map.h"\n',
+  '#include "th_map.h"\n#ifdef CORSIXTH_3DS\n#include "3ds/runtime_3ds.hpp"\n#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  SDL_RenderPresent(renderer);\n  FrameMark;',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::RuntimeTimingScope u3_top(cth3ds::TimingStage::Top);\n'
+  '  SDL_ClearError();\n'
+  '#endif\n'
+  '  SDL_RenderPresent(renderer);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  // SDL2 present returns void. This proves completion without reported error;\n'
+  '  // actual scanout/frame visibility is a separate device observation.\n'
+  "  const bool u3_ok = *SDL_GetError() == '\\0';\n"
+  '  u3_top.finish(u3_ok);\n'
+  '  cth3ds::runtime_top_present_complete(u3_ok);\n'
+  '  if (!u3_ok) return false;\n'
+  '#endif\n'
+  '  FrameMark;'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  sprites = new (std::nothrow) sprite[sprite_count];\n',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("vspr_decode", "descriptors-before", "sprite-sheet", '
+  'cth3ds::MemoryGate::Operation, sprite_count * sizeof(sprite), true, 0, false, false);\n'
+  '#endif\n'
+  '  sprites = new (std::nothrow) sprite[sprite_count];\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("vspr_decode", "descriptors-after", "sprite-sheet", '
+  'cth3ds::MemoryGate::Operation, sprite_count * sizeof(sprite), true, sprites ? sprite_count * sizeof(sprite) : '
+  '0, true, sprites == nullptr);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '      std::vector<uint8_t> pData(pSprite->width * pSprite->height);',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("vspr_decode", "pixels-before", "sprite-pixels", '
+  'cth3ds::MemoryGate::Operation, pSprite->width * pSprite->height, true, 0, false, false);\n'
+  '#endif\n'
+  '      std::vector<uint8_t> pData(pSprite->width * pSprite->height);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("vspr_decode", "pixels-after", "sprite-pixels", '
+  'cth3ds::MemoryGate::Operation, pSprite->width * pSprite->height, true, pData.size(), true, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '          convertLegacySprite(pData.data(), pSprite->width * pSprite->height);',
+  '          convertLegacySprite(pData.data(), pSprite->width * pSprite->height);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("vspr_decode", "converted-after", "sprite-converted", '
+  'cth3ds::MemoryGate::Operation, 0, false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  delete[] sprites;\n  sprites = nullptr;',
+  '  delete[] sprites;\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "descriptors-after", "sprite-sheet", '
+  'cth3ds::MemoryGate::Operation, 0, false, 0, true, false);\n'
+  '#endif\n'
+  '  sprites = nullptr;'),
+ ('CorsixTH/Src/th_map.cpp',
+  '  cells = new (std::nothrow) map_tile[iWidth * iHeight];\n',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("map", "before", "cells", cth3ds::MemoryGate::Operation, '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(map_tile), true, 0, false, false);\n'
+  '#endif\n'
+  '  cells = new (std::nothrow) map_tile[iWidth * iHeight];\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("map", "after", "cells", cth3ds::MemoryGate::Operation, '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(map_tile), true, cells ? '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(map_tile) : 0, true, cells == nullptr);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_map.cpp',
+  '  original_cells = new (std::nothrow) map_tile[iWidth * iHeight];\n',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("map", "before", "original_cells", cth3ds::MemoryGate::Operation, '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(map_tile), true, 0, false, false);\n'
+  '#endif\n'
+  '  original_cells = new (std::nothrow) map_tile[iWidth * iHeight];\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("map", "after", "original_cells", cth3ds::MemoryGate::Operation, '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(map_tile), true, original_cells ? '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(map_tile) : 0, true, original_cells == nullptr);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  uint32_t* pARGBPixels = new uint32_t[iWidth * iHeight];',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("textures", "pixels-before", "ARGB", cth3ds::MemoryGate::Operation, '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(uint32_t), true, 0, false, false);\n'
+  '#endif\n'
+  '  uint32_t* pARGBPixels = new uint32_t[iWidth * iHeight];\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("textures", "pixels-after", "ARGB", cth3ds::MemoryGate::Operation, '
+  'static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(uint32_t), true, static_cast<std::uint64_t>(iWidth) * '
+  'iHeight * sizeof(uint32_t), true, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  texture = SDL_CreateTexture(target->renderer, SDL_PIXELFORMAT_ABGR8888,\n'
+  '                              SDL_TEXTUREACCESS_TARGET, iWidth, iHeight);',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("textures", "create-before", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'
+  '  texture = SDL_CreateTexture(target->renderer, SDL_PIXELFORMAT_ABGR8888,\n'
+  '                              SDL_TEXTUREACCESS_TARGET, iWidth, iHeight);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("textures", "create-after", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  SDL_Texture* pTexture =\n'
+  '      SDL_CreateTexture(renderer, pixel_format->format,\n'
+  '                        SDL_TEXTUREACCESS_STATIC, iWidth, iHeight);',
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("textures", "create-before", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'
+  '  SDL_Texture* pTexture =\n'
+  '      SDL_CreateTexture(renderer, pixel_format->format,\n'
+  '                        SDL_TEXTUREACCESS_STATIC, iWidth, iHeight);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("textures", "create-after", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '    SDL_DestroyTexture(sprites[iNumber].texture);',
+  '    SDL_DestroyTexture(sprites[iNumber].texture);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "texture-after", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '    SDL_DestroyTexture(sprites[iNumber].alt_texture);',
+  '    SDL_DestroyTexture(sprites[iNumber].alt_texture);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "texture-after", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '      SDL_DestroyTexture(pSprite->alt_texture);',
+  '      SDL_DestroyTexture(pSprite->alt_texture);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "texture-after", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '    SDL_DestroyTexture(pCacheEntry->texture);',
+  '    SDL_DestroyTexture(pCacheEntry->texture);\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "texture-after", "SDL-texture", cth3ds::MemoryGate::Operation, 0, '
+  'false, 0, false, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Lua/persistance.lua',
+  '  local dumped, result, err, obj = pcall(function()\n'
+  '    return persist.dump(state, MakePermanentObjectsTable(false))\n'
+  '  end)',
+  '  if TH3DS then TH3DS.observe_memory("save","dump-before","persist","Operation") end\n'
+  '  local dumped, result, err, obj = pcall(function()\n'
+  '    return persist.dump(state, MakePermanentObjectsTable(false))\n'
+  '  end)\n'
+  '  if TH3DS then TH3DS.observe_memory("save","dump-after","persist","Operation") end'),
+ ('CorsixTH/Lua/persistance.lua',
+  '  local state = assert(persist.load(data, objtable))',
+  '  if TH3DS then TH3DS.observe_memory("reload", "parse-before", "persist", "Operation") end\n'
+  '  local state = assert(persist.load(data, objtable))\n'
+  '  if TH3DS then TH3DS.observe_memory("reload", "parse-after", "persist", "Operation") end'),
+ ('CorsixTH/Lua/persistance.lua',
+  '  TheApp:afterLoad()',
+  '  if TH3DS then TH3DS.observe_memory("reload", "afterLoad-before", "persist", "Operation") end\n'
+  '  TheApp:afterLoad()\n'
+  '  if TH3DS then TH3DS.observe_memory("reload", "afterLoad-after", "persist", "Operation") end'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  uint8_t* pData = new uint8_t[iNewSize];',
+  '#ifdef CORSIXTH_3DS\n'
+  '  uint8_t* pData = nullptr;\n'
+  '  try { pData = new uint8_t[iNewSize]; } catch (const std::bad_alloc&) {\n'
+  '    cth3ds::runtime_observe_memory("vspr_decode", "allocation-failed", "pData", cth3ds::MemoryGate::Operation, '
+  'iNewSize, true, 0, false, true);\n'
+  '    throw;\n'
+  '  }\n'
+  '#else\n'
+  '  uint8_t* pData = new uint8_t[iNewSize];\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  uint32_t* pARGBPixels = new uint32_t[iWidth * iHeight];',
+  '#ifdef CORSIXTH_3DS\n'
+  '  uint32_t* pARGBPixels = nullptr;\n'
+  '  try { pARGBPixels = new uint32_t[iWidth * iHeight]; } catch (const std::bad_alloc&) {\n'
+  '    cth3ds::runtime_observe_memory("textures", "allocation-failed", "pARGBPixels", '
+  'cth3ds::MemoryGate::Operation, static_cast<std::uint64_t>(iWidth) * iHeight * sizeof(uint32_t), true, 0, '
+  'false, true);\n'
+  '    throw;\n'
+  '  }\n'
+  '#else\n'
+  '  uint32_t* pARGBPixels = new uint32_t[iWidth * iHeight];\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '      std::vector<uint8_t> pData(pSprite->width * pSprite->height);',
+  '#ifdef CORSIXTH_3DS\n'
+  '      std::vector<uint8_t> pData;\n'
+  '      try { pData.resize(pSprite->width * pSprite->height); } catch (const std::bad_alloc&) {\n'
+  '        cth3ds::runtime_observe_memory("vspr_decode", "allocation-failed", "sprite-pixels", '
+  'cth3ds::MemoryGate::Operation, pSprite->width * pSprite->height, true, 0, false, true);\n'
+  '        throw;\n'
+  '      }\n'
+  '#else\n'
+  '      std::vector<uint8_t> pData(pSprite->width * pSprite->height);\n'
+  '#endif'),
+ ('CorsixTH/Src/th_gfx_sdl.cpp',
+  '  delete[] pARGBPixels;',
+  '  delete[] pARGBPixels;\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "pixels-after", "ARGB", cth3ds::MemoryGate::Operation, 0, false, '
+  '0, true, false);\n'
+  '#endif\n'),
+ ('CorsixTH/Src/th_map.cpp',
+  '  delete[] parcel_tile_counts;\n  delete[] parcel_adjacency_matrix;\n  delete[] purchasable_matrix;\n}',
+  '  delete[] parcel_tile_counts;\n'
+  '  delete[] parcel_adjacency_matrix;\n'
+  '  delete[] purchasable_matrix;\n'
+  '#ifdef CORSIXTH_3DS\n'
+  '  cth3ds::runtime_observe_memory("release", "map-after", "level-map", cth3ds::MemoryGate::Operation, 0, false, '
+  '0, true, false);\n'
+  '#endif\n'
+  '}'),
+ ('CorsixTH/Lua/app.lua',
+  '  local new_map = Map(self)',
+  '  if TH3DS then TH3DS.observe_memory("map", "before", "new-map", "Operation") end\n'
+  '  local new_map = Map(self)\n'
+  '  if TH3DS then TH3DS.observe_memory("map", "after", "new-map", "Operation") end'),
+ ('CorsixTH/Lua/app.lua',
+  '  self.world = World(self, determineFreeBuildMode())',
+  '  if TH3DS then TH3DS.observe_memory("world", "before", "world", "Operation") end\n'
+  '  self.world = World(self, determineFreeBuildMode())\n'
+  '  if TH3DS then TH3DS.observe_memory("world", "after", "world", "Operation") end'),
+ ('CorsixTH/Lua/app.lua',
+  '  self.world:createMapObjects(map_objects)',
+  '  if TH3DS then TH3DS.observe_memory("world", "before", "map-objects", "Operation") end\n'
+  '  self.world:createMapObjects(map_objects)\n'
+  '  if TH3DS then TH3DS.observe_memory("world", "after", "map-objects", "Operation") end'),
+ ('CorsixTH/Lua/persistance.lua',
+  '  state.map:prepareForSave()',
+  '  if TH3DS then TH3DS.observe_memory("save", "prepare-before", "map", "Operation") end\n'
+  '  state.map:prepareForSave()\n'
+  '  if TH3DS then TH3DS.observe_memory("save", "prepare-after", "map", "Operation") end'),
+ ('CorsixTH/Lua/persistance.lua',
+  '  local cleaned, cleanup_error = pcall(state.map.afterSave,state.map)',
+  '  if TH3DS then TH3DS.observe_memory("save","afterSave-before","map","Operation") end\n'
+  '  local cleaned, cleanup_error = pcall(state.map.afterSave,state.map)\n'
+  '  if TH3DS then TH3DS.observe_memory("save","afterSave-after","map","Operation") end'),
+ ('CorsixTH/Lua/persistance.lua',
+  '  local data = SaveGame()',
+  '  local data = SaveGame()\n'
+  '  if TH3DS then TH3DS.observe_memory("save", "serialized", "state-string", "Operation", nil, #data) end'),
+ ('CorsixTH/Lua/strings.lua',
+  '82, 0x90) -- e-acute\n'
+  'case(0x84, 0x8E) -- a-umlaut\n'
+  'case(0x86, 0x8F) -- a-ring\n'
+  'case(0x94, 0x99) -- o-umlaut\n'
+  'case(0xA4, 0xA5) -- n-tilde\n'
+  'local case_pattern = "\\195[\\128-\\191]" -- Unicode range [0xC0, 0xFF] as UTF-8\n'
+  '\n'
+  'local orig_upper = string.upper\n'
+  'function string.upper(s) -- luacheck: ignore 122\n'
+  '  return orig_upper(s:gsub(case_pattern, lower_to_upper))\n'
+  'end\n'
+  '\n'
+  'local orig_lower = string.lower\n'
+  'function string.lower(s) -- luacheck: ignore 122\n'
+  '  return orig_lower(s:gsub(case_pattern, upper_to_lower))\n'
+  'end\n',
+  '82, 0x90) -- e-acute\n'
+  'case(0x84, 0x8E) -- a-umlaut\n'
+  'case(0x86, 0x8F) -- a-ring\n'
+  'case(0x94, 0x99) -- o-umlaut\n'
+  'case(0xA4, 0xA5) -- n-tilde\n'
+  'local case_pattern = "\\195[\\128-\\191]" -- Unicode range [0xC0, 0xFF] as UTF-8\n'
+  '\n'
+  'local orig_upper = string.upper\n'
+  'function string.upper(s) -- luacheck: ignore 122\n'
+  '  return orig_upper(s:gsub(case_pattern, lower_to_upper))\n'
+  'end\n'
+  '\n'
+  'local orig_lower = string.lower\n'
+  'function string.lower(s) -- luacheck: ignore 122\n'
+  '  return orig_lower(s:gsub(case_pattern, upper_to_lower))\n'
+  'end\n'
+  '\n'
+  '-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans\n'
+  'do\n'
+  '  do\n'
+  '    local original = assert(Strings.init)\n'
+  '    Strings.init = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("language_discovery", "before", "Strings:init", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("language_discovery", success and "after" or "failed", "Strings:init", '
+  '"Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      \n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  '  do\n'
+  '    local original = assert(Strings.load)\n'
+  '    Strings.load = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("language_selected", "before", "Strings:load", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("language_selected", success and "after" or "failed", "Strings:load", "Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      \n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  'end\n'
+  '-- CORSIXTH_3DS_END: U3-actual-loader-spans\n'),
+ ('CorsixTH/Lua/audio.lua',
+  ')\n'
+  '  if jukebox then\n'
+  '    jukebox:updatePlayButton()\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  'function Audio:reserveChannel()\n'
+  '  if self.sound_fx then\n'
+  '    return self.sound_fx:reserveChannel()\n'
+  '  else\n'
+  '    return -1\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  'function Audio:releaseChannel(channel)\n'
+  '  if self.sound_fx and channel > -1 then\n'
+  '    self.sound_fx:releaseChannel(channel)\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  'function Audio:destroy()\n'
+  '  self.has_bg_music = false\n'
+  '  self.not_loaded = not TheApp.config.audio\n'
+  '  self.speech_file_name = nil\n'
+  '  self.sound_fx = nil\n'
+  '  SDL.audio.destroy()\n'
+  'end\n',
+  ')\n'
+  '  if jukebox then\n'
+  '    jukebox:updatePlayButton()\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  'function Audio:reserveChannel()\n'
+  '  if self.sound_fx then\n'
+  '    return self.sound_fx:reserveChannel()\n'
+  '  else\n'
+  '    return -1\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  'function Audio:releaseChannel(channel)\n'
+  '  if self.sound_fx and channel > -1 then\n'
+  '    self.sound_fx:releaseChannel(channel)\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  'function Audio:destroy()\n'
+  '  self.has_bg_music = false\n'
+  '  self.not_loaded = not TheApp.config.audio\n'
+  '  self.speech_file_name = nil\n'
+  '  self.sound_fx = nil\n'
+  '  SDL.audio.destroy()\n'
+  'end\n'
+  '\n'
+  '-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans\n'
+  'do\n'
+  '  do\n'
+  '    local original = assert(Audio.initSpeech)\n'
+  '    Audio.initSpeech = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("sound_index", "before", "Audio:initSpeech", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("sound_index", success and "after" or "failed", "Audio:initSpeech", "Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      \n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  'end\n'
+  '-- CORSIXTH_3DS_END: U3-actual-loader-spans\n'),
+ ('CorsixTH/Lua/graphics.lua',
+  '     local n = (f - f1) / (f2 - f1)\n'
+  '        setMarkerFramePosition(false, x1, y1, x2, y2, n)\n'
+  '      else\n'
+  '        setMarkerFramePosition(true, x1, y1)\n'
+  '      end\n'
+  '      frame = self.anims:getNextFrame(frame)\n'
+  '    end\n'
+  '  else\n'
+  '    error("Invalid arguments to setMarker", 2)\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  '-- Kept for load compatibility\n'
+  'function Graphics:loadPalette(_, name)\n'
+  '  -- Was named PREF01V.PAL in ui.lua until version 240\n'
+  '  if name == "PREF01V.PAL" then\n'
+  '    name = "Pref01V.pal"\n'
+  '  end\n'
+  '  return self:getPalette(name)\n'
+  'end\n',
+  '     local n = (f - f1) / (f2 - f1)\n'
+  '        setMarkerFramePosition(false, x1, y1, x2, y2, n)\n'
+  '      else\n'
+  '        setMarkerFramePosition(true, x1, y1)\n'
+  '      end\n'
+  '      frame = self.anims:getNextFrame(frame)\n'
+  '    end\n'
+  '  else\n'
+  '    error("Invalid arguments to setMarker", 2)\n'
+  '  end\n'
+  'end\n'
+  '\n'
+  '-- Kept for load compatibility\n'
+  'function Graphics:loadPalette(_, name)\n'
+  '  -- Was named PREF01V.PAL in ui.lua until version 240\n'
+  '  if name == "PREF01V.PAL" then\n'
+  '    name = "Pref01V.pal"\n'
+  '  end\n'
+  '  return self:getPalette(name)\n'
+  'end\n'
+  '\n'
+  '-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans\n'
+  'do\n'
+  '  do\n'
+  '    local original = assert(Graphics.loadAnimations)\n'
+  '    Graphics.loadAnimations = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("vspr_decode", "before", "Graphics:loadAnimations", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("vspr_decode", success and "after" or "failed", "Graphics:loadAnimations", '
+  '"Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      \n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  '  do\n'
+  '    local original = assert(Graphics.loadSpriteTable)\n'
+  '    Graphics.loadSpriteTable = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("vspr_table", "before", "Graphics:loadSpriteTable", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("vspr_table", success and "after" or "failed", "Graphics:loadSpriteTable", '
+  '"Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      \n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  'end\n'
+  '-- CORSIXTH_3DS_END: U3-actual-loader-spans\n'),
+ ('CorsixTH/Lua/app.lua',
+  'nderer: %s\\n",\n'
+  '      table.concat(comp_details, ", "), self.video:getRendererDetails())\n'
+  '  local running = string.format("%s run with api version: %s, game version: %s, savegame version: %s\\n",\n'
+  '      compile_opts.jit or _VERSION, tostring(corsixth.require("api_version")),\n'
+  '      self:getReleaseString(), tostring(SAVEGAME_VERSION))\n'
+  '  return (compiled .. running)\n'
+  'end\n'
+  '\n'
+  '-- Do not remove, for savegame compatibility < r1891\n'
+  'local app_confirm_quit_stub = --[[persistable:app_confirm_quit]] function()\n'
+  'end\n',
+  'nderer: %s\\n",\n'
+  '      table.concat(comp_details, ", "), self.video:getRendererDetails())\n'
+  '  local running = string.format("%s run with api version: %s, game version: %s, savegame version: %s\\n",\n'
+  '      compile_opts.jit or _VERSION, tostring(corsixth.require("api_version")),\n'
+  '      self:getReleaseString(), tostring(SAVEGAME_VERSION))\n'
+  '  return (compiled .. running)\n'
+  'end\n'
+  '\n'
+  '-- Do not remove, for savegame compatibility < r1891\n'
+  'local app_confirm_quit_stub = --[[persistable:app_confirm_quit]] function()\n'
+  'end\n'
+  '\n'
+  '-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans\n'
+  'do\n'
+  '  do\n'
+  '    local original = assert(App._loadLevel)\n'
+  '    App._loadLevel = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("world", "before", "App:_loadLevel", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("world", success and "after" or "failed", "App:_loadLevel", "Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      TH3DS.flush_observations()\n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  '  do\n'
+  '    local original = assert(App.loadMainMenu)\n'
+  '    App.loadMainMenu = function(...)\n'
+  '      if not TH3DS then return original(...) end\n'
+  '      local token = TH3DS.span_begin("load")\n'
+  '      TH3DS.observe_memory("release", "before", "App:loadMainMenu", "Operation")\n'
+  '      local result = table.pack(pcall(original, ...))\n'
+  '      local success = result[1] and result[2] ~= false\n'
+  '      TH3DS.observe_memory("release", success and "after" or "failed", "App:loadMainMenu", "Operation")\n'
+  '      TH3DS.span_end(token, success)\n'
+  '      TH3DS.flush_observations()\n'
+  '      if not result[1] then error(result[2], 0) end\n'
+  '      return table.unpack(result, 2, result.n)\n'
+  '    end\n'
+  '  end\n'
+  'end\n'
+  '-- CORSIXTH_3DS_END: U3-actual-loader-spans\n'),
+ ('CorsixTH/Lua/strings.lua',
+  '      local result, err = loadfile_envcall(path .. file)',
+  '      if TH3DS then TH3DS.observe_memory("language_discovery", "compile-before", file, "Operation") end\n'
+  '      local result, err = loadfile_envcall(path .. file)\n'
+  '      if TH3DS then TH3DS.observe_memory("language_discovery", "compile-after", file, "Operation") end'),
+ ('CorsixTH/Lua/graphics.lua',
+  '    data_tab = self.app:readDataFile(dir, name .. ".tab")',
+  '    if TH3DS then TH3DS.observe_memory("vspr_table", "read-before", name, "Operation") end\n'
+  '    data_tab = self.app:readDataFile(dir, name .. ".tab")\n'
+  '    if TH3DS then TH3DS.observe_memory("vspr_table", "read-after", name, "Operation", nil, #data_tab) end'),
+ ('CorsixTH/Lua/graphics.lua',
+  '    data_dat = self.app:readDataFile(dir, name .. ".dat")',
+  '    if TH3DS then TH3DS.observe_memory("vspr_data", "read-before", name, "Operation") end\n'
+  '    data_dat = self.app:readDataFile(dir, name .. ".dat")\n'
+  '    if TH3DS then TH3DS.observe_memory("vspr_data", "read-after", name, "Operation", nil, #data_dat) end')]
+    pending = {}
+    already_done = {relative for relative, _, _ in operations if "CORSIXTH_3DS_U3_OBSERVATIONS_V1" in read_text(root / relative)}
+    for relative, before, after in operations:
+        if relative in already_done: continue
+        path = root / relative
+        content = pending.get(relative, read_text(path))
+        if after in content:
+            continue
+        if "-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans" in after and "-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans" not in before and "-- CORSIXTH_3DS_BEGIN: U3-actual-loader-spans" in content:
+            continue
+        if content.count(before) != 1:
+            raise IntegrationError("U3 observation anchor mismatch: " + relative)
+        if relative=='CorsixTH/Lua/app.lua' and 'U3-actual-loader-spans' in after:
+            after=after.replace('"App:_loadLevel"', '\'level:\'..tostring((...).world and (...).world.level_number or \'loading\')').replace('"App:loadMainMenu"','"menu"')
+        pending[relative] = content.replace(before, after, 1)
+    for relative, content in pending.items():
+        prefix = "--" if relative.endswith(".lua") else "//"
+        if relative in ('CorsixTH/Lua/strings.lua','CorsixTH/Lua/graphics.lua'):
+            content = 'local ok, TH3DS = pcall(require,"th3ds")\nif not ok or not TH3DS.is_platform() then TH3DS=nil end\n' + content
+        elif relative.endswith('.lua'):
+            content = content.replace('local IS_3DS = th3ds_ok and TH3DS.is_platform()', 'local IS_3DS = th3ds_ok and TH3DS.is_platform()\nif not IS_3DS then TH3DS=nil end').replace('local IS_3DS = native_ok and TH3DS.is_platform()', 'local IS_3DS = native_ok and TH3DS.is_platform()\nif not IS_3DS then TH3DS=nil end')
+        content += "\n" + prefix + " CORSIXTH_3DS_U3_OBSERVATIONS_V1\n"
+        write_text(root / relative, content, dry_run)
+        changes.append(Change(relative, "patch"))
+    return changes
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("upstream", type=Path, help="CorsixTH source checkout or release archive")
@@ -1856,6 +2508,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         changes = copy_overlay(root, overlay, args.dry_run)
         changes.extend(patch_sources(root, args.dry_run))
         changes.extend(patch_product_sources(root, args.dry_run))
+        changes.extend(patch_u3_observations(root, args.dry_run))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)
             manifest_path = root / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"

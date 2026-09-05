@@ -112,6 +112,19 @@ constexpr int kOverlayHeight = 13;
 // show. Everything below writes to the SD card instead, unbuffered, so the
 // last line on disk is the last thing that actually executed.
 // ---------------------------------------------------------------------------
+Telemetry g_timing;
+MemoryTelemetry g_memory_observations;
+lua_State* g_observation_state = nullptr;
+bool g_top_present_seen = false;
+bool g_top_present_ok = false;
+std::uint64_t g_observation_flush_us = 0;
+bool g_observation_flush_requested = false;
+struct OperationSample {std::array<char,24> site{};MemoryObservation observation;};
+std::array<OperationSample,64> g_operation_samples{};
+std::size_t g_operation_sample_count=0;
+std::uint64_t g_operation_overflow=0;
+std::array<char,96> g_scene_identity{};
+bool g_window_has_operation=false;
 std::FILE* g_log = nullptr;
 bool g_log_attempted = false;
 u64 g_boot_started_ms = 0U;
@@ -693,8 +706,7 @@ class Runtime {
  public:
   Runtime()
       : overlay_canvas_(ScreenLayout::kBottomWidth, kOverlayHeight),
-        scheduler_(18000U, 33333U, 33333U, 3), lifecycle_(60000000U),
-        telemetry_(240U) {}
+        scheduler_(18000U, 33333U, 33333U, 3), lifecycle_(60000000U) {}
 
   bool initialize(lua_State* state, const char* mode) {
     if (!mode || (std::strcmp(mode,"loose") && std::strcmp(mode,"th3ds"))) return false;
@@ -842,6 +854,7 @@ class Runtime {
 
   void tick(lua_State* state) {
     if (!assert_ready(state)) return;
+    process_lifecycle(state, now_us());
     const std::uint64_t frame_started = now_us();
     const float delta_seconds = last_tick_us_ == 0U
                                     ? 0.0F
@@ -849,7 +862,6 @@ class Runtime {
                                           1000000.0F;
     last_tick_us_ = frame_started;
 
-    process_lifecycle(state, frame_started);
     if(input_failed_ || lifecycle_.state()!=LifecycleState::Running)return;
     if (state_refresh_gate_.due(frame_started) &&
         bottom_mode_ == BottomScreenMode::Panel) {
@@ -924,17 +936,7 @@ class Runtime {
       // in lockstep with the frame it mirrors.
       render_bottom();
     }
-    const std::uint64_t frame_finished = now_us();
-    telemetry_.record_frame(frame_finished - frame_started, decision.dropped_time);
-    if (telemetry_log_gate_.due(frame_finished)) {
-      update_lua_memory(state);
-      const PerformanceSnapshot sample = telemetry_.snapshot();
-      boot_log(
-          "telemetry: avg_ms=%.3f p95_ms=%.3f max_ms=%.3f dropped=%llu",
-          sample.average_frame_ms, sample.p95_frame_ms, sample.maximum_frame_ms,
-          static_cast<unsigned long long>(sample.dropped_frames));
-      boot_log_memory("RUNNING");
-    }
+
   }
 
   bool consumes_event(const SDL_Event& event) const noexcept {
@@ -1035,11 +1037,18 @@ class Runtime {
   //! Called straight after CorsixTH presents a frame. In game mode the lower
   //! screen is the same frame at an exact 2:1 reduction, so the player sees
   //! the real interface - toolbar, dialogs and all - and can touch it.
-  void after_frame() {
-    if (!initialized_ || bottom_mode_ != BottomScreenMode::Game) {
-      return;
+  void after_frame(bool draw_success) {
+    PresentResult result = PresentResult::Skipped;
+    if (!draw_success || (g_top_present_seen && !g_top_present_ok)) {
+      result = PresentResult::Failed;
+    } else if (initialized_ && bottom_mode_ == BottomScreenMode::Game && g_top_present_seen) {
+      RuntimeTimingScope bottom(TimingStage::Bottom);
+      const bool ok = mirror_game_to_bottom();
+      bottom.finish(ok);
+      result = ok ? PresentResult::Success : PresentResult::Failed;
     }
-    mirror_game_to_bottom();
+    g_timing.present_complete(now_us(), result);
+    g_top_present_seen = g_top_present_ok = false;
   }
 
   [[nodiscard]] bool mirrors_game() const noexcept {
@@ -1106,7 +1115,7 @@ class Runtime {
     scheduler_.request_redraw();
   }
 
-  PerformanceSnapshot performance() const { return telemetry_.snapshot(); }
+  PerformanceSnapshot performance() const { return g_timing.snapshot(now_us()); }
 
   bool probe_regular_heap(const char* label,
                           MemoryGate gate = MemoryGate::MenuStable) {
@@ -1133,12 +1142,12 @@ class Runtime {
       boot_log_memory("E-MEMORY-GATE");
       return false;
     }
-    ContiguousProbePolicy policy;
-    policy.minimum_success_bytes = gate_policy.probe_bytes;
-    policy.reserve_bytes = gate_policy.probe_reserve_bytes;
+    const ContiguousProbePolicy policy = memory_gate_probe_policy(gate);
     const ContiguousProbeResult result = probe_largest_contiguous(
         static_cast<std::size_t>(before.heap_available_estimate), policy,
         regular_probe_allocate, regular_probe_release);
+    char probe_message[256];format_memory_gate_probe(probe_message,sizeof(probe_message),gate,result);
+    boot_log("memory-probe-policy: %s",probe_message);
     if (!result.met_minimum) {
       boot_log(
           "heap-probe[%s]: FAIL minimum=%lu verified=%lu limit=%lu attempts=%lu "
@@ -1257,6 +1266,7 @@ class Runtime {
   void apply_lifecycle_decision(lua_State* state,
                                 const LifecycleDecision& decision,
                                 bool is_resume) {
+    const auto restore_token=is_resume?runtime_span_begin(TimingStage::Restore):0;
     if (decision.pause_audio) {
       for(int c=0;c<32;++c) { audio_paused_before_[c]=Mix_Paused(c)!=0; if(!audio_paused_before_[c])Mix_Pause(c); }
       music_paused_before_=Mix_PausedMusic()!=0;Mix_PauseMusic();
@@ -1286,6 +1296,7 @@ class Runtime {
       if(!music_paused_before_)Mix_ResumeMusic();
       scheduler_.reset(now_us());last_tick_us_=now_us();
     }
+    if(restore_token){runtime_observe_memory("restore","reconciled","simulation",MemoryGate::Operation);runtime_span_end(restore_token,!input_failed_);}
     if (decision.request_autosave && asset_mode_ == "th3ds") {
       Action save;
       save.type = ActionType::QuickSave;
@@ -1376,14 +1387,14 @@ class Runtime {
   //! Copy the 640x480 CorsixTH frame onto the 320x240 lower screen, taking
   //! every second pixel. Both surfaces are RGBA8888, so this is a straight
   //! pixel move with no format conversion.
-  void mirror_game_to_bottom() {
+  bool mirror_game_to_bottom() {
     if (bottom_window_ == nullptr || game_window_ == nullptr) {
-      return;
+      return false;
     }
     SDL_Surface* source = SDL_GetWindowSurface(game_window_);
     bottom_surface_ = SDL_GetWindowSurface(bottom_window_);
     if (source == nullptr || bottom_surface_ == nullptr) {
-      return;
+      return false;
     }
     if (source->format->format != bottom_surface_->format->format ||
         source->w < ScreenLayout::kBottomWidth * 2 ||
@@ -1397,27 +1408,27 @@ class Runtime {
       startup_code_ = "E-MIRROR";
       startup_label_ = "UNSUPPORTED GAME SURFACE";
       render_boot_page(true);
-      return;
+      return false;
     }
 
     const bool lock_source = SDL_MUSTLOCK(source) != 0;
     if (lock_source && SDL_LockSurface(source) != 0) {
-      return;
+      return false;
     }
     const bool lock_destination = SDL_MUSTLOCK(bottom_surface_) != 0;
     if (lock_destination && SDL_LockSurface(bottom_surface_) != 0) {
       if (lock_source) {
         SDL_UnlockSurface(source);
       }
-      return;
+      return false;
     }
 
-    (void)halve_rgba(static_cast<const std::uint32_t*>(source->pixels), source->w,
+    const bool scaled = halve_rgba(static_cast<const std::uint32_t*>(source->pixels), source->w,
                      source->h, source->pitch / 4,
                      static_cast<std::uint32_t*>(bottom_surface_->pixels),
                      bottom_surface_->pitch / 4);
 
-    draw_overlay_strip();
+    if (scaled) draw_overlay_strip();
 
     if (lock_destination) {
       SDL_UnlockSurface(bottom_surface_);
@@ -1425,8 +1436,9 @@ class Runtime {
     if (lock_source) {
       SDL_UnlockSurface(source);
     }
-    (void)SDL_UpdateWindowSurface(bottom_window_);
-    dirty_ = false;
+    const bool submitted = scaled && SDL_UpdateWindowSurface(bottom_window_) == 0;
+    if (submitted) dirty_ = false;
+    return submitted;
   }
 
   //! A short status strip over the mirrored frame: the build stamp for the
@@ -1631,7 +1643,7 @@ class Runtime {
   InputMapper input_mapper_{};
   FrameScheduler scheduler_;
   LifecycleController lifecycle_;
-  Telemetry telemetry_;
+
   aptHookCookie apt_cookie_{};
   std::atomic<std::uint32_t> pending_lifecycle_{0U};
   std::atomic<bool> exit_requested_{false};
@@ -1719,9 +1731,13 @@ int l_stage(lua_State* state) {
 int l_probe(lua_State* state) {
   update_lua_memory(state);
   const char* label = luaL_optstring(state, 1, "LUA");
-  const char* name=luaL_optstring(state,2,"menu");
-  const MemoryGate gate=std::strcmp(name,"level")==0?MemoryGate::LevelStable:std::strcmp(name,"operation")==0?MemoryGate::Operation:MemoryGate::MenuStable;
-  const bool ok = runtime().probe_regular_heap(label,gate);
+  const char* requested_gate = luaL_checkstring(state, 2);
+  MemoryGate gate = MemoryGate::Operation;
+  if (std::strcmp(requested_gate, "MenuStable") == 0) gate = MemoryGate::MenuStable;
+  else if (std::strcmp(requested_gate, "LevelStable") == 0) gate = MemoryGate::LevelStable;
+  else if (std::strcmp(requested_gate, "Operation") != 0)
+    return luaL_error(state, "unknown memory gate");
+  const bool ok = runtime().probe_regular_heap(label, gate);
   lua_pushboolean(state, ok ? 1 : 0);
   return 1;
 }
@@ -1807,6 +1823,48 @@ std::uint64_t checked_non_negative_integer(lua_State* state, int index) {
     return 0U;
   }
   return static_cast<std::uint64_t>(value);
+}
+
+int l_request_observation_flush(lua_State*) {
+  g_observation_flush_requested = true;
+  return 0;
+}
+int l_span_begin(lua_State* state) {
+  const char* name = luaL_checkstring(state, 1);
+  for (std::size_t i = 0; i < kTimingStageNames.size(); ++i) {
+    if (std::strcmp(name, kTimingStageNames[i]) == 0) {
+      const auto token = runtime_span_begin(static_cast<TimingStage>(i));
+      if (!token) return luaL_error(state, "timing span rejected");
+      lua_pushinteger(state, static_cast<lua_Integer>(token)); return 1;
+    }
+  }
+  return luaL_error(state, "unknown timing stage");
+}
+int l_span_end(lua_State* state) {
+  const auto token = static_cast<std::uint64_t>(luaL_checkinteger(state, 1));
+  if (!runtime_span_end(token, lua_toboolean(state, 2) != 0))
+    return luaL_error(state, "timing span end rejected");
+  return 0;
+}
+int l_observe_memory(lua_State* state) {
+  const char* checkpoint = luaL_checkstring(state, 1);
+  const char* phase = luaL_checkstring(state, 2);
+  const char* identity = luaL_checkstring(state, 3);
+  const char* gate_name = luaL_checkstring(state, 4);
+  MemoryGate gate = MemoryGate::Operation;
+  if (std::strcmp(gate_name, "MenuStable") == 0) gate = MemoryGate::MenuStable;
+  else if (std::strcmp(gate_name, "LevelStable") == 0) gate = MemoryGate::LevelStable;
+  else if (std::strcmp(gate_name, "SelectedLanguage") == 0) gate = MemoryGate::SelectedLanguage;
+  else if (std::strcmp(gate_name, "Boot") == 0) gate = MemoryGate::Boot;
+  else if (std::strcmp(gate_name, "Operation") != 0) return luaL_error(state, "unknown memory gate");
+  if (!is_memory_checkpoint(checkpoint)) return luaL_error(state, "unknown memory checkpoint");
+  const bool request_known = !lua_isnoneornil(state, 5);
+  const bool held_known = !lua_isnoneornil(state, 6);
+  const auto request = request_known ? checked_non_negative_integer(state, 5) : 0;
+  const auto held = held_known ? checked_non_negative_integer(state, 6) : 0;
+  runtime_observe_memory(checkpoint, phase, identity, gate, request, request_known,
+      held, held_known, lua_toboolean(state, 7) != 0, true);
+  return 0;
 }
 
 int l_resource_memory(lua_State* state) {
@@ -1966,6 +2024,10 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "probe_regular_heap", l_probe);
   set_function(state, "resource_memory", l_resource_memory);
   set_function(state, "checkpoint", l_checkpoint);
+  set_function(state,"span_begin",l_span_begin);
+  set_function(state,"span_end",l_span_end);
+  set_function(state,"observe_memory",l_observe_memory);
+  set_function(state,"flush_observations",l_request_observation_flush);
   set_function(state, "allocation_failure", l_allocation_failure);
   set_function(state, "set_state", l_set_state);
   set_function(state, "request_redraw", l_request_redraw);
@@ -1980,6 +2042,9 @@ int luaopen_th3ds(lua_State* state) {
 }
 
 void register_lua_module(lua_State* state) {
+  g_operation_sample_count=0;g_operation_overflow=0;g_scene_identity.fill(0);g_window_has_operation=false;
+  g_observation_state=state;g_timing.clear();g_timing.reset_window(now_us());
+  g_memory_observations.clear();g_observation_flush_us=now_us();g_observation_flush_requested=false;
   boot_log_open();
   initialize_heap_watermarks();
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
@@ -2062,7 +2127,104 @@ void runtime_set_game_window(SDL_Window* window) noexcept {
   runtime().set_game_window(window);
 }
 
-void runtime_after_frame() noexcept { runtime().after_frame(); }
+std::uint64_t runtime_span_begin(TimingStage stage) noexcept {
+  if(stage==TimingStage::Save||stage==TimingStage::Load||stage==TimingStage::Restore)g_window_has_operation=true;
+  return g_timing.begin_span(stage, now_us());
+}
+bool runtime_span_end(std::uint64_t token, bool success) noexcept {
+  return g_timing.end_span(token, now_us(), success);
+}
+void runtime_begin_frame() noexcept { g_top_present_seen = g_top_present_ok = false; }
+void runtime_top_present_complete(bool success) noexcept {
+  g_top_present_ok = g_top_present_seen ? g_top_present_ok && success : success;
+  g_top_present_seen = true;
+}
+void runtime_frame_skipped() noexcept { g_timing.present_complete(now_us(), PresentResult::Skipped); }
+void runtime_observe_memory(const char* checkpoint, const char* phase, const char* resource,
+    MemoryGate gate, std::uint64_t requested, bool requested_known,
+    std::uint64_t held, bool held_known, bool failed, bool opaque) noexcept {
+  update_lua_memory(g_observation_state);
+  const auto h = heap_snapshot();
+  MemorySample sample{now_us(), h.heap_total, h.arena, h.uordblks, h.fordblks,
+      h.linear_total, h.linear_free, h.lua_bytes, g_observation_state != nullptr};
+  const auto o = memory_observation(sample, gate, g_current_stage,
+      phase ? phase : "unknown", resource ? resource : "unknown",
+      requested, requested_known, held, held_known, failed, opaque);
+  g_memory_observations.observe(checkpoint ? checkpoint : "unknown", o);
+  if(checkpoint && phase && resource) {
+    const bool operation=!std::strcmp(checkpoint,"save")||!std::strcmp(checkpoint,"reload")||!std::strcmp(checkpoint,"world")||!std::strcmp(checkpoint,"release")||!std::strcmp(checkpoint,"restore");
+    const bool boundary=!std::strcmp(phase,"before")||!std::strcmp(phase,"after")||!std::strcmp(phase,"committed")||!std::strcmp(phase,"failed")||!std::strcmp(phase,"gc-before")||!std::strcmp(phase,"gc-after");
+    if(operation&&boundary) {
+      if(g_operation_sample_count<g_operation_samples.size()) {
+        auto& row=g_operation_samples[g_operation_sample_count++];row.observation=o;
+        std::snprintf(row.site.data(),row.site.size(),"%s",checkpoint);
+      }else ++g_operation_overflow;
+    }
+    if(!std::strcmp(phase,"after") && (!std::strncmp(resource,"level:",6)||!std::strcmp(resource,"menu")))
+      std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"%s",resource);
+  }
+  if (failed) {
+    boot_log("allocation-failure: checkpoint=%s phase=%s resource=%s requested=%llu known=%d",
+      checkpoint ? checkpoint : "unknown", o.phase.data(), o.resource.data(),
+      static_cast<unsigned long long>(requested), requested_known);
+    boot_log_memory(g_current_stage);
+  }
+}
+void runtime_flush_observations(bool force) noexcept {
+  const auto now = now_us();
+  g_observation_flush_requested = g_observation_flush_requested || force;
+  if (!g_observation_flush_requested && now - g_observation_flush_us < 60000000U) return;
+  const auto p = g_timing.snapshot(now);
+  // A save/load may span the scheduled flush time; retain it until quiescent.
+  for (const auto& stage : p.stages) if (stage.open != 0) return;
+  const auto& d = p.intervals;
+  boot_log("segment: scene=%s stable_eligible=%d software_submission_only=1 operation_rows=%lu overflow=%llu",
+    g_scene_identity.data(),!g_window_has_operation && g_scene_identity[0],(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
+  for(std::size_t i=0;i<g_operation_sample_count;++i){
+    const auto& row=g_operation_samples[i];const auto& o=row.observation;const auto& m=o.sample;
+    boot_log("operation-memory: site=%s phase=%s identity=%s timestamp=%llu heap_available=%llu arena=%llu lua=%llu lua_known=%d linear_free=%llu",
+      row.site.data(),o.phase.data(),o.resource.data(),(unsigned long long)m.timestamp_us,(unsigned long long)m.heap_available_estimate(),(unsigned long long)m.arena,(unsigned long long)m.lua_bytes,m.lua_known,(unsigned long long)m.linear_free);
+  }
+  g_operation_sample_count=0;g_operation_overflow=0;g_window_has_operation=false;
+  boot_log("frames: begin=%llu end=%llu elapsed=%llu success=%llu failed=%llu skipped=%llu count=%llu sum=%llu p50_lo=%llu p50_hi=%llu p95_lo=%llu p95_hi=%llu p99_lo=%llu p99_hi=%llu max=%llu coverage_begin=%llu coverage_end=%llu open_gap=%llu invalid=%llu",
+      (unsigned long long)p.window_begin_us, (unsigned long long)p.observed_until_us,
+      (unsigned long long)p.elapsed_us, (unsigned long long)p.successful_presents,
+      (unsigned long long)p.failed_presents, (unsigned long long)p.skipped_presents,
+      (unsigned long long)d.count, (unsigned long long)d.total_us,
+      (unsigned long long)d.p50_lower_us, (unsigned long long)d.p50_upper_us,
+      (unsigned long long)d.p95_lower_us, (unsigned long long)d.p95_upper_us,
+      (unsigned long long)d.p99_lower_us, (unsigned long long)d.p99_upper_us,
+      (unsigned long long)d.maximum_us, (unsigned long long)p.interval_coverage_begin_us,
+      (unsigned long long)p.interval_coverage_end_us, (unsigned long long)p.open_present_gap_us,
+      (unsigned long long)p.invalid_events);
+  for (std::size_t i = 0; i < p.stages.size(); ++i) {
+    const auto& s = p.stages[i];
+    boot_log("span: stage=%s count=%llu failed=%llu inclusive_us=%llu exclusive_us=%llu max=%llu",
+      kTimingStageNames[i], (unsigned long long)s.completed, (unsigned long long)s.failed,
+      (unsigned long long)s.inclusive_us, (unsigned long long)s.exclusive_us, (unsigned long long)s.maximum_us);
+  }
+  for (std::size_t i = 0; i < g_memory_observations.checkpoints().size(); ++i) {
+    const auto& s = g_memory_observations.checkpoints()[i];
+    if (!s.samples) continue;
+    const auto& o = s.latest; const auto& m = o.sample;
+    boot_log("observed-memory: site=%.*s samples=%llu first=%llu last=%llu stage=%s phase=%s resource=%s gate=%.*s env_heap_total=%llu arena=%llu uordblks=%llu fordblks=%llu heap_available_estimate=%llu linear_total=%llu linear_free=%llu lua=%llu lua_known=%d requested=%llu request_known=%d held=%llu held_known=%d min_heap_available=%llu max_heap_used=%llu min_linear_free=%llu max_lua=%llu max_request=%llu max_held=%llu failures=%llu opaque_unknown=%llu truncated=%d sampled_lower_bound=1",
+      (int)kMemoryCheckpointNames[i].size(), kMemoryCheckpointNames[i].data(),
+      (unsigned long long)s.samples, (unsigned long long)s.first_us, (unsigned long long)s.last_us,
+      o.stage.data(), o.phase.data(), o.resource.data(), (int)memory_gate_name(o.gate).size(), memory_gate_name(o.gate).data(),
+      (unsigned long long)m.env_heap_total, (unsigned long long)m.arena, (unsigned long long)m.uordblks,
+      (unsigned long long)m.fordblks, (unsigned long long)m.heap_available_estimate(),
+      (unsigned long long)m.linear_total, (unsigned long long)m.linear_free, (unsigned long long)m.lua_bytes, m.lua_known,
+      (unsigned long long)o.requested_bytes, o.requested_known, (unsigned long long)o.held_bytes, o.held_known,
+      (unsigned long long)s.minimum_heap_available, (unsigned long long)s.maximum_heap_used,
+      (unsigned long long)s.minimum_linear_free, (unsigned long long)s.maximum_lua_bytes,
+      (unsigned long long)s.maximum_requested_bytes, (unsigned long long)s.maximum_known_held_bytes,
+      (unsigned long long)s.allocation_failures, (unsigned long long)s.unknown_temporary_samples, o.identity_truncated);
+  }
+  g_timing.reset_window(now); g_memory_observations.clear(); g_observation_flush_us = now;
+  g_observation_flush_requested = false;
+}
+
+void runtime_after_frame(bool draw_success) noexcept { runtime().after_frame(draw_success); }
 
 [[gnu::noinline]] bool runtime_initialize(lua_State* state, const char* mode) { return runtime().initialize(state,mode); }
 [[gnu::noinline]] bool runtime_assert_ready(lua_State* state) {return runtime().assert_ready(state);}
@@ -2074,8 +2236,8 @@ bool runtime_audio_reserve(std::size_t bytes,const char* identity) noexcept {
   void* probe=std::malloc(bytes);if(!probe){report_allocation_failure("sound",identity,bytes,"regular","contiguous preflight");return false;}
   std::free(probe);return true;
 }
-void runtime_tick(lua_State* state) { runtime().tick(state); }
-void runtime_shutdown(lua_State*) noexcept { runtime().shutdown(); }
+void runtime_tick(lua_State* state) { RuntimeTimingScope timing(TimingStage::Runtime); runtime().tick(state); }
+void runtime_shutdown(lua_State*) noexcept { runtime_flush_observations(true); runtime().shutdown(); g_observation_state=nullptr; }
 bool runtime_consume_sdl_event(const SDL_Event& event) noexcept {
   return runtime().consumes_event(event);
 }

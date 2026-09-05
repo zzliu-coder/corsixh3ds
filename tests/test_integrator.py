@@ -84,7 +84,7 @@ class IntegratorTests(unittest.TestCase):
             # must be handed that window and told when a frame has been shown.
             self.assertIn("cth3ds::runtime_set_game_window(window)", gfx_text)
             self.assertIn(
-                "cth3ds::runtime_after_frame()",
+                "cth3ds::runtime_after_frame(res == LUA_OK)",
                 (upstream / "CorsixTH/Src/sdl_core.cpp").read_text(),
             )
             self.assertIn("self.config.width = 640", app_text)

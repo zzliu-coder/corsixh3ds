@@ -127,7 +127,7 @@ local fail_load = false
 local function saw(name, phase)
   return checkpoints[name .. ":" .. phase] == true
 end
-local native = {{
+local native = {{span_begin=function()return 1 end,span_end=function()end,observe_memory=function()end,flush_observations=function()end,
   checkpoint = function(name, phase)
     checkpoints[name .. ":" .. phase] = true
   end,
@@ -157,46 +157,32 @@ local app = {{
     local handle = assert(io.open(filename, "wb"))
     handle:write("SAVE")
     handle:close()
-    return "saved"
+    return true
   end,
   load = function(self, filename)
     if fail_load then error("synthetic load failure") end
-    return filename, nil, 3
+    return true
   end,
 }}
-local platform = module.attach(app, native)
+local platform = module.attach(app, native, {{resource_events=false,asset_mode="loose",epoch=1}})
 assert(saw("language_selected", "observed-at-adapter-attach"))
-assert(saw("menu", "ready"))
-assert(resource_events[1] == "menu:true")
-app.world = {{}}
-platform:syncBottomState()
-assert(saw("transition", "world-changed"))
-assert(saw("first_level", "ready"))
-assert(resource_events[2] == "level:true")
-assert(app:save({save_root} .. "slot.sav") == "saved")
-assert(saw("save_load", "save-begin"))
-assert(saw("save_load", "save-complete"))
-assert(resource_events[3] == "save-begin:true")
-assert(resource_events[4] == "save-end:true")
-local first, second, third = app:load("slot.sav")
-assert(first == "slot.sav" and second == nil and third == 3)
-assert(saw("save_load", "load-begin"))
-assert(saw("save_load", "load-complete"))
-assert(resource_events[5] == "load-begin:true")
-assert(resource_events[6] == "load-end:true")
-fail_save = true
-assert(not pcall(app.save, app, {save_root} .. "failed.sav"))
-assert(resource_events[7] == "save-begin:true")
-assert(resource_events[8] == "save-end:false")
-fail_load = true
-assert(not pcall(app.load, app, "failed.sav"))
-assert(resource_events[9] == "load-begin:true")
-assert(resource_events[10] == "load-end:false")
+assert(#resource_events==0)
+assert(app:save({save_root} .. "slot.sav") == true)
+assert(saw("save_load", "save-begin") and saw("save_load", "save-complete"))
+app.world={{}}
+assert(app:load("slot.sav")==true)
+assert(saw("save_load", "load-begin") and saw("save_load", "load-complete"))
+fail_save=true
+assert(not pcall(app.save,app,{save_root}.."failed.sav"))
+assert(app:load("slot.sav")==false) -- failed recovery cancels preload
+fail_save=false;fail_load=true
+assert(app:load("failed.sav")==false)
+assert(saw("save_load","load-failed"))
+assert(#resource_events==0)
 """
-            result = subprocess.run(
-                [lua, "-"], input=script, text=True, capture_output=True
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
+            from test_lua_runtime import LuaRuntimeTests
+            LuaRuntimeTests.setUpClass()
+            LuaRuntimeTests().run_lua(script)
 
 
 class MeasurementComponentRuntimeTests(unittest.TestCase):

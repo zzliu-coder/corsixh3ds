@@ -593,6 +593,38 @@ function Platform:handleAction(action)
   return true
 end
 
+-- CORSIXTH_3DS_BEGIN: U3-checked-operation-spans
+function Platform:installOperationSpans()
+  if self.operation_spans_installed then return end
+  local app, native = self.app, self.native
+  -- Wrap after U1 installs checked save/load including commit and recovery.
+  for _, spec in ipairs({{"save", "save", "save"}, {"load", "load", "reload"}}) do
+    local method, stage, site = spec[1], spec[2], spec[3]
+    local original = assert(app[method], "missing checked operation " .. method)
+    app[method] = function(...)
+      local token = native.span_begin(stage)
+      native.observe_memory(site, "before", method, "Operation")
+      local function baseline(phase)
+        local gc_token=native.span_begin("gc")
+        collectgarbage("collect")
+        native.observe_memory(site,phase,method,"Operation")
+        native.span_end(gc_token,true)
+      end
+      baseline("gc-before")
+      local result = pack_values(pcall(original, ...))
+      local success = result[1] and result[2] == true
+      native.observe_memory(site, success and "committed" or "failed", method, "Operation")
+      baseline("gc-after")
+      native.span_end(token, success)
+      native.flush_observations()
+      if not result[1] then error(result[2], 0) end
+      return (table.unpack or unpack)(result, 2, result.n)
+    end
+  end
+  self.operation_spans_installed = true
+end
+-- CORSIXTH_3DS_END: U3-checked-operation-spans
+
 local module = {}
 
 function module.attach(app, native, capabilities)
@@ -602,7 +634,7 @@ function module.attach(app, native, capabilities)
     assert(existing.completed and existing.native==native and existing.capabilities.epoch==capabilities.epoch, "adapter identity/epoch mismatch")
     return existing
   end
-  for _,name in ipairs({"atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
+  for _,name in ipairs({"span_begin","span_end","observe_memory","flush_observations","atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
     assert(type(native[name])=="function", "mandatory native API missing: "..name)
   end
   if capabilities.resource_events then assert(type(native.resource_event)=="function", "resource_event missing") end
@@ -613,6 +645,7 @@ function module.attach(app, native, capabilities)
     local result=Platform.new(app,native,capabilities)
     result:showLegacyBottomPanel()
     result:resourceEvent("menu","main-menu",true)
+    result:installOperationSpans()
     result.completed=true
     return result
   end,traceback_message)

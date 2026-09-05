@@ -2,8 +2,8 @@
 """Create and validate the fail-closed CorsixTH Old 3DS boot contract.
 
 The validator only accepts a complete, hash-bound SD application directory. A
-TH3DS tree is product-candidate eligible; a loose tree is an explicitly
-diagnostic baseline and can never become product ready through this contract.
+loose tree can be a product candidate; the TH3DS container mode is experimental.
+Device and runtime acceptance require separate evidence.
 """
 
 from __future__ import annotations

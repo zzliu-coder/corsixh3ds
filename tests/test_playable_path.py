@@ -2254,12 +2254,57 @@ def original_sources(root):
         path.write_text(text,encoding='utf-8')
     return root
 
+def generated_sources(directory):
+    """Generate from the pinned sources and a private copy of this checkout."""
+    generated = original_sources(directory / 'upstream')
+    originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
+                 for path in generated.rglob('*') if path.is_file()}
+    if originals != SOURCE_HASHES or len(originals) != 20:
+        raise RuntimeError('pinned upstream source inventory/hash mismatch')
+    overlay = directory / 'overlay'
+    tracked = subprocess.check_output(
+        ['git', '-C', str(ROOT), 'ls-files', '-z']).decode().split('\0')
+    before = {}
+    for name in filter(None, tracked):
+        source = ROOT / name
+        if source.is_symlink() or not source.is_file():
+            raise RuntimeError('overlay requires regular tracked file: ' + name)
+        target = overlay / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        # The integrator owns only this disposable export, even for read-only checkouts.
+        target.chmod(target.stat().st_mode | 0o200)
+        before[name] = hashlib.sha256(source.read_bytes()).hexdigest()
+    def hashes(root):
+        return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in root.rglob('*') if path.is_file()}
+    first = None
+    for attempt in (1, 2):
+        result = subprocess.run([
+            sys.executable, '-B', str(overlay / 'tools/integrate_corsixth.py'),
+            str(generated), '--overlay-root', str(overlay)],
+            capture_output=True, text=True)
+        if result.returncode:
+            raise RuntimeError('integration %d failed: %s\n%s' %
+                               (attempt, result.stdout, result.stderr))
+        current = hashes(generated)
+        if first is not None and current != first:
+            raise RuntimeError('repeat generation changed file inventory or bytes')
+        first = current
+    if hashes(overlay) != before:
+        raise RuntimeError('integration changed exported overlay bytes')
+    if any(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest
+           for name, digest in before.items()):
+        raise RuntimeError('integration changed the tested checkout')
+    return generated
+
+
 class PlayablePathTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory()
-        cls.generated=original_sources(Path(cls.temp.name)/'upstream')
-        assert integrate([str(cls.generated),'--overlay-root',str(ROOT)])==0
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.generated=generated_sources(Path(cls.temp.name))
         from test_lua_runtime import LuaRuntimeTests
         LuaRuntimeTests.setUpClass()
         cls.lua_runner=LuaRuntimeTests()
@@ -2398,9 +2443,9 @@ files.slot='GOOD';failure='';selected=0;assert(LoadGameFile('slot')==true and se
 ''')
 
 
-"""U3 shared integration tests. Run with CTH3DS_U3_UPSTREAM pointing at the
-fresh, twice-integrated pinned v0.70.1 checkout. SDL/Lua dispatch is a controlled
-host seam; the generated mainloop/top/after_frame bodies execute unchanged.
+"""U3 tests generate the pinned upstream using a private exact overlay export.
+SDL/Lua dispatch is a controlled host seam; generated mainloop/top/after_frame
+bodies execute unchanged. No ambient generated checkout is required.
 """
 import json
 import os
@@ -2427,9 +2472,10 @@ def function_body(text, signature):
 class U3GeneratedClockTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.upstream = Path(os.environ['CTH3DS_U3_UPSTREAM'])
         cls.temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.temp.cleanup)
         directory = Path(cls.temp.name)
+        cls.upstream = generated_sources(directory)
         cls.binary = directory / 'loop'
         loop = function_body((cls.upstream/'CorsixTH/Src/sdl_core.cpp').read_text(), 'void mainloop(lua_State* L)')
         top = function_body((cls.upstream/'CorsixTH/Src/th_gfx_sdl.cpp').read_text(), 'bool render_target::end_frame()')

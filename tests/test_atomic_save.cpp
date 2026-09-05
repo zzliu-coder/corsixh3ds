@@ -76,7 +76,11 @@ TEST(atomic_save_validated_backup_wins_over_orphan_tmp) {
   const auto directory=temporary_directory("validated");const auto file=directory/"progress.sav";
   write_text(file,"corrupt");write_text(file.string()+".bak","good");write_text(file.string()+".tmp","truncated");
   const auto result=cth3ds::recover_atomic_file(file,[](const auto& candidate,std::string& error){
-    if(read_text(candidate)=="good")return true;error="corrupt";return false;
+    if (read_text(candidate) == "good") {
+      return true;
+    }
+    error = "corrupt";
+    return false;
   });
   EXPECT_TRUE(result.ok);EXPECT_EQ(read_text(file),std::string("good"));
   EXPECT_EQ(read_text(file.string()+".bak"),std::string("good"));

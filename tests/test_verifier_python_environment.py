@@ -153,23 +153,67 @@ class AuthorityContractTests(unittest.TestCase):
         tree = module.run_git(ROOT, "rev-parse", "HEAD^{tree}")
         parents = module.run_git(
             ROOT, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
-        invocation = module.VerifiedInvocation({
-            "operation": "fresh-chain",
-            "repository": {
-                "realpath": str(ROOT), "head": head, "tree": tree,
-                "parents": parents,
-            },
-            "baseline_identity": {
-                "commit": module.BASE_COMMIT, "tree": module.BASE_TREE,
-            },
-            "source_closure": {"driver": {"path": str(DRIVER)}},
-            "python": {"executable": str(self.env_dir / "bin/python")},
-        }, module._SENTINEL)
+        current_head, current_tree, current_parents = head, tree, parents
+        identity_root = ROOT
+        if parents != [module.BASE_COMMIT]:
+            # Public entries fetch full history. Resolve the exact, real E0
+            # ancestor locally; a missing input is a test error, never a skip.
+            reference = "844121cd86e5905c8a53c4574fab399d11ea0849"
+            reference_tree = "cfa70da3d4503ea9b997064fce4e75c6d65758ca"
+            try:
+                self.assertEqual(module.run_git(ROOT, "rev-parse", reference + "^{tree}"),
+                                 reference_tree)
+                module.run_git(ROOT, "merge-base", "--is-ancestor", reference, head)
+            except (RuntimeError, AssertionError) as error:
+                raise RuntimeError("E0 identity fixture requires complete candidate history "
+                                   "containing exact 844121cd/cfa70da3; use a full checkout") from error
+            identity_root = pathlib.Path(self.sandbox.name) / "e0-identity-reference"
+            subprocess.run(["git", "clone", "--no-hardlinks", "--no-checkout",
+                            str(ROOT), str(identity_root)], check=True,
+                           capture_output=True, text=True, env=self.clean_environment)
+            module.run_git(identity_root, "checkout", "--detach", reference)
+            self.assertEqual(module.run_git(identity_root, "status", "--porcelain"), "")
+            head = module.run_git(identity_root, "rev-parse", "HEAD^{commit}")
+            tree = module.run_git(identity_root, "rev-parse", "HEAD^{tree}")
+            parents = module.run_git(identity_root, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+            self.assertEqual((head, tree, parents),
+                             (reference, reference_tree, [module.BASE_COMMIT]))
+
+        def real_invocation(repo, actual_head, actual_tree, actual_parents):
+            return module.VerifiedInvocation({
+                "operation": "fresh-chain",
+                "repository": {
+                    "realpath": str(repo), "head": actual_head, "tree": actual_tree,
+                    "parents": actual_parents,
+                },
+                "baseline_identity": {
+                    "commit": module.BASE_COMMIT, "tree": module.BASE_TREE,
+                },
+                "source_closure": {"driver": {"path": str(repo / "scripts/verifier_driver.py")}},
+                "python": {"executable": str(self.env_dir / "bin/python")},
+            }, module._SENTINEL)
+
+        invocation = real_invocation(identity_root, head, tree, parents)
+        if current_parents != [module.BASE_COMMIT]:
+            with self.subTest(identity="actual-product-rejected"):
+                product = real_invocation(ROOT, current_head, current_tree, current_parents)
+                product_args = type("ProductIdentity", (), {
+                    "expected_candidate_head": current_head,
+                    "expected_candidate_tree": current_tree,
+                })()
+                with self.assertRaisesRegex(RuntimeError, "CANDIDATE_PARENT_MISMATCH"):
+                    module.require_fresh_candidate_identity(product, product_args)
         args = type("FreshIdentity", (), {
             "expected_candidate_head": head,
             "expected_candidate_tree": tree,
         })()
-        module.require_fresh_candidate_identity(invocation, args)
+        with self.subTest(identity="real-e0-positive"):
+            module.require_fresh_candidate_identity(invocation, args)
+        args.expected_candidate_head = "0" * 40
+        with self.subTest(identity="wrong-head"), self.assertRaisesRegex(
+                RuntimeError, "EXECUTING_CANDIDATE_IDENTITY_MISMATCH"):
+            module.require_fresh_candidate_identity(invocation, args)
+        args.expected_candidate_head = head
         args.expected_candidate_tree = "0" * 40
         with self.assertRaisesRegex(RuntimeError,
                                     "EXECUTING_CANDIDATE_IDENTITY_MISMATCH"):

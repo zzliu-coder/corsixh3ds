@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import ast
 import hashlib
 import importlib.util
@@ -9,6 +10,8 @@ import shutil
 import re
 import subprocess
 import tempfile
+import textwrap
+import sys
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -56,6 +59,118 @@ class BuildScriptTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertIn(runner, text, path)
             self.assertIn(manifest, text, path)
+
+    def _check_workflow_receipt_tail(self, workflow):
+        # Execute the inline production check. These synthetic receipts test
+        # its boundary; they never stand in for an executed host-suite result.
+        step = workflow.split("      - name: Run manifest-bound host Python suite\n", 1)[1]
+        step = step.split("      - name: Upload host Python receipt\n", 1)[0]
+        tail = textwrap.dedent(step.split("<<'PY'\n", 1)[1].split("          PY\n", 1)[0])
+        reference = "844121cd86e5905c8a53c4574fab399d11ea0849"
+        with tempfile.TemporaryDirectory(prefix="cth3ds-tail-contract-") as directory:
+            directory = Path(directory).resolve(strict=True)
+            script = directory / "actual-workflow-tail.py"
+            script.write_text(tail, encoding="utf-8")
+            def git(repo, *args):
+                return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
+            for label, revision in (("e0-reference", reference), ("current-candidate", "HEAD")):
+                repo = directory / label
+                subprocess.run(["git", "clone", "--no-hardlinks", "--no-checkout", str(ROOT), str(repo)],
+                               check=True, capture_output=True)
+                git(repo, "checkout", "--detach", git(ROOT, "rev-parse", revision))
+                if label == "e0-reference":
+                    self.assertEqual(git(repo, "rev-parse", "HEAD^{tree}"),
+                                     "cfa70da3d4503ea9b997064fce4e75c6d65758ca")
+                manifest_path = repo / "tests/host-python-suite.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                ids = manifest["test_ids"]
+                n = len(ids)
+                digest = hashlib.sha256(("\n".join(sorted(ids)) + "\n").encode()).hexdigest()
+                executable = Path(sys.executable).absolute()
+                implementation = executable.resolve(strict=True)
+                payload = {
+                    "test_fixture_notice": "TAIL_CONTROL_ONLY_NOT_AN_EXECUTED_SUITE",
+                    "schema": "cth3ds.host-python-suite-result/v1", "verdict": "PASS",
+                    "candidate": {"repository": str(repo), "commit": git(repo, "rev-parse", "HEAD"),
+                                  "tree": git(repo, "rev-parse", "HEAD^{tree}"),
+                                  "parents": git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:],
+                                  "tracked_worktree_clean": True},
+                    "manifest": {"path": str(manifest_path),
+                                 "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+                                 "baseline_count": manifest["baseline"]["count"],
+                                 "baseline_sorted_ids_sha256": manifest["baseline"]["sorted_ids_sha256"]},
+                    "discovery": {"count": n, "unique": n, "sorted_ids_sha256": digest},
+                    "selection": {"count": n, "unique": n, "sorted_ids_sha256": digest},
+                    "execution": {"count": n, "sorted_ids_sha256": digest,
+                                  "outcomes": [{"id": item, "outcome": "passed"} for item in ids],
+                                  "totals": {"selected": n, "accounted": n, "passed": n,
+                                             "failed": 0, "errors": 0, "skipped": 0}},
+                    "mismatches": {name: [] for name in ("missing_ids", "extra_ids", "duplicate_ids",
+                                                         "unstarted_ids", "synthetic_events", "unexpected_skips")},
+                    "interpreter": {"executable": str(executable), "implementation_realpath": str(implementation),
+                                    "implementation_sha256": hashlib.sha256(implementation.read_bytes()).hexdigest(),
+                                    "version": sys.version, "implementation": sys.implementation.name,
+                                    "cache_tag": sys.implementation.cache_tag},
+                }
+                receipt = directory / "synthetic-tail-control.json"
+                def execute(value):
+                    receipt.write_text(json.dumps(value), encoding="utf-8")
+                    return subprocess.run([sys.executable, str(script), str(receipt)], cwd=repo,
+                                          capture_output=True, text=True)
+                with self.subTest(reference=label, count=n, control="complete"):
+                    result = execute(payload)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(result.stdout.strip(),
+                                     f"{n} passed, 0 failed, 0 errors, 0 skipped; IDs {digest}")
+                controls = []
+                def change(name, section, field, value):
+                    changed = copy.deepcopy(payload)
+                    changed[section][field] = value
+                    controls.append((name, changed))
+                for field in ("commit", "tree"):
+                    change("stale-" + field, "candidate", field, "0" * 40)
+                change("incomplete-parents", "candidate", "parents", [])
+                change("extra-parent", "candidate", "parents", payload["candidate"]["parents"] * 2)
+                change("stale-repository", "candidate", "repository", str(directory))
+                change("dirty-receipt", "candidate", "tracked_worktree_clean", False)
+                for field, value in (("sha256", "0" * 64), ("path", str(receipt)),
+                                     ("baseline_count", 0), ("baseline_sorted_ids_sha256", "0" * 64)):
+                    change("stale-manifest-" + field, "manifest", field, value)
+                for phase in ("discovery", "selection", "execution"):
+                    change(phase + "-count", phase, "count", n - 1)
+                    change(phase + "-ids", phase, "sorted_ids_sha256", "0" * 64)
+                for phase in ("discovery", "selection"):
+                    change(phase + "-duplicates", phase, "unique", n - 1)
+                change("missing-outcome", "execution", "outcomes", payload["execution"]["outcomes"][:-1])
+                rows = copy.deepcopy(payload["execution"]["outcomes"])
+                rows[-1] = rows[0]
+                change("same-count-duplicate", "execution", "outcomes", rows)
+                rows = copy.deepcopy(payload["execution"]["outcomes"])
+                rows[-1]["id"] = "unknown.replacement.test"
+                change("same-count-replacement", "execution", "outcomes", rows)
+                for outcome in ("errors", "failed", "skipped"):
+                    changed = copy.deepcopy(payload)
+                    changed["execution"]["outcomes"][0]["outcome"] = outcome
+                    controls.append((outcome + "-hidden-by-totals", copy.deepcopy(changed)))
+                    changed["execution"]["totals"]["passed"] -= 1
+                    changed["execution"]["totals"][outcome] = 1
+                    controls.append((outcome + "-accounted", changed))
+                change("runner-mismatch", "mismatches", "missing_ids", [ids[0]])
+                change("wrong-interpreter", "interpreter", "implementation_sha256", "0" * 64)
+                for name, changed in controls:
+                    with self.subTest(reference=label, count=n, control=name):
+                        result = execute(changed)
+                        self.assertNotEqual(result.returncode, 0, result.stdout)
+                        self.assertIn("host Python contract mismatch:", result.stderr)
+                with self.subTest(reference=label, control="dirty-actual-checkout"):
+                    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+                    result = execute(payload)
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn("current tracked checkout is dirty", result.stderr)
+                print("WORKFLOW_TAIL_CONTROLS=" + json.dumps({
+                    "reference": label, "count": n, "ids_sha256": digest,
+                    "positive": 1, "rejected": [name for name, _ in controls] + ["dirty-actual-checkout"],
+                    "scope": "TAIL_CONTROL_ONLY_NOT_AN_EXECUTED_SUITE"}, sort_keys=True))
 
     def test_fresh_chain_has_no_python_semantic_override_or_test_filter(self) -> None:
         text = (ROOT / "scripts/verify_runtime_core_v2.py").read_text(encoding="utf-8")
@@ -230,9 +345,9 @@ class BuildScriptTests(unittest.TestCase):
             "CTH3DS_SIMULATOR:",
             "CTH3DS_RUNTIME_PROBE:",
             "CTH3DS_RUNTIME_LINK_PROOF:",
-            "149 passed, 0 failed, 0 errors, 0 skipped",
         ):
             self.assertIn(token, host_python)
+        self._check_workflow_receipt_tail(workflow)
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
         self.assertIn("/artifacts/ci/", ignored)
         self.assertIn("git status --porcelain=v1 --untracked-files=all", workflow)

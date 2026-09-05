@@ -28,11 +28,11 @@ done
 [[ "${ASSET_MODE}" == "th3ds" || "${ASSET_MODE}" == "loose" ]] || \
   die '--asset-mode must be th3ds or loose'
 [[ -n "${THEME_HOSPITAL}" ]] || \
-  die '--theme-hospital is required for both th3ds candidates and loose diagnostics'
+  die '--theme-hospital is required for loose product candidates and th3ds experiments'
 [[ "${NO_BINARY_COPY}" -eq 0 ]] || \
   die '--no-binary-copy cannot produce a boot-contract-complete package'
 [[ "${NO_DATA_PACK}" -eq 0 ]] || \
-  die '--no-data-pack is obsolete; use --asset-mode loose for a diagnostic baseline'
+  die '--no-data-pack is obsolete; use --asset-mode loose for the product asset path'
 
 require_cmd git
 if [[ -n "$(git -C "${CTH3DS_ROOT}" status --porcelain --untracked-files=normal)" ]]; then

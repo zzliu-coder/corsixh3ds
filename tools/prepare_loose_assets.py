@@ -42,7 +42,10 @@ def parse_original_sound(data):
     unique=[];mapping=[];known={}
     for i in range(first,n//32):
         e=data[t+i*32:t+(i+1)*32]
-        key=(e[:18].split(bytes(1))[0].lower(),u32(t+i*32+18),u32(t+i*32+26))
+        position,length=u32(t+i*32+18),u32(t+i*32+26)
+        if not length or position+length>len(data)-4 or (position<t+n and t<position+length) or (position<h+234 and h<position+length):
+            raise ResourceError('sound payload overlaps original metadata or file end')
+        key=(e[:18].split(bytes(1))[0].lower(),position,length)
         if key not in known:
             known[key]=len(unique);unique.append(e)
         mapping.append((i,known[key]))

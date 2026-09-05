@@ -104,7 +104,7 @@ class IntegratorTests(unittest.TestCase):
             for stage in ("S20", "S35", "S40", "S45", "S50", "S60", "S70", "S80"):
                 self.assertIn(f'th3ds_stage("{stage}"', app_text)
             self.assertIn('th3ds_stage("S120", "LEVEL VALIDATING")', app_text)
-            self.assertIn('TH3DS.probe_regular_heap("LEVEL READY", "level")', app_text)
+            self.assertIn('TH3DS.probe_regular_heap("LEVEL READY", "LevelStable")', app_text)
             self.assertIn("no-fullscreen-zoom-buffer", gfx_text)
             sdl_text = (upstream / "CorsixTH/Src/sdl_core.cpp").read_text()
             self.assertIn(SDL_FRAME_STACK_MARKER, sdl_text)

@@ -520,9 +520,13 @@ jobs:
         id: fresh
         continue-on-error: true
         timeout-minutes: 150
+        shell: bash
         run: |
           bundle_root="$(cat "$RUNNER_TEMP/cth3ds-input/bundle-root.txt")"
-          ./scripts/run_verifier_python.sh \
+          . scripts/ci_diagnostics.sh
+          cth3ds_run_fresh_command \
+            "$PWD/artifacts/verification/fresh-chain-final-seal/fresh-command-outcome.json" \
+            8940 ./scripts/run_verifier_python.sh \
             --input-bundle "$bundle_root" \
             --runtime-version 3.9.25 \
             --env-dir "$RUNNER_TEMP/cth3ds-fresh-env39" \

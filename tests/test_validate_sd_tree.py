@@ -74,7 +74,7 @@ class ValidateSdTreeTests(unittest.TestCase):
             result = validate_sd_tree(package, require_mode="th3ds")
             self.assertEqual(result["result"], "PASS")
             self.assertEqual(result["asset_mode"], "th3ds")
-            self.assertTrue(result["product_ready_eligible"])
+            self.assertFalse(result["product_ready_eligible"])
             self.assertEqual(result["candidate"]["commit"], CANDIDATE_COMMIT)
 
     def test_empty_directory_fails(self) -> None:
@@ -161,13 +161,11 @@ class ValidateSdTreeTests(unittest.TestCase):
     def test_loose_mode_is_explicitly_diagnostic_only(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             package = self.make_runtime(Path(temporary))
-            for name in ("DATA", "LEVELS", "QDATA", "SOUND"):
-                directory = package / "game" / name
-                directory.mkdir(parents=True)
-                (directory / "synthetic.bin").write_bytes(name.encode())
+            from test_playable_assets import add_loose_fixture
+            add_loose_fixture(package,Path(temporary)/"loose-fixture")
             result = self.seal(package, "loose")
             self.assertEqual(result["asset_mode"], "loose")
-            self.assertFalse(result["product_ready_eligible"])
+            self.assertTrue(result["product_ready_eligible"])
             with self.assertRaisesRegex(ValidationError, "required mode"):
                 validate_sd_tree(package, require_mode="th3ds")
 

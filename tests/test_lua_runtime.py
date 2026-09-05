@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import ctypes.util
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from pathlib import Path
 class LuaRuntimeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        library_name = ctypes.util.find_library("lua5.4") or "/lib/x86_64-linux-gnu/liblua5.4.so.0"
+        library_name = os.environ.get("CTH3DS_LUA_LIBRARY") or ctypes.util.find_library("lua5.4") or "/lib/x86_64-linux-gnu/liblua5.4.so.0"
         try:
             cls.lua = ctypes.CDLL(library_name)
         except OSError as exc:  # pragma: no cover - portable CI fallback
@@ -79,6 +80,7 @@ local calls = {{build = 0, town = 0}}
 
 local native = {{
   is_platform = function() return true end,
+  checkpoint = function() end,
   begin_critical_io = function() begin_count = begin_count + 1 end,
   end_critical_io = function() end_count = end_count + 1 end,
   atomic_commit = function(temporary, final)
@@ -114,19 +116,20 @@ local app = {{
     local handle = assert(io.open(filename, "wb"))
     handle:write("SAVE")
     handle:close()
-    return "saved"
+    return true
   end,
-  quickLoad = function() return true end,
+  load = function() return true end,
 }}
 
 local module = assert(loadfile(adapter_path))()
-local platform = module.attach(app, native)
+local platform = module.attach(app, native, {{asset_mode="loose",resource_events=false,epoch=1}})
+platform:syncBottomState()
 assert(app._3ds == platform)
 assert(bottom.visible == true, "the game's own toolbar must stay visible")
 assert(#states >= 1 and states[#states].cash == 12345)
 
 local target = temp_root .. "slot.sav"
-assert(app:save(target) == "saved")
+assert(app:save(target) == true)
 local handle = assert(io.open(target, "rb"))
 assert(handle:read("*a") == "SAVE")
 handle:close()
@@ -166,17 +169,19 @@ local failing_native = {{
   set_notice = native.set_notice,
   set_state = native.set_state,
   request_redraw = native.request_redraw,
+  checkpoint = native.checkpoint,
 }}
 local failing_app = {{
   savegame_dir = temp_root,
   ui = {{windows = {{}}, bottom_panel = {{visible = true, message_queue = {{}}, message_windows = {{}}}}}},
   dispatch = function() end,
   save = function() error("intentional failure") end,
+  load = function() return true end,
 }}
-local failing_platform = module.attach(failing_app, failing_native)
+local failing_platform = module.attach(failing_app, failing_native, {{asset_mode="loose",resource_events=false,epoch=1}})
 local ok = pcall(failing_app.save, failing_app, temp_root .. "bad.sav")
 assert(ok == false)
-assert(notices[#notices].message == "SAVE FAILED" and notices[#notices].is_error == true)
+assert(notices[#notices].message:match("SAVE FAILED") and notices[#notices].is_error == true)
 assert(begin_count == 2 and end_count == 2)
 assert(failing_platform ~= nil)
 '''

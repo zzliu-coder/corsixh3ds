@@ -23,9 +23,9 @@ LifecycleDecision LifecycleController::signal(LifecycleSignal signal_value,
       decision.pause_simulation = true;
       decision.pause_audio = true;
       if (in_critical_io()) {
-        deferred_suspend_save_ = true;
+        deferred_suspend_save_ = autosave_enabled_;
       } else {
-        decision.request_autosave = true;
+        decision.request_autosave = autosave_enabled_;
       }
       state_ = LifecycleState::Suspended;
       break;
@@ -51,10 +51,10 @@ LifecycleDecision LifecycleController::signal(LifecycleSignal signal_value,
         // Finish the current filesystem transaction before issuing a final
         // autosave and SDL_QUIT. Exiting halfway through a rename sequence is
         // exactly the failure atomic saves are intended to prevent.
-        deferred_suspend_save_ = true;
+        deferred_suspend_save_ = autosave_enabled_;
         deferred_exit_ = true;
       } else {
-        decision.request_autosave = true;
+        decision.request_autosave = autosave_enabled_;
         decision.request_exit = true;
       }
       break;
@@ -72,11 +72,11 @@ void LifecycleController::reset(std::uint64_t now_us) noexcept {
 
 LifecycleDecision LifecycleController::tick(std::uint64_t now_us) noexcept {
   LifecycleDecision decision;
-  if (state_ == LifecycleState::Running && now_us >= next_autosave_us_) {
+  if (autosave_enabled_ && state_ == LifecycleState::Running && now_us >= next_autosave_us_) {
     if (in_critical_io()) {
-      deferred_suspend_save_ = true;
+      deferred_suspend_save_ = autosave_enabled_;
     } else {
-      decision.request_autosave = true;
+      decision.request_autosave = autosave_enabled_;
     }
     do {
       next_autosave_us_ += periodic_autosave_us_;
@@ -84,7 +84,7 @@ LifecycleDecision LifecycleController::tick(std::uint64_t now_us) noexcept {
   }
   if (!in_critical_io() && deferred_suspend_save_) {
     deferred_suspend_save_ = false;
-    decision.request_autosave = true;
+    decision.request_autosave = autosave_enabled_;
   }
   if (!in_critical_io() && deferred_exit_) {
     deferred_exit_ = false;

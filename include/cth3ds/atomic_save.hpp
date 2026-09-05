@@ -11,6 +11,8 @@ struct AtomicSaveResult {
   std::string error{};
 };
 
+using AtomicValidator = std::function<bool(const std::filesystem::path&, std::string&)>;
+
 using AtomicWriter = std::function<bool(const std::filesystem::path&, std::string&)>;
 
 [[nodiscard]] AtomicSaveResult atomic_write_file(
@@ -24,6 +26,7 @@ using AtomicWriter = std::function<bool(const std::filesystem::path&, std::strin
     bool keep_backup = true);
 
 [[nodiscard]] AtomicSaveResult recover_atomic_file(
-    const std::filesystem::path& final_path);
+    const std::filesystem::path& final_path,
+    const AtomicValidator& validate = {});
 
 }  // namespace cth3ds

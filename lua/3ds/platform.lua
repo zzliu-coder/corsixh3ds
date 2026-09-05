@@ -61,7 +61,7 @@ local function native_checkpoint(native, name, phase, identity, bytes, requested
 end
 
 local function native_resource_event(native, event, identity, success)
-  if not native or type(native.resource_event) ~= "function" then return end
+  assert(native and type(native.resource_event) == "function", "mandatory resource_event missing")
   local called, accepted, detail = pcall(native.resource_event, event,
                                           identity or "-", success ~= false)
   if not called then error(accepted, 0) end
@@ -112,10 +112,11 @@ local function entity_status(entity)
   end, ""))
 end
 
-function Platform.new(app, native)
+function Platform.new(app, native, capabilities)
   local self = setmetatable({
     app = app,
     native = native,
+    capabilities = capabilities,
     cursor_x = 320,
     cursor_y = 240,
     saved_speed = nil,
@@ -135,93 +136,110 @@ function Platform.new(app, native)
   return self
 end
 
+function Platform:resourceEvent(event, identity, success)
+  if self.capabilities.resource_events == false then return end
+  native_resource_event(self.native, event, identity, success)
+end
+
+function Platform:showError(message)
+  message = tostring(message)
+  native_notice(self.native, message, true)
+  local ui = self.app.ui
+  if ui and UIInformation then ui:addWindow(UIInformation(ui, {message})) end
+  print("CorsixTH 3DS: " .. message)
+end
+
 function Platform:installAtomicSaves()
-  if self.save_installed then return end
-  self.save_installed = true
-  local app = self.app
-  local native = self.native
-  local original_save = app.save
-
+  local app, native = self.app, self.native
+  local original_save = assert(app.save, "App.save missing")
   app.save = function(instance, filename)
-    native_checkpoint(native, "save_load", "save-begin", filename)
+    assert(type(filename) == "string" and filename ~= "", "invalid save path")
     local temporary = filename .. ".tmp"
-    os.remove(temporary)
-    local transaction_started = false
-    local ok, result = xpcall(function()
-      native_resource_event(native, "save-begin", filename, true)
-      transaction_started = true
-      if type(native.begin_critical_io) == "function" then
-        native.begin_critical_io()
-      end
-      local save_result = original_save(instance, temporary)
-      local committed, commit_error = native.atomic_commit(temporary, filename, true)
-      if not committed then
-        error("Atomic save commit failed: " .. tostring(commit_error))
-      end
-      return save_result
+    native_checkpoint(native, "save_load", "save-begin", filename)
+    local critical, transaction = false, false
+    local ok, err = xpcall(function()
+      self:resourceEvent("save-begin", filename, true); transaction = true
+      native.begin_critical_io(); critical = true
+      assert(original_save(instance, temporary) == true, "save writer did not confirm success")
+      local committed, detail = native.atomic_commit(temporary, filename, true)
+      assert(committed == true, "save commit: " .. tostring(detail))
     end, traceback_message)
-
-    if type(native.end_critical_io) == "function" then
-      native.end_critical_io()
-    end
+    if critical then native.end_critical_io() end
+    if transaction then self:resourceEvent("save-end", filename, ok) end
     if not ok then
-      os.remove(temporary)
-      if transaction_started then
-        native_resource_event(native, "save-end", filename, false)
-      end
-      native_notice(native, "SAVE FAILED", true)
+      self:showError("SAVE FAILED: " .. tostring(err))
       native_checkpoint(native, "save_load", "save-failed", filename)
-      error(result, 0)
+      error(err, 0)
     end
-    native_resource_event(native, "save-end", filename, true)
     native_notice(native, "SAVE OK", false)
     native_checkpoint(native, "save_load", "save-complete", filename)
-    return result
+    return true
   end
-
   app.quickSave = function(instance)
-    if not instance.world then return false end
+    if not instance.world then return false, "no world" end
     return instance:save(instance.savegame_dir .. "quicksave.qs")
-  end
-
-  if app.savegame_dir then
-    -- A missing quicksave is normal on first launch; recovery errors are ignored.
-    native.recover_atomic(app.savegame_dir .. "quicksave.qs")
   end
 end
 
 function Platform:installLoadTelemetry()
-  if self.load_installed then return end
-  self.load_installed = true
-  local app = self.app
-  local native = self.native
-  local method_name = type(app.load) == "function" and "load" or "quickLoad"
-  local original_load = app[method_name]
-  if type(original_load) ~= "function" then return end
-
-  app[method_name] = function(instance, identity, ...)
-    local resource = method_name == "load" and identity or "quicksave"
-    local arguments = pack_values(...)
-    local results
-    native_checkpoint(native, "save_load", "load-begin", resource)
-    local transaction_started = false
-    local ok, result = xpcall(function()
-      native_resource_event(native, "load-begin", resource, true)
-      transaction_started = true
-      results = pack_values(original_load(instance, identity,
-                                          unpack_values(arguments)))
-    end, traceback_message)
-    if not ok then
-      if transaction_started then
-        native_resource_event(native, "load-end", resource, false)
-      end
-      native_checkpoint(native, "save_load", "load-failed", resource)
-      error(result, 0)
+  local app, native = self.app, self.native
+  local original_load = assert(app.load, "App.load missing")
+  app.load = function(instance, filename)
+    local recovery = instance.savegame_dir .. "recovery-before-load.sav"
+    if instance.world then
+      local saved, result = pcall(instance.save, instance, recovery)
+      if not saved or result ~= true then return false, "preload recovery save failed: " .. tostring(result) end
     end
-    native_resource_event(native, "load-end", resource, true)
-    native_checkpoint(native, "save_load", "load-complete", resource)
-    return unpack_values(results)
+    native_checkpoint(native, "save_load", "load-begin", filename)
+    local transaction = false
+    local ok, accepted, detail = xpcall(function()
+      self:resourceEvent("load-begin", filename, true); transaction = true
+      return original_load(instance, filename)
+    end, traceback_message)
+    local success = ok and accepted == true
+    if transaction then self:resourceEvent("load-end", filename, success) end
+    if not success then
+      local message = tostring(ok and (detail or "load rejected") or accepted)
+      self:showError("LOAD FAILED: " .. message)
+      native_checkpoint(native, "save_load", "load-failed", filename)
+      return false, message
+    end
+    native_checkpoint(native, "save_load", "load-complete", filename)
+    native_notice(native, "LOAD COMPLETE", false)
+    return true
   end
+  app.quickLoad = function(instance)
+    return instance:load(instance.savegame_dir .. "quicksave.qs")
+  end
+end
+
+function Platform:saveAndExit()
+  if self.app.world then
+    local ok, result = pcall(self.app.save, self.app, self.app.savegame_dir .. "save-and-exit.sav")
+    if not ok or result ~= true then return false, result end
+  end
+  self.app:exit()
+  return true
+end
+
+-- Shared bridge contract for the subsequent InputMapper integration.
+function Platform:inputState()
+  local ui = assert(self.app.ui, "UI unavailable")
+  return {cursor_x=clamp(tonumber(ui.cursor_x) or 320,0,639),
+          cursor_y=clamp(tonumber(ui.cursor_y) or 240,0,479),input_context=self:inputContext()}
+end
+
+function Platform:handlePointer(action)
+  local ui = self.app.ui
+  if not ui then return false, "UI unavailable" end
+  local x,y=clamp(action.x,0,639),clamp(action.y,0,479)
+  local old=self:inputState()
+  if ui.setMouseReleased then ui:setMouseReleased(false) end
+  self.app:dispatch("motion",x,y,x-old.cursor_x,y-old.cursor_y)
+  if action.kind == "down" then self.app:dispatch("buttondown",action.button or 1,x,y)
+  elseif action.kind == "up" then self.app:dispatch("buttonup",action.button or 1,x,y)
+  elseif action.kind ~= "motion" then return false,"unknown pointer kind" end
+  return true
 end
 
 --! CorsixTH's own toolbar stays visible.
@@ -282,11 +300,11 @@ function Platform:syncBottomState()
     self.last_world = world
     if world then
       self.first_level_checkpointed = true
-      native_resource_event(self.native, "level", world_identity(world), true)
+      self:resourceEvent( "level", world_identity(world), true)
       native_checkpoint(self.native, "first_level", "ready", "initial-world")
     else
       self.menu_checkpointed = true
-      native_resource_event(self.native, "menu", "main-menu", true)
+      self:resourceEvent( "menu", "main-menu", true)
       native_checkpoint(self.native, "menu", "ready", "main-menu")
     end
   elseif world ~= self.last_world then
@@ -295,14 +313,14 @@ function Platform:syncBottomState()
     self.last_world = world
     if world and not self.first_level_checkpointed then
       self.first_level_checkpointed = true
-      native_resource_event(self.native, "level", world_identity(world), true)
+      self:resourceEvent( "level", world_identity(world), true)
       native_checkpoint(self.native, "first_level", "ready", "first-world")
     elseif not world then
       if not self.menu_checkpointed then self.menu_checkpointed = true end
-      native_resource_event(self.native, "menu", "main-menu", true)
+      self:resourceEvent( "menu", "main-menu", true)
       native_checkpoint(self.native, "menu", "ready", "main-menu")
     elseif world then
-      native_resource_event(self.native, "level", world_identity(world), true)
+      self:resourceEvent( "level", world_identity(world), true)
     end
   end
 
@@ -513,17 +531,37 @@ function Platform:handleAction(action)
   end
 
   -- The player just acted, so bypass the change filter for this one sync.
-  self.last_state = nil
-  self:syncBottomState()
   self.native.request_redraw()
 end
 
 local module = {}
 
-function module.attach(app, native)
-  local platform = Platform.new(app, native)
-  app._3ds = platform
-  platform:syncBottomState()
+function module.attach(app, native, capabilities)
+  assert(type(capabilities)=="table" and type(capabilities.resource_events)=="boolean" and capabilities.epoch, "native capabilities missing")
+  if app._3ds then
+    local existing=app._3ds
+    assert(existing.completed and existing.native==native and existing.capabilities.epoch==capabilities.epoch, "adapter identity/epoch mismatch")
+    return existing
+  end
+  for _,name in ipairs({"atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
+    assert(type(native[name])=="function", "mandatory native API missing: "..name)
+  end
+  if capabilities.resource_events then assert(type(native.resource_event)=="function", "resource_event missing") end
+  local names={"save","load","quickSave","quickLoad"}
+  local original={}
+  for _,name in ipairs(names) do original[name]=rawget(app,name) end
+  local ok, platform=xpcall(function()
+    local result=Platform.new(app,native,capabilities)
+    result:showLegacyBottomPanel()
+    result:resourceEvent("menu","main-menu",true)
+    result.completed=true
+    return result
+  end,traceback_message)
+  if not ok then
+    for _,name in ipairs(names) do rawset(app,name,original[name]) end
+    error(platform,0)
+  end
+  app._3ds=platform
   return platform
 end
 

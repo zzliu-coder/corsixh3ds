@@ -189,10 +189,13 @@ result = {
     "elf": elf,
     "elf_symbols": elf_present,
     "production_entry": roots,
+    "entry_scope": "mode-gated native initialization; RuntimeSession is th3ds experiment only",
+    "player_ready_guard": any("mainloop(" in name and any("runtime_assert_ready(" in edge for edge in edges) for name, edges in functions.items()),
     "runtime_session_call_path": edge_path,
     "whole_archive_used": whole_archive,
     "pass": all(archive_present.values()) and all(elf_present.values())
-            and bool(edge_path) and not whole_archive,
+            and bool(edge_path) and not whole_archive
+            and any("mainloop(" in name and any("runtime_assert_ready(" in edge for edge in edges) for name, edges in functions.items()),
 }
 pathlib.Path(report).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 if not result["pass"]:

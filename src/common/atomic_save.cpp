@@ -46,7 +46,8 @@ bool sync_file(const std::filesystem::path& path, std::string& error) {
   }
   const int result = ::fsync(fd);
   const int saved_errno = errno;
-  ::close(fd);
+  const int close_result=::close(fd);
+  if (close_result != 0 && result == 0) {error="sync close failed";return false;}
   if (result != 0) {
     error = "failed to flush temporary file: " +
             std::error_code(saved_errno, std::generic_category()).message();
@@ -77,7 +78,8 @@ bool sync_directory(const std::filesystem::path& directory, std::string& error) 
   }
   const int result = ::fsync(fd);
   const int saved_errno = errno;
-  ::close(fd);
+  const int close_result=::close(fd);
+  if (close_result != 0 && result == 0) {error="sync close failed";return false;}
   if (result != 0) {
     error = "failed to flush save directory: " +
             std::error_code(saved_errno, std::generic_category()).message();
@@ -111,17 +113,19 @@ AtomicSaveResult atomic_commit_existing(const std::filesystem::path& temporary_p
   }
 
   const std::filesystem::path backup = backup_path_for(final_path);
-  if (keep_backup && std::filesystem::exists(final_path, ec) && !ec) {
+  const bool final_exists=std::filesystem::exists(final_path,ec);
+  if(ec){result.error="cannot inspect final save: "+ec.message();return result;}
+  if (keep_backup && final_exists) {
     std::filesystem::remove(backup, ec);
-    ec.clear();
+    if(ec){result.error="cannot remove old backup: "+ec.message();return result;}
     std::filesystem::rename(final_path, backup, ec);
     if (ec) {
       result.error = "cannot rotate previous save: " + ec.message();
       return result;
     }
   } else if (!keep_backup) {
-    std::filesystem::remove(final_path, ec);
-    ec.clear();
+    // Rename replaces final atomically on supported platforms. Preserve final
+    // until replacement; failure leaves the previous committed file intact.
   }
 
   std::filesystem::rename(temporary_path, final_path, ec);
@@ -158,33 +162,25 @@ AtomicSaveResult atomic_write_file(const std::filesystem::path& final_path,
   return atomic_commit_existing(temporary, final_path, keep_backup);
 }
 
-AtomicSaveResult recover_atomic_file(const std::filesystem::path& final_path) {
-  AtomicSaveResult result;
+AtomicSaveResult recover_atomic_file(const std::filesystem::path& final_path,
+                                     const AtomicValidator& validate) {
+  if(!validate)return {false,"recovery requires a save-format validator"};
   std::error_code ec;
-  const auto temporary = temp_path_for(final_path);
-  const auto backup = backup_path_for(final_path);
-
-  if (std::filesystem::exists(final_path, ec) && !ec) {
-    std::filesystem::remove(temporary, ec);
-    result.ok = true;
+  std::string error;
+  for(const auto& path : {final_path,backup_path_for(final_path)}) {
+    bool exists=std::filesystem::exists(path,ec);
+    if(ec)return {false,"recovery inspect: "+ec.message()};
+    if(!exists)continue;
+    if(!validate(path,error))continue;
+    if(path==final_path)return {true,{}};
+    // Keep the verified backup intact while restoring final.
+    auto result=atomic_write_file(final_path,[&](const auto& temporary,std::string& detail){
+      std::filesystem::copy_file(path,temporary,std::filesystem::copy_options::overwrite_existing,ec);
+      if(ec){detail=ec.message();return false;}return true;
+    },false);
     return result;
   }
-  ec.clear();
-  if (std::filesystem::exists(temporary, ec) && !ec) {
-    return atomic_commit_existing(temporary, final_path, true);
-  }
-  ec.clear();
-  if (std::filesystem::exists(backup, ec) && !ec) {
-    std::filesystem::rename(backup, final_path, ec);
-    if (ec) {
-      result.error = "cannot restore backup save: " + ec.message();
-      return result;
-    }
-    result.ok = true;
-    return result;
-  }
-  result.error = "no save, temporary save, or backup save was found";
-  return result;
+  return {false,error.empty()?"no validated final or backup save found":error};
 }
 
 }  // namespace cth3ds

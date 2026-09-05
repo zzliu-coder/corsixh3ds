@@ -263,6 +263,15 @@ def _contract_required(root: Path, asset_mode: str) -> tuple[list[FileRecord], l
         forbidden = list(TH3DS_FORBIDDEN)
     elif asset_mode == "loose":
         directories.extend(f"game/{name}" for name in ("DATA", "LEVELS", "QDATA", "SOUND"))
+        for name in ("Lua/languages/english.lua", "Lua/languages/original_strings.lua",
+                     "game/DATA/LANG-0.DAT", "game/SOUND/DATA/SOUND-0.DAT", "loose-assets.json"):
+            required_files.append(_record(root,name,nonempty=True))
+        assets = json.loads((root/"loose-assets.json").read_text(encoding="utf-8"))
+        if assets.get("language") != "English" or assets.get("device") != "NOT_PROVEN":
+            raise ValidationError("loose assets require English and explicit device NOT_PROVEN")
+        actual_languages={path.name for path in (root/"Lua/languages").glob("*.lua")}
+        if actual_languages != {"english.lua","original_strings.lua"}:
+            raise ValidationError("loose language closure must contain only English and original strings")
         forbidden = list(LOOSE_FORBIDDEN)
     else:
         raise ValidationError(f"unsupported asset mode: {asset_mode!r}")
@@ -285,7 +294,7 @@ def write_boot_contract(
         "candidate": candidate,
         "entrypoint": _record(root, ENTRYPOINT, nonempty=True).as_dict(),
         "format": 1,
-        "product_ready_eligible": asset_mode == "th3ds",
+        "product_ready_eligible": asset_mode == "loose",
         "required_directories": sorted(directories),
         "required_files": [record.as_dict() for record in required_files],
         "root": ROOT_URI,
@@ -353,7 +362,7 @@ def validate_sd_tree(root: Path, *, require_mode: str | None = None) -> dict[str
         raise ValidationError("asset mode is missing, invalid, or inconsistent")
     if require_mode is not None and mode != require_mode:
         raise ValidationError(f"asset mode {mode!r} does not satisfy required mode {require_mode!r}")
-    expected_product_eligible = mode == "th3ds"
+    expected_product_eligible = mode == "loose"
     if contract.get("product_ready_eligible") is not expected_product_eligible:
         raise ValidationError("product-ready eligibility does not match asset mode")
     candidate = _validate_candidate(contract.get("candidate"))

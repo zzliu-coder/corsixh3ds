@@ -96,7 +96,6 @@ std::uint32_t resource_group_id(std::string_view identity) noexcept {
 constexpr const char* kPanelModeMarker = "sdmc:/3ds/corsixth/bottom-screen-panel.txt";
 
 // How long the build stamp stays on top of the mirrored game view after boot.
-constexpr std::uint64_t kOverlayHoldUs = 6000000U;
 
 enum class BottomScreenMode { Game, Panel };
 
@@ -652,117 +651,17 @@ bool call_platform_method(lua_State* state, const char* method,
   return true;
 }
 
-// Attach the 3DS adapter from C++ when app.lua did not do it.
-//
-// app.lua only attaches when its own CORSIXTH_3DS patch is present on the SD
-// card, so a binary deployed next to an unpatched or stale Lua tree comes up
-// with no adapter and no explanation. Attaching here, with the compiled-in
-// adapter as the last resort, means the two halves of a deploy can no longer
-// silently disagree.
-enum class AdapterSource { kSdCard, kEmbedded };
-
-struct AttachRequest {
-  AdapterSource source{AdapterSource::kSdCard};
-};
-
-int l_protected_attach(lua_State* state) {
-  auto* request = static_cast<AttachRequest*>(lua_touserdata(state, 1));
-  lua_settop(state, 0);
-
-  lua_getglobal(state, "TheApp");
-  if (!lua_istable(state, -1)) {
-    return luaL_error(state, "TheApp is not ready");
-  }
-  const int app_index = lua_gettop(state);
-
-  if (request->source == AdapterSource::kEmbedded) {
-    const std::size_t length = std::strlen(kEmbeddedPlatformLua);
-    if (luaL_loadbuffer(state, kEmbeddedPlatformLua, length,
-                        "@builtin/3ds/platform.lua") != LUA_OK) {
-      return lua_error(state);
-    }
-    lua_call(state, 0, 1);
-  } else {
-    lua_getglobal(state, "require");
-    if (!lua_isfunction(state, -1)) {
-      return luaL_error(state, "require is unavailable");
-    }
-    lua_pushstring(state, kAdapterModule);
-    lua_call(state, 1, 1);
-  }
-
-  if (!lua_istable(state, -1)) {
-    return luaL_error(state, "adapter module did not return a table");
-  }
-  lua_getfield(state, -1, "attach");
-  if (!lua_isfunction(state, -1)) {
-    return luaL_error(state, "adapter module has no attach()");
-  }
-  lua_pushvalue(state, app_index);
-  // A freshly built native table. Every entry is a stateless C function bound
-  // to the runtime singleton, so this behaves identically to the table app.lua
-  // would have obtained from require("th3ds").
-  luaopen_th3ds(state);
-  lua_call(state, 2, 1);
-  if (!lua_istable(state, -1)) {
-    return luaL_error(state, "attach() did not return an adapter");
-  }
-  lua_setfield(state, app_index, "_3ds");
-  lua_pushboolean(state, 1);
-  lua_setfield(state, app_index, "is_3ds");
-  return 0;
-}
-
-bool try_attach(lua_State* state, AdapterSource source, std::string* error) {
-  const int base = lua_gettop(state);
-  AttachRequest request{source};
-  lua_pushcfunction(state, l_protected_attach);
-  lua_pushlightuserdata(state, &request);
-  const bool ok = lua_pcall(state, 1, 0, 0) == LUA_OK;
-  if (!ok && error != nullptr) {
-    const char* message = lua_tostring(state, -1);
-    *error = message != nullptr ? message : "unknown error";
-  }
-  lua_settop(state, base);
-  return ok;
-}
-
-// Returns a short tag describing where the live adapter came from, which is
-// printed on the lower screen: LUA (app.lua attached it), SD (loaded from the
-// SD card by us), EMB (compiled-in fallback) or FAIL.
-std::string ensure_adapter(lua_State* state) {
+// Select code before App mutation. Attachment has one Lua owner after menu.
+int ensure_adapter(lua_State* state) {
   boot_log_checkpoint("adapter_attach", "begin");
-  std::string probe_error;
-  if (call_platform_method(state, "syncBottomState", nullptr, &probe_error)) {
-    g_adapter_origin = "LUA";
-    boot_log("adapter: already attached by app.lua");
-    boot_log_checkpoint("adapter_attach", "ready", "lua");
-    return g_adapter_origin;
+  lua_getglobal(state,"require");lua_pushstring(state,kAdapterModule);
+  if(lua_pcall(state,1,1,0)!=LUA_OK) {
+    lua_pop(state,1);
+    if(luaL_loadbuffer(state,kEmbeddedPlatformLua,std::strlen(kEmbeddedPlatformLua),"@builtin/3ds/platform.lua")!=LUA_OK)return lua_error(state);
+    lua_call(state,0,1);
   }
-  boot_log("adapter: not attached by app.lua (%s); self-attaching",
-           probe_error.c_str());
-
-  std::string sd_error;
-  if (try_attach(state, AdapterSource::kSdCard, &sd_error)) {
-    g_adapter_origin = "SD";
-    boot_log("adapter: attached from SD card module %s", kAdapterModule);
-    boot_log_checkpoint("adapter_attach", "ready", "sd-card");
-    return g_adapter_origin;
-  }
-  boot_log("adapter: SD card module failed: %s", sd_error.c_str());
-
-  std::string embedded_error;
-  if (try_attach(state, AdapterSource::kEmbedded, &embedded_error)) {
-    g_adapter_origin = "EMB";
-    boot_log("adapter: attached from compiled-in fallback (crc %08lx)",
-             static_cast<unsigned long>(g_adapter_crc));
-    boot_log_checkpoint("adapter_attach", "ready", "embedded");
-    return g_adapter_origin;
-  }
-  boot_log("adapter: embedded fallback failed: %s", embedded_error.c_str());
-  g_adapter_origin = "FAIL";
-  boot_log_checkpoint("adapter_attach", "failed", "all-sources");
-  return g_adapter_origin;
+  if(!lua_istable(state,-1))return luaL_error(state,"adapter module must return a table");
+  return 1;
 }
 
 class Runtime {
@@ -772,11 +671,13 @@ class Runtime {
         scheduler_(18000U, 33333U, 33333U, 3), lifecycle_(60000000U),
         telemetry_(240U) {}
 
-  bool initialize(lua_State* state) {
-    if (initialized_) {
-      return true;
-    }
+  bool initialize(lua_State* state, const char* mode) {
+    if (!mode || (std::strcmp(mode,"loose") && std::strcmp(mode,"th3ds"))) return false;
+    if (initialized_) return state == lua_state_ && asset_mode_ == mode;
+    if (lua_state_ && lua_state_ != state) return false;
     lua_state_ = state;
+    asset_mode_ = mode;
+    ++epoch_;
     stage("S90", "STARTING RUNTIME");
     if (!ensure_bottom_window()) {
       return false;
@@ -785,7 +686,7 @@ class Runtime {
     if (resource_start_failed_) {
       return false;
     }
-    if (resource_session_ == nullptr) {
+    if (asset_mode_ == "th3ds" && resource_session_ == nullptr) {
       RuntimeSessionConfig resource_config;
       resource_config.telemetry = make_runtime_resource_telemetry_sink();
       resource_config.budget_gate = make_runtime_resource_budget_gate();
@@ -827,6 +728,7 @@ class Runtime {
     aptSetSleepAllowed(true);
 
     const std::uint64_t current = now_us();
+    lifecycle_.set_autosave_enabled(asset_mode_ == "th3ds");
     lifecycle_.reset(current);
     last_tick_us_ = current;
     state_refresh_gate_.reset(current, true);
@@ -855,36 +757,21 @@ class Runtime {
                viewport.w, viewport.h, viewport.x, exact ? "yes" : "no", factor);
     }
 
-    const std::string origin = ensure_adapter(state);
-    {
-      BottomUiState tagged = bottom_ui_.state();
-      tagged.build_tag = std::string(kOverlayVersion) + " " + origin;
-      bottom_ui_.set_state(std::move(tagged));
-      dirty_ = true;
-    }
-    if (origin == "FAIL") {
-      set_notice("ADAPTER FAILED - SEE BOOT.LOG", true);
-    } else {
-      // Any earlier complaint is stale once the adapter answers.
-      set_notice(std::string(), false);
-    }
-    boot_log("runtime: boot complete, adapter=%s", origin.c_str());
-    if (!probe_regular_heap("MAIN MENU")) {
-      set_notice("E-HEAP-PROBE: MAIN MENU", true);
-    }
-    stage("S100", "READY");
-    overlay_until_us_ = current + kOverlayHoldUs;
-    if (bottom_mode_ == BottomScreenMode::Game) {
-      // The game has not drawn a frame yet; show the stamp on its own until it
-      // does, so a boot that never reaches the first frame still says why.
-      render_boot_page(false);
-    } else {
-      render_bottom();
-    }
+    boot_log("runtime: dependencies initialized mode=%s epoch=%llu",asset_mode_.c_str(),static_cast<unsigned long long>(epoch_));
     return true;
   }
 
+  bool mark_ready(lua_State* state) {
+    if (!initialized_ || state!=lua_state_) return false;
+    if (ready_) return true;
+    if (!probe_regular_heap("MAIN MENU",MemoryGate::MenuStable)) return false;
+    ready_=true;boot_log_checkpoint("adapter_attach", "ready", "lua-owner");stage("S100", "READY");return true;
+  }
+  bool assert_ready(lua_State* state) const {return initialized_&&ready_&&state==lua_state_;}
+  std::uint64_t epoch() const {return epoch_;}
+
   void shutdown() noexcept {
+    if (!initialized_ && !lua_state_ && !bottom_window_) return;
     boot_log("runtime: shutdown requested");
     // Silence the mixer before Lua tears down its channels; a still-running
     // NDSP callback against freed chunks is a classic 3DS exit hang.
@@ -917,8 +804,13 @@ class Runtime {
       bottom_window_id_ = 0U;
     }
     input_mapper_.reset();
-    initialized_ = false;
+    initialized_ = false; ready_ = false;
     lua_state_ = nullptr;
+    game_window_=nullptr;game_window_id_=0;last_game_pointer_={320,240};
+    resource_start_failed_=false;resource_session_.reset();
+    pending_lifecycle_.store(0);exit_requested_.store(false);
+    lifecycle_.reset(0);last_tick_us_=0;scheduler_.reset(0);
+    g_adapter_origin.clear();asset_mode_.clear();
     boot_log("runtime: shutdown complete");
     boot_log_close();
   }
@@ -929,9 +821,7 @@ class Runtime {
       // some of it (Lua, SD-card writes) can block for a long time.
       return;
     }
-    if (!initialized_ && !initialize(state)) {
-      return;
-    }
+    if (!assert_ready(state)) return;
     const std::uint64_t frame_started = now_us();
     const float delta_seconds = last_tick_us_ == 0U
                                     ? 0.0F
@@ -1152,6 +1042,9 @@ class Runtime {
   ResourceResult<void> resource_event(std::string_view event,
                                       std::string_view identity,
                                       bool success) {
+    if (asset_mode_ == "loose") {
+      return ResourceResult<void>::failure({ResourceErrorCode::Internal,"resource_event is invalid in loose mode",{}});
+    }
     if (resource_session_ == nullptr) {
       return ResourceResult<void>::failure(
           {ResourceErrorCode::Internal,
@@ -1444,8 +1337,9 @@ class Runtime {
                                 const LifecycleDecision& decision,
                                 bool is_resume) {
     if (decision.pause_audio) {
-      Mix_Pause(-1);
-      Mix_PauseMusic();
+      for(int c=0;c<32;++c) { audio_paused_before_[c]=Mix_Paused(c)!=0; if(!audio_paused_before_[c])Mix_Pause(c); }
+      music_paused_before_=Mix_PausedMusic()!=0;Mix_PauseMusic();
+      input_mapper_.reset();
     }
     if (decision.pause_simulation && resource_session_ != nullptr) {
       const auto suspended = resource_session_->suspend();
@@ -1468,10 +1362,11 @@ class Runtime {
       }
     }
     if (decision.resume_audio) {
-      Mix_Resume(-1);
-      Mix_ResumeMusic();
+      for(int c=0;c<32;++c)if(!audio_paused_before_[c])Mix_Resume(c);
+      if(!music_paused_before_)Mix_ResumeMusic();
+      input_mapper_.reset();scheduler_.reset(now_us());last_tick_us_=now_us();
     }
-    if (decision.request_autosave) {
+    if (decision.request_autosave && asset_mode_ == "th3ds") {
       Action save;
       save.type = ActionType::QuickSave;
       save.text = "lifecycle";
@@ -1827,6 +1722,11 @@ class Runtime {
   IntervalGate battery_refresh_gate_{kBatteryRefreshUs};
   IntervalGate telemetry_log_gate_{kTelemetryLogUs};
   bool initialized_{false};
+  bool ready_{false};
+  std::string asset_mode_;
+  std::uint64_t epoch_{0};
+  bool audio_paused_before_[32]{};
+  bool music_paused_before_{false};
   bool apt_hooked_{false};
   bool ptmu_ready_{false};
   bool resource_start_failed_{false};
@@ -1858,6 +1758,27 @@ BuildTool parse_build_tool(std::string_view value, BuildTool fallback) noexcept 
   return fallback;
 }
 
+int l_initialize(lua_State* state) {
+  const char* mode=luaL_checkstring(state,1);
+  if(!runtime_initialize(state,mode)) {
+    lua_pushboolean(state,0);lua_pushstring(state,"native initialize rejected mode/state/dependencies");return 2;
+  }
+  lua_pushboolean(state,1);lua_newtable(state);
+  lua_pushstring(state,mode);lua_setfield(state,-2,"asset_mode");
+  lua_pushboolean(state,std::strcmp(mode,"th3ds")==0);lua_setfield(state,-2,"resource_events");
+  lua_pushinteger(state,static_cast<lua_Integer>(runtime().epoch()));lua_setfield(state,-2,"epoch");return 2;
+}
+int l_mark_ready(lua_State* state) {
+  lua_getglobal(state,"TheApp");
+  if(!lua_istable(state,-1))return luaL_error(state,"mark_ready requires TheApp");
+  lua_getfield(state,-1,"_3ds");
+  if(!lua_istable(state,-1))return luaL_error(state,"mark_ready requires completed adapter");
+  lua_getfield(state,-1,"completed");bool attached=lua_toboolean(state,-1)!=0;lua_pop(state,3);
+  if(!attached || !runtime().mark_ready(state))return luaL_error(state,"mark_ready rejected incomplete attachment or memory gate");
+  lua_pushboolean(state,1);return 1;
+}
+int l_shutdown(lua_State*) {runtime().shutdown();return 0;}
+
 int l_is_platform(lua_State* state) {
   lua_pushboolean(state, 1);
   return 1;
@@ -1878,7 +1799,9 @@ int l_stage(lua_State* state) {
 int l_probe(lua_State* state) {
   update_lua_memory(state);
   const char* label = luaL_optstring(state, 1, "LUA");
-  const bool ok = runtime().probe_regular_heap(label);
+  const char* name=luaL_optstring(state,2,"menu");
+  const MemoryGate gate=std::strcmp(name,"level")==0?MemoryGate::LevelStable:std::strcmp(name,"operation")==0?MemoryGate::Operation:MemoryGate::MenuStable;
+  const bool ok = runtime().probe_regular_heap(label,gate);
   lua_pushboolean(state, ok ? 1 : 0);
   return 1;
 }
@@ -2113,6 +2036,10 @@ void set_function(lua_State* state, const char* name, lua_CFunction function) {
 int luaopen_th3ds(lua_State* state) {
   lua_newtable(state);
   set_function(state, "is_platform", l_is_platform);
+  set_function(state, "initialize", l_initialize);
+  set_function(state, "mark_ready", l_mark_ready);
+  set_function(state, "adapter_module", ensure_adapter);
+  set_function(state, "shutdown", l_shutdown);
   set_function(state, "version", l_version);
   set_function(state, "stage", l_stage);
   set_function(state, "memory", l_memory);
@@ -2216,7 +2143,16 @@ void runtime_set_game_window(SDL_Window* window) noexcept {
 
 void runtime_after_frame() noexcept { runtime().after_frame(); }
 
-bool runtime_initialize(lua_State* state) { return runtime().initialize(state); }
+[[gnu::noinline]] bool runtime_initialize(lua_State* state, const char* mode) { return runtime().initialize(state,mode); }
+[[gnu::noinline]] bool runtime_assert_ready(lua_State* state) {return runtime().assert_ready(state);}
+bool runtime_audio_reserve(std::size_t bytes,const char* identity) noexcept {
+  const auto h=heap_snapshot();const auto policy=memory_gate_policy(MemoryGate::Operation);
+  if(!evaluate_memory_gate(h.heap_total,h.heap_available_estimate,h.linear_total,policy).pass() || bytes>h.heap_available_estimate || policy.probe_reserve_bytes>h.heap_available_estimate-bytes) {
+    report_allocation_failure("sound",identity,bytes,"regular","operation reserve gate");return false;
+  }
+  void* probe=std::malloc(bytes);if(!probe){report_allocation_failure("sound",identity,bytes,"regular","contiguous preflight");return false;}
+  std::free(probe);return true;
+}
 void runtime_tick(lua_State* state) { runtime().tick(state); }
 void runtime_shutdown(lua_State*) noexcept { runtime().shutdown(); }
 bool runtime_consume_sdl_event(const SDL_Event& event) noexcept {

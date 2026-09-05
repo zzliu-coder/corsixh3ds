@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
 
 THEME_HOSPITAL=""
-ASSET_MODE="th3ds"
+ASSET_MODE="loose"
 LANGUAGE="English"
 NO_BINARY_COPY=0
 NO_DATA_PACK=0
@@ -83,6 +83,9 @@ fi
 cat > "${WORK_DEST}/config.txt" <<CFG
 theme_hospital_install = "sdmc:/3ds/corsixth/game"
 asset_mode = "${ASSET_MODE}"
+language = "${LANGUAGE}"
+use_new_graphics = false
+autosave_frequency = 1
 player_name = "PLAYER"
 width = 640
 height = 480
@@ -104,15 +107,19 @@ CFG
 printf '%s\n' "$(cat "${CTH3DS_ROOT}/VERSION")" > "${WORK_DEST}/cth3ds-overlay-version.txt"
 
 if [[ "${ASSET_MODE}" == "th3ds" ]]; then
-  [[ -d "${SOURCE_DATA}/Languages" ]] || \
+  [[ -d "${SOURCE_DATA}/Lua/languages" ]] || \
     die 'integrated CorsixTH Languages directory is required for TH3DS conversion'
   python3 "${CTH3DS_ROOT}/tools/th3ds_pack.py" convert \
     "${THEME_HOSPITAL}" "${WORK_DEST}/resources" \
-    --language-dir "${SOURCE_DATA}/Languages" \
+    --language-dir "${SOURCE_DATA}/Lua/languages" \
     --language "${LANGUAGE}"
 else
   python3 "${CTH3DS_ROOT}/tools/th3ds_pack.py" stage \
     "${THEME_HOSPITAL}" "${STAGE_ROOT}" --no-pack
+  python3 "${CTH3DS_ROOT}/tools/prepare_loose_assets.py" \
+    --runtime "${SOURCE_DATA}" --game "${THEME_HOSPITAL}" \
+    --stage "${WORK_DEST}" --language "${LANGUAGE}" \
+    --upstream "${UPSTREAM_DIR}"
 fi
 
 python3 "${CTH3DS_ROOT}/tools/validate_sd_tree.py" create-contract "${WORK_DEST}" \
@@ -126,7 +133,7 @@ mkdir -p "$(dirname "${DEST}")"
 mv "${WORK_DEST}" "${DEST}"
 
 if [[ "${ASSET_MODE}" == "th3ds" ]]; then
-  log "TH3DS device-candidate staging passed the boot contract at ${CTH3DS_DIST_DIR}/sd-card"
+  log "TH3DS experimental staging passed the boot contract at ${CTH3DS_DIST_DIR}/sd-card"
 else
-  log "loose diagnostic staging passed; product_ready_eligible=false at ${CTH3DS_DIST_DIR}/sd-card"
+  log "loose product-candidate staging passed; runtime/device=NOT_PROVEN at ${CTH3DS_DIST_DIR}/sd-card"
 fi

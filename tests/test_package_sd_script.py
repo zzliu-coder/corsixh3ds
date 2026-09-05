@@ -30,7 +30,7 @@ class PackageSdScriptTests(unittest.TestCase):
             directory = runtime / name
             directory.mkdir()
             (directory / "fixture.txt").write_text(name, encoding="utf-8")
-        shutil.copytree(languages, runtime / "Languages")
+        shutil.copytree(languages, runtime / "Lua/languages")
 
         build = root / "build"
         binary = build / "CorsixTH" / "CorsixTH-3DS.3dsx"
@@ -94,7 +94,7 @@ class PackageSdScriptTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             package = dist / "sd-card" / "3ds" / "corsixth"
             report = validate_sd_tree(package, require_mode="th3ds")
-            self.assertTrue(report["product_ready_eligible"])
+            self.assertFalse(report["product_ready_eligible"])
             self.assertFalse((package / "game").exists())
             output = b"".join(
                 path.read_bytes() for path in package.rglob("*") if path.is_file()
@@ -120,7 +120,7 @@ class PackageSdScriptTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             package = dist / "sd-card" / "3ds" / "corsixth"
             report = validate_sd_tree(package, require_mode="loose")
-            self.assertFalse(report["product_ready_eligible"])
+            self.assertTrue(report["product_ready_eligible"])
             self.assertFalse((package / "game" / "SAVE").exists())
 
 

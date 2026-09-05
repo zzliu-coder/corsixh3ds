@@ -282,7 +282,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertRegex(script, r"devkitpro/devkitarm@sha256:[0-9a-f]{64}")
         self.assertNotIn("dkp-pacman -Syu", script)
         self.assertIn("dkp-pacman -S --needed", script)
-        self.assertIn('CTH3DS_PACKAGE_ASSET_MODE:-th3ds', script)
+        self.assertIn('CTH3DS_PACKAGE_ASSET_MODE:-loose', script)
         self.assertIn('--asset-mode ${PACKAGE_ASSET_MODE}', script)
         self.assertIn('--theme-hospital /theme-hospital', script)
         self.assertIn('loose diagnostic package only', script)

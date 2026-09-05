@@ -31,21 +31,17 @@ class V061AcceptanceTests(unittest.TestCase):
             b"3DSX" + struct.pack("<HH", 0x20, 4) + bytes(0x20 - 8)
         )
         (package / "CorsixTH.lua").write_text("-- synthetic\n", encoding="utf-8")
-        (package / "config.txt").write_text("asset_mode = \"th3ds\"\n", encoding="utf-8")
+        (package / "config.txt").write_text("asset_mode = \"loose\"\n", encoding="utf-8")
         (package / "cth3ds-overlay-version.txt").write_text("0.6.1\n", encoding="utf-8")
         for name in ("Bitmap", "Campaigns", "Graphics", "Levels", "Lua"):
             directory = package / name
             directory.mkdir()
             (directory / "fixture.txt").write_text(name, encoding="utf-8")
-        fixture = ROOT / "tests" / "runtime_core_v2" / "fixtures" / "no-level"
-        resources = package / "resources"
-        (resources / "lang").mkdir(parents=True)
-        shutil.copy2(fixture / "bundle.json", resources / "bundle.th3ds.json")
-        shutil.copy2(fixture / "core.package.bin", resources / "core.th3ds")
-        shutil.copy2(fixture / "lang" / "en.package.bin", resources / "lang" / "en.th3ds")
+        from test_playable_assets import add_loose_fixture
+        add_loose_fixture(package,root/'loose-fixture')
         write_boot_contract(
             package,
-            asset_mode="th3ds",
+            asset_mode="loose",
             candidate_commit=CANDIDATE_COMMIT,
             candidate_tree=CANDIDATE_TREE,
         )

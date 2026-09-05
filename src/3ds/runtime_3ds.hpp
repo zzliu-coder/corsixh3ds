@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 
 struct lua_State;
@@ -13,7 +14,9 @@ class ResourceTelemetrySink;
 class ResourceBudgetGate;
 
 void register_lua_module(lua_State* state);
-[[nodiscard]] bool runtime_initialize(lua_State* state);
+[[nodiscard]] bool runtime_initialize(lua_State* state, const char* mode = "loose");
+[[nodiscard]] bool runtime_assert_ready(lua_State* state);
+[[nodiscard]] bool runtime_audio_reserve(std::size_t bytes, const char* identity) noexcept;
 void runtime_tick(lua_State* state);
 
 //! Tell the platform layer which window CorsixTH renders into. SDL2 cannot

@@ -36,10 +36,10 @@ PACKAGE_COMMAND=""
 if [[ -n "${CTH3DS_THEME_HOSPITAL:-}" ]]; then
   [[ -d "${CTH3DS_THEME_HOSPITAL}" ]] || \
     die 'CTH3DS_THEME_HOSPITAL must name a directory'
-  PACKAGE_ASSET_MODE="${CTH3DS_PACKAGE_ASSET_MODE:-th3ds}"
+  PACKAGE_ASSET_MODE="${CTH3DS_PACKAGE_ASSET_MODE:-loose}"
   case "${PACKAGE_ASSET_MODE}" in
-    th3ds) log 'container will build a TH3DS device-candidate package' ;;
-    loose) log 'container will build a loose diagnostic package only' ;;
+    th3ds) log 'container will build a TH3DS experimental package' ;;
+    loose) log 'container will build a loose product-candidate package; device NOT_PROVEN' ;;
     *) die 'CTH3DS_PACKAGE_ASSET_MODE must be th3ds or loose' ;;
   esac
   PACKAGE_MOUNT_ARGS=(-v "${CTH3DS_THEME_HOSPITAL}:/theme-hospital:ro")

@@ -171,6 +171,35 @@ function Platform:showError(message)
   print("CorsixTH 3DS: " .. message)
 end
 
+-- Optional naming; save slots remain usable when the system applet is absent.
+function Platform:editText()
+  local ui = self.app.ui
+  local selected
+  for _, box in ipairs(ui.textboxes or {}) do
+    if box.enabled and box.visible and box.active and type(box.text) == "string" then selected = box; break end
+  end
+  if not selected then return true end
+  if type(self.native.text_keyboard) ~= "function" then
+    native_notice(self.native, "KEYBOARD UNAVAILABLE - USE SAVE SLOTS", false); return true
+  end
+  local limit = math.min(selected.char_limit or 40, 40)
+  local ok, text = self.native.text_keyboard(selected.text, limit)
+  if not ok then return true end -- Cancel preserves the original text.
+  if self.app.ui ~= ui or not selected.active or not selected.visible then return true end
+  local registered = false
+  for _, box in ipairs(ui.textboxes or {}) do if box == selected then registered = true end end
+  if not registered then return true end
+  -- English input until the measured Chinese font/input work is enabled.
+  if type(text) ~= "string" or #text > limit or text:find("[^A-Za-z0-9 _%-]") or not text:find("%S") then
+    native_notice(self.native, "USE ENGLISH LETTERS NUMBERS SPACE - _", false); return true
+  end
+  selected:setText(text)
+  selected:setActive(true) -- refresh byte cursor after replacement
+  -- Confirm only updates the field callback; saves still use overwrite checks.
+  selected:confirm()
+  return true
+end
+
 function Platform:installAtomicSaves()
   local app, native = self.app, self.native
   local original_save = assert(app.save, "App.save missing")
@@ -268,9 +297,10 @@ function Platform:inputState()
     self:resetCursorResidual()
     owners.ui, owners.window, owners.world = ui, window, self.app.world
     self.pointer_context = context
+    self.input_epoch = (self.input_epoch or 0) + 1
   end
   return {cursor_x = ui.cursor_x, cursor_y = ui.cursor_y,
-          input_context = context}
+          input_context = context, input_epoch = self.input_epoch or 0}
 end
 
 function Platform:resetCursorResidual()
@@ -426,11 +456,17 @@ function Platform:samplePerformanceContext()
   local hospital, world = ui and ui.hospital, app.world
   local date = world and world.game_date
   local date_text = date and type(date.tostring) == "function" and date:tostring() or "unknown"
+  local rooms = 0
+  for _, room in pairs(world and world.rooms or {}) do
+    if room.hospital == hospital then rooms = rooms + 1 end
+  end
   self.native.workload{
     patients = hospital and count_table(hospital.patients) or 0,
     staff = hospital and count_table(hospital.staff) or 0,
-    rooms = hospital and count_table(hospital.rooms) or 0,
-    speed = world and world.game_speed or -1, game_date = date_text,
+    rooms = rooms,
+    speed = world and type(world.getCurrentSpeed) == "function" and world:getCurrentSpeed() or "unknown",
+    hours_per_tick = world and world.hours_per_tick or -1,
+    tick_rate = world and world.tick_rate or -1, game_date = date_text,
     camera_x = ui and ui.screen_offset_x or 0, camera_y = ui and ui.screen_offset_y or 0,
     language = app.config.language or "unknown", music = app.config.play_music == true,
   }
@@ -709,6 +745,24 @@ function Platform:handleAction(action)
     self:invokeBottom("editRoom")
   elseif kind == "quick_save" then
     if world then return self.app:quickSave() end
+  elseif kind == "open_save_slots" then
+    if world then
+      ui:addWindow(UISaveGame(ui))
+      self.focus_owners.window = nil
+      return self:prepareInput()
+    end
+    native_notice(self.native, "START OR LOAD A HOSPITAL TO SAVE", false)
+  elseif kind == "show_help" then
+    ui:addWindow(UIInformation(ui, {
+      "D-PAD: MOVE HOSPITAL", "CIRCLE: MOVE TOP VIEW (MENU: CURSOR)",
+      "PEN: CLICK / DRAG    A: CONFIRM", "B: BACK    X: MENU / ROTATE",
+      "Y: DETAILS / WALLS    L: CLEAR / WIDE", "R + D-PAD: PRECISE CURSOR",
+      "START: PAUSE    SELECT: TOWN MAP", "R + START: SAVE SLOTS",
+      "TEXT FIELD + A: KEYBOARD", "R + SELECT: THIS HELP",
+    }))
+    return self:prepareInput()
+  elseif kind == "text_keyboard" then
+    return self:editText()
   elseif kind == "quick_load" then
     if world then return self.app:quickLoad() end
   elseif kind == "build_room_rectangle" then
@@ -722,16 +776,17 @@ function Platform:handleAction(action)
     self:dispatchKey("Right")
   elseif kind == "lifecycle_suspend" then
     self:resetCursorResidual()
-    if world and world.game_speed ~= 0 then
-      self.saved_speed = world.game_speed
-      safe_call(world, "setSpeed", 0)
+    if world and not self.suspended_world then
+      self.saved_speed = world:getCurrentSpeed()
+      self.suspended_world = world
+      world:setSpeed("Pause")
     end
   elseif kind == "lifecycle_resume" then
     self:resetCursorResidual()
-    if world and self.saved_speed then
-      safe_call(world, "setSpeed", self.saved_speed)
-      self.saved_speed = nil
+    if world and world == self.suspended_world and self.saved_speed then
+      world:setSpeed(self.saved_speed)
     end
+    self.saved_speed, self.suspended_world = nil, nil
   elseif kind == "lifecycle_exit" then
     -- The native layer queues SDL_QUIT after the atomic quicksave request.
   end

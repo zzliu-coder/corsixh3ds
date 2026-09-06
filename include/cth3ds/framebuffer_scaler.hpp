@@ -61,6 +61,12 @@ struct CropView {
     Vec2i origin, std::uint32_t* destination, int view_width, int view_height,
     int destination_pitch_pixels, bool swap_bytes = false) noexcept;
 
+// Bounded viewport reduction, with fixed stack lookup tables (no pixel divide).
+[[nodiscard]] bool scale_rgba_view(const std::uint32_t* source,
+    int source_width, int source_height, int source_pitch_pixels, RectI view,
+    std::uint32_t* destination, int width, int height,
+    int destination_pitch_pixels, bool swap_bytes = false) noexcept;
+
 // Exact 2:1 reduction of an RGBA8888 image, taking every second pixel on both
 // axes. This is what the lower screen shows: a whole 640x480 CorsixTH frame in
 // 320x240, so touch coordinates map back by a plain doubling.

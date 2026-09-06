@@ -116,7 +116,8 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
     Action pan;
     const bool cursor = context == InputContext::Menu || context == InputContext::Dialog ||
                         context == InputContext::TextInput;
-    pan.type = cursor ? ActionType::CursorStep : ActionType::PanCamera;
+    pan.type = cursor ? ActionType::CursorStep :
+               config_.overview_controls ? ActionType::MoveViewport : ActionType::PanCamera;
     const float distance = config_.camera_pixels_per_second *
                            std::min(delta_seconds, 0.1F) / (cursor ? 16.0F : 1.0F);
     pan.vector = {circle.x * distance, circle.y * distance};
@@ -124,7 +125,23 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
   }
   std::vector<Action> actions;
   actions.reserve(4);
-  append_dpad_actions(actions, sample);
+  const bool precise = has_button(sample.held, Button::R);
+  const bool map_context = context == InputContext::World || context == InputContext::BuildRoom ||
+                           context == InputContext::PlaceObject;
+  if (config_.overview_controls && map_context && !precise) {
+    const float x = (has_button(sample.held, Button::DRight) ? 1.0F : 0.0F) -
+                    (has_button(sample.held, Button::DLeft) ? 1.0F : 0.0F);
+    const float y = (has_button(sample.held, Button::DDown) ? 1.0F : 0.0F) -
+                    (has_button(sample.held, Button::DUp) ? 1.0F : 0.0F);
+    if ((x != 0 || y != 0) && std::isfinite(delta_seconds) && delta_seconds > 0) {
+      Action action = make_simple(ActionType::PanCamera);
+      const float distance = config_.camera_pixels_per_second * std::min(delta_seconds, 0.1F) *
+                             (x != 0 && y != 0 ? 0.70710678F : 1.0F);
+      action.vector = {x * distance, y * distance};
+      if (!dispatch(action)) return false;
+    }
+    repeat_states_ = {};
+  } else append_dpad_actions(actions, sample);
   for (Action action : actions) {
     // Preserve the action's legacy 16-pixel unit contract. Mixed-game D-pad
     // gives one-pixel taps and four-pixel held repeats, independent of FPS.
@@ -141,6 +158,18 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
                                          Button::Start, Button::Select, Button::L, Button::R};
   for (const Button button : buttons) {
     if (!has_button(sample.down, button)) continue;
+    if (config_.overview_controls) {
+      ActionType type = ActionType::None;
+      if (button == Button::R) continue; // modifier only, no conflicting zoom.
+      if (button == Button::L) type = ActionType::ToggleView;
+      if (precise && button == Button::Start) type = ActionType::OpenSaveSlots;
+      if (precise && button == Button::Select) type = ActionType::ShowHelp;
+      if (button == Button::A && face_context == InputContext::TextInput) type = ActionType::TextKeyboard;
+      if (type != ActionType::None) {
+        if (!dispatch(make_simple(type))) return false;
+        face_context = read_context(); continue;
+      }
+    }
     actions.clear();
     RawInputSnapshot edge = sample;
     edge.down = button_mask(button);

@@ -2246,10 +2246,12 @@ PINNED_SOURCE = (
 )
 
 SOURCE_HASHES['CorsixTH/Src/th_gfx_sdl.h'] = 'e5b396bfbd1a1d6ea544005e381bbb209da7c96457fec35d622d0c506b4def3a'
+SOURCE_HASHES['CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua'] = '52da642f1c7ff52ac99351abd1fe480b46e58d785d480e0f13ac90bbb943e568'
 
 def original_sources(root):
     files=json.loads(zlib.decompress(base64.b64decode(PINNED_SOURCE)))
     files['CorsixTH/Src/th_gfx_sdl.h'] = (ROOT/'tests/fixtures/th_gfx_sdl.h.pinned').read_text(encoding='utf-8')
+    files['CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua'] = (ROOT/'tests/fixtures/save_game.lua.pinned').read_text(encoding='utf-8')
     for name,text in files.items():
         assert hashlib.sha256(text.encode()).hexdigest()==SOURCE_HASHES[name]
         path=root/name
@@ -2262,7 +2264,7 @@ def generated_sources(directory):
     generated = original_sources(directory / 'upstream')
     originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in generated.rglob('*') if path.is_file()}
-    if originals != SOURCE_HASHES or len(originals) != 21:
+    if originals != SOURCE_HASHES or len(originals) != 22:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
     tracked = subprocess.check_output(

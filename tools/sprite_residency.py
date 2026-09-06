@@ -2,6 +2,33 @@
 from pathlib import Path
 from sound_lifetime import replace_exact, SoundPatchError
 
+FAST_DRAW = '''
+#ifdef CORSIXTH_3DS
+  // CORSIXTH_3DS_FLIP_CACHE_R48: one decoded orientation, same global budget.
+  // Alternate palettes and jelly strips retain the upstream general path.
+  const unsigned flip = ((iFlags & thdf_flip_horizontal) ? 1U : 0U) |
+                        ((iFlags & thdf_flip_vertical) ? 2U : 0U);
+  if (cth3ds::render_work.fast_flip_enabled && flip &&
+      !(iFlags & thdf_alt_palette) && effect == animation_effect::none && scale_factor == 1 &&
+      sprite.data && sprite.width > 0 && sprite.height > 0) {
+    SDL_Texture*& cached = sprite.flipped_texture[flip - 1U];
+    if (!cached) {
+      ++cth3ds::render_work.flip_misses;
+      const size_t bytes = sprite_texture_prepare(sprite.width, sprite.height);
+      const uint32_t flags = (sprite.sprite_flags & ~thdf_alt32_mask) |
+          thdf_alt32_plain | (iFlags & (thdf_nearest | thdf_flip_horizontal | thdf_flip_vertical));
+      cached = target->create_palettized_texture(sprite.width, sprite.height,
+                                                sprite.data, palette, flags);
+      sprite_texture_remember(&cached, bytes);
+    } else ++cth3ds::render_work.flip_hits;
+    cth3ds::render_work.flip_pixels_saved += static_cast<uint64_t>(sprite.width) * sprite.height;
+    SDL_Rect rect{iX, iY, sprite.width, sprite.height};
+    pCanvas->draw(cached, nullptr, &rect, iFlags & ~(thdf_flip_horizontal | thdf_flip_vertical));
+    return;
+  }
+#endif
+'''
+
 # Fixed metadata, no per-draw allocations or lookup. FIFO is deliberate: misses
 # evict the oldest generated texture; hits are the existing raw-pointer path.
 CACHE = '''
@@ -54,8 +81,18 @@ void sprite_texture_forget(SDL_Texture** owner) {
 #endif
 '''
 
+LEGACY_CACHE = CACHE
+CACHE = CACHE.replace('    *entry.owner = nullptr;\n    sprite_texture_bytes -= entry.bytes;',
+    '    *entry.owner = nullptr;\n    sprite_texture_bytes -= entry.bytes;\n    ++cth3ds::render_work.cache_evictions;\n    cth3ds::render_work.cache_bytes = sprite_texture_bytes;')
+CACHE = CACHE.replace('  sprite_texture_bytes += bytes;',
+    '  sprite_texture_bytes += bytes;\n  ++cth3ds::render_work.texture_creates;\n  cth3ds::render_work.cache_bytes = sprite_texture_bytes;\n  cth3ds::render_work.cache_peak_bytes = std::max(cth3ds::render_work.cache_peak_bytes, static_cast<uint64_t>(sprite_texture_bytes));')
+CACHE = CACHE.replace('      sprite_texture_bytes -= entry.bytes;',
+    '      sprite_texture_bytes -= entry.bytes;\n      cth3ds::render_work.cache_bytes = sprite_texture_bytes;')
 
 def transform(text):
+    text = text.replace('  for (auto& texture : sprites[iNumber].flipped_texture) {\n    if (!texture) continue;',
+                        '  for (auto& texture : sprites[iNumber].flipped_texture) {')
+    text = text.replace(LEGACY_CACHE, CACHE)
     marker = 'constexpr double pi = 3.14159265358979323846;'
     text = replace_exact(text, marker, marker + '\n' + CACHE, 'sprite FIFO implementation')
     for target in ('sprites[iNumber].texture', 'sprites[iNumber].alt_texture', 'pSprite->alt_texture'):
@@ -114,16 +151,54 @@ void render_target::draw'''
 }
 
 void render_target::draw'''
-    return replace_exact(text, old, new, 'texture ownership publication')
+    text = replace_exact(text, old, new, 'texture ownership publication')
+    text = replace_exact(text, '#include "th_gfx_sdl.h"',
+        '#include "th_gfx_sdl.h"\n#ifdef CORSIXTH_3DS\n#include "cth3ds/render_work.hpp"\n#endif', 'render counters include')
+    text = replace_exact(text, '  // Find or create the texture\n', FAST_DRAW + '\n  // Find or create the texture\n', 'bounded flipped sprite path')
+    text = replace_exact(text, '  oRenderer.decode_image(pPixels, pPalette, iSpriteFlags);',
+        '''  oRenderer.decode_image(pPixels, pPalette, iSpriteFlags);
+#ifdef CORSIXTH_3DS
+  cth3ds::render_work.decoded_pixels += static_cast<uint64_t>(iWidth) * iHeight;
+  cth3ds::flip_rgba_in_place(pARGBPixels, iWidth, iHeight,
+      (iSpriteFlags & thdf_flip_horizontal) != 0, (iSpriteFlags & thdf_flip_vertical) != 0);
+#endif''', 'decode flip once')
+    text = replace_exact(text, '  if (sprites[iNumber].data != nullptr) {',
+        '''#ifdef CORSIXTH_3DS
+  for (auto& texture : sprites[iNumber].flipped_texture) {
+    sprite_texture_forget(&texture);
+    SDL_DestroyTexture(texture);
+    texture = nullptr;
+  }
+#endif
+  if (sprites[iNumber].data != nullptr) {''', 'flipped texture destruction')
+    text = replace_exact(text, '''                         const SDL_Rect* prcDstRect, int iFlags) {
+  SDL_SetTextureAlphaMod''', '''                         const SDL_Rect* prcDstRect, int iFlags) {
+#ifdef CORSIXTH_3DS
+  ++cth3ds::render_work.draws;
+  if (iFlags & (thdf_flip_horizontal | thdf_flip_vertical)) ++cth3ds::render_work.flipped_fallback;
+#endif
+  SDL_SetTextureAlphaMod''', 'actual draw counters')
+    text = text.replace('  for (auto& texture : sprites[iNumber].flipped_texture) {\n    sprite_texture_forget',
+                        '  for (auto& texture : sprites[iNumber].flipped_texture) {\n    if (!texture) continue;\n    sprite_texture_forget')
+    return text
 
 
 def patch_sprite_residency(root: Path, dry_run=False):
     path = root/'CorsixTH/Src/th_gfx_sdl.cpp'
     old = path.read_text(encoding='utf-8')
     new = transform(old)
-    if old == new: return []
-    if not dry_run: path.write_text(new, encoding='utf-8')
-    return [path.relative_to(root).as_posix()]
+    changed = []
+    if old != new:
+        if not dry_run: path.write_text(new, encoding='utf-8')
+        changed.append(path.relative_to(root).as_posix())
+    header = root/'CorsixTH/Src/th_gfx_sdl.h'
+    old = header.read_text(encoding='utf-8')
+    new = replace_exact(old, '    SDL_Texture* alt_texture;',
+        '    SDL_Texture* alt_texture;\n#ifdef CORSIXTH_3DS\n    SDL_Texture* flipped_texture[3]{};\n#endif', 'flipped cache owner slots')
+    if old != new:
+        if not dry_run: header.write_text(new, encoding='utf-8')
+        changed.append(header.relative_to(root).as_posix())
+    return changed
 
 
 def check_sprite_residency(root):

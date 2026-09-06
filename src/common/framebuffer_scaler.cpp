@@ -1,6 +1,7 @@
 #include "cth3ds/framebuffer_scaler.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 
 namespace cth3ds {
@@ -113,6 +114,28 @@ Vec2i follow_pointer_viewport(Vec2i origin, Vec2i pointer,
     origin.y = pointer.y - view_height + my + 1;
   return {std::clamp(origin.x, 0, source_width - view_width),
           std::clamp(origin.y, 0, source_height - view_height)};
+}
+
+bool scale_rgba_view(const std::uint32_t* source, int source_width,
+    int source_height, int source_pitch_pixels, RectI view,
+    std::uint32_t* destination, int width, int height,
+    int destination_pitch_pixels, bool swap_bytes) noexcept {
+  if (!source || !destination || source == destination || view.x < 0 || view.y < 0 ||
+      view.w <= 0 || view.h <= 0 || source_width < view.w || source_height < view.h ||
+      view.x > source_width - view.w || view.y > source_height - view.h ||
+      source_pitch_pixels < source_width || destination_pitch_pixels < width) return false;
+  if (view.w == width && view.h == height)
+    return copy_rgba_view(source, source_width, source_height, source_pitch_pixels,
+        {view.x, view.y}, destination, width, height, destination_pitch_pixels, swap_bytes);
+  std::array<std::uint16_t, kMaxScalerAxis> columns{}, rows{};
+  if (!build_nearest_axis_table(view.w, width, columns.data(), kMaxScalerAxis) ||
+      !build_nearest_axis_table(view.h, height, rows.data(), kMaxScalerAxis)) return false;
+  for (int y = 0; y < height; ++y) {
+    const auto* row = source + static_cast<std::ptrdiff_t>(view.y + rows[static_cast<std::size_t>(y)]) * source_pitch_pixels + view.x;
+    auto* out = destination + static_cast<std::ptrdiff_t>(y) * destination_pitch_pixels;
+    for (int x = 0; x < width; ++x) out[x] = output_pixel(row[columns[static_cast<std::size_t>(x)]], swap_bytes);
+  }
+  return true;
 }
 
 bool copy_rgba_view(const std::uint32_t* source, int source_width,

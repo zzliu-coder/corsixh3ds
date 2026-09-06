@@ -105,6 +105,7 @@ if(CTH3DS_BUILD_TESTS)
     tests/test_build_gesture.cpp
     tests/test_fixed_step.cpp
     tests/test_framebuffer_scaler.cpp
+    tests/test_handheld_r48.cpp
     tests/test_interval_gate.cpp
     tests/test_input_mapper.cpp
     tests/test_lifecycle.cpp

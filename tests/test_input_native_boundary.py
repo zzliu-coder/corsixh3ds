@@ -158,11 +158,15 @@ do
 end
 do
  local p,app,ui=fresh();local samples=0
- ui.hospital={patients={a={},b={}},staff={a={}},rooms={a={},b={},c={}}}
- app.world.game_speed=1;app.world.game_date={tostring=function()return '1-1-1' end}
+ ui.hospital={patients={a={},b={}},staff={a={}}}
+ app.world.rooms={{hospital=ui.hospital},{hospital=ui.hospital},{hospital=ui.hospital},{hospital={}}}
+ app.world.getCurrentSpeed=function() return 'Normal' end
+ app.world.hours_per_tick=1; app.world.tick_rate=3
+ app.world.game_date={tostring=function()return '1-1-1' end}
  app.config.language='English';app.config.play_music=false
  p.native.workload=function(v)
   samples=samples+1;assert(v.patients==2 and v.staff==1 and v.rooms==3)
+  assert(v.speed=='Normal' and v.hours_per_tick==1 and v.tick_rate==3)
   assert(v.game_date=='1-1-1' and v.language=='English' and not v.music)
  end
  for i=1,100 do assert(p:prepareInput()) end

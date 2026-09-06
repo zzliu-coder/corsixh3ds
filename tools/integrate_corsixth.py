@@ -24,6 +24,7 @@ from sound_lifetime import (sound_transaction, patch_sound_lifetime,
                             check_sound_lifetime, SoundPatchError)
 from sound_callbacks import patch_sound_callbacks, check_sound_callbacks
 from sprite_residency import patch_sprite_residency, check_sprite_residency
+from handheld_ui import patch_handheld_ui, check_handheld_ui
 from load_recovery import patch_load_recovery, check_load_recovery
 from dual_screen_canvas import patch_dual_screen, check_dual_screen
 
@@ -1184,6 +1185,7 @@ def patch_product_sources(root: Path, dry_run: bool) -> list[Change]:
                            patch_sound_callbacks(preview))
             changes.extend(Change(path, "sprite-residency") for path in
                            patch_sprite_residency(preview))
+            changes.extend(Change(path, "handheld-ui") for path in patch_handheld_ui(preview))
             return changes
     changes = []
     def patch(relative, replacements):
@@ -1903,6 +1905,7 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors.extend(check_dual_screen(root))
     errors.extend(check_sound_callbacks(root))
     errors.extend(check_sprite_residency(root))
+    errors.extend(check_handheld_ui(root))
     errors.extend(check_load_recovery(root))
     if SOUND_INIT_TRANSACTION not in read_text(root / "CorsixTH/Src/th_sound.cpp"):
         errors.append("sound initialization transaction missing or changed")
@@ -2673,6 +2676,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                            patch_sprite_residency(root))
             changes.extend(Change(path, "dual-screen-canvas") for path in
                            patch_dual_screen(root))
+            changes.extend(Change(path, "handheld-ui") for path in patch_handheld_ui(root))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)
             manifest_path = root / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"
@@ -2699,7 +2703,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for change in changes:
                 print(f"  {change.operation:8s} {change.path}")
         return 0
-    except (IntegrationError, SoundPatchError, ValueError) as exc:
+    except (IntegrationError, SoundPatchError, ValueError, OSError) as exc:
         if args.json:
             print(json.dumps({"ok": False, "error": str(exc)}, indent=2, sort_keys=True))
         else:

@@ -96,6 +96,11 @@ enum class ActionType {
   LifecycleSuspend,
   LifecycleResume,
   LifecycleExit,
+  MoveViewport,
+  ToggleView,
+  OpenSaveSlots,
+  ShowHelp,
+  TextKeyboard,
 };
 
 struct Action {

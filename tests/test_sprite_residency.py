@@ -65,10 +65,10 @@ class SpriteResidencyTests(unittest.TestCase):
             self.assertIn('std::unique_ptr<uint32_t[]> argb_owner(pARGBPixels)',generated)
             self.assertIn('return texture_owner.release()',generated)
             source=temp/'textures.cpp'
-            source.write_text('#include <SDL.h>\n#include <array>\n#include <algorithm>\n#include <stdexcept>\n#include <cstdio>\n'+CACHE+MAIN)
+            source.write_text('#include <SDL.h>\n#include "cth3ds/render_work.hpp"\n#include <array>\n#include <algorithm>\n#include <stdexcept>\n#include <cstdio>\n'+CACHE+MAIN)
             binary=temp/'textures'
             flags=shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','sdl2'],text=True))
-            command=[os.environ.get('CXX','c++'),'-std=c++17','-DCORSIXTH_3DS',str(source),*flags,'-o',str(binary)]
+            command=[os.environ.get('CXX','c++'),'-std=c++17','-DCORSIXTH_3DS','-I'+str(ROOT/'include'),str(source),*flags,'-o',str(binary)]
             if os.environ.get('CTH3DS_SOUND_SANITIZERS'):
                 command[1:1]=['-fsanitize='+os.environ['CTH3DS_SOUND_SANITIZERS'],'-fno-omit-frame-pointer','-g']
             result=subprocess.run(command,capture_output=True,text=True)
@@ -76,4 +76,3 @@ class SpriteResidencyTests(unittest.TestCase):
             result=subprocess.run([str(binary)],capture_output=True,text=True,timeout=60)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('final=0; queued-pixels-exact',result.stdout)
-

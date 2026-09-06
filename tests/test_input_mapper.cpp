@@ -151,9 +151,9 @@ TEST(input_mapper_mixed_touch_direction_faces_share_current_point) {
   f.input.held = button_mask(Button::DRight) | button_mask(Button::A) |
                  button_mask(Button::B) | button_mask(Button::Y);
   EXPECT_TRUE(f.run());
-  EXPECT_EQ(f.cursor, (Vec2i{216, 200}));
+  EXPECT_EQ(f.cursor, (Vec2i{201, 200}));
   EXPECT_EQ(f.clicks.size(), std::size_t{3});
-  for (const auto point : f.clicks) EXPECT_EQ(point, (Vec2i{216, 200}));
+  for (const auto point : f.clicks) EXPECT_EQ(point, (Vec2i{201, 200}));
   EXPECT_EQ(f.order[0], static_cast<int>(ActionType::PointerMove));
   EXPECT_EQ(f.order[1], static_cast<int>(ActionType::PointerDown));
   EXPECT_EQ(f.order[2], -1);
@@ -191,7 +191,7 @@ TEST(input_mapper_mixed_all_contexts_move_visible_cursor) {
     f.cursor = {200, 200};
     f.input.held = button_mask(Button::DRight) | button_mask(Button::A);
     EXPECT_TRUE(f.run());
-    EXPECT_EQ(f.cursor, (Vec2i{216, 200}));
+    EXPECT_EQ(f.cursor, (Vec2i{201, 200}));
     EXPECT_EQ(f.clicks.front(), f.cursor);
     EXPECT_TRUE(has_action(f.actions, context == InputContext::PlaceObject ?
                             ActionType::PlaceItem : ActionType::Confirm));
@@ -258,6 +258,9 @@ TEST(input_mapper_mixed_repeat_is_bounded_after_long_stall) {
   EXPECT_TRUE(f.run());
   EXPECT_EQ(f.actions.size(), std::size_t{1});
   EXPECT_TRUE(f.actions.front().repeated);
+  EXPECT_EQ(f.actions.front().value, 1);
+  EXPECT_NEAR(f.actions.front().vector.x * 16, 4, 0.001);
+  EXPECT_EQ(f.cursor, (Vec2i{325, 240}));
   f.actions.clear();
   f.input.timestamp_us = 1000000000000ULL;
   EXPECT_TRUE(f.run());
@@ -277,7 +280,7 @@ TEST(input_mapper_mixed_cancel_releases_drag_and_requires_neutral) {
   EXPECT_TRUE(f.run());
   EXPECT_TRUE(f.cancel());
   EXPECT_FALSE(f.pressed);
-  EXPECT_EQ(f.cursor, (Vec2i{216, 200}));
+  EXPECT_EQ(f.cursor, (Vec2i{201, 200}));
   f.actions.clear();
   f.input.timestamp_us = 5000000;
   EXPECT_TRUE(f.run());
@@ -380,7 +383,7 @@ TEST(input_mapper_mixed_touch_release_changes_scene_before_same_batch_buttons) {
   EXPECT_TRUE(f.run());
   EXPECT_EQ(f.actions[0].type, ActionType::PointerUp);
   EXPECT_EQ(f.actions[2].type, ActionType::PlaceItem);
-  EXPECT_EQ(f.clicks.back(), (Vec2i{384, 300}));
+  EXPECT_EQ(f.clicks.back(), (Vec2i{399, 300}));
 }
 
 TEST(input_mapper_mixed_failed_direction_dispatch_prevents_face_action) {

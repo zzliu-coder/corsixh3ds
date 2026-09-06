@@ -22,6 +22,8 @@ from typing import Sequence
 
 DEFAULT_REMOTE_FILES = (
     "/3ds/corsixth/boot.log",
+    "/3ds/corsixth/boot.previous.log",
+    "/3ds/corsixth/boot.older.log",
     "/3ds/corsixth/config.txt",
     "/3ds/corsixth/cth3ds-overlay-version.txt",
 )

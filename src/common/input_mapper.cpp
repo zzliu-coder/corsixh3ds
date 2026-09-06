@@ -125,7 +125,12 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
   std::vector<Action> actions;
   actions.reserve(4);
   append_dpad_actions(actions, sample);
-  for (const Action& action : actions) {
+  for (Action action : actions) {
+    // Preserve the action's legacy 16-pixel unit contract. Mixed-game D-pad
+    // gives one-pixel taps and four-pixel held repeats, independent of FPS.
+    const float scale = (action.repeated ? 4.0F : 1.0F) / 16.0F;
+    action.vector = {action.vector.x * scale, action.vector.y * scale};
+    action.value = 1; // precise step: discard a previous analog remainder.
     if (!dispatch(action)) return false;
   }
 

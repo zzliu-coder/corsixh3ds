@@ -155,8 +155,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 197,
-  "selected_sorted_ids_sha256": "780ffde532415a55d84901a996113445e87fdf9595a8ddf52f6b863af8ecdfc5",
+  "selected_count": 199,
+  "selected_sorted_ids_sha256": "bf4939787896ddd44c3b124bff256fba980a0e7c6ad2c1185a9863d5cc12326b",
   "test_ids": [
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
     "test_build_scripts.BuildScriptTests.test_all_shell_scripts_parse_and_have_no_placeholders",
@@ -185,6 +185,7 @@
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_cross_build_gate_requires_real_call_edge_without_whole_archive",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_current_cross_build_proof_when_supplied",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_production_runtime_constructs_and_owns_the_session",
+    "test_input_native_boundary.InputNativeBoundaryTests.test_real_lua_integer_boundary_menu_focus_and_sampling",
     "test_integrator.IntegratorTests.test_check_detects_overlay_drift",
     "test_integrator.IntegratorTests.test_dry_run_does_not_modify_tree",
     "test_integrator.IntegratorTests.test_existing_sound_consumer_upgrades_once_and_check_rejects_stale_body",
@@ -249,6 +250,7 @@
     "test_preview.PreviewTests.test_dual_screen_preview_is_valid_png",
     "test_preview.PreviewTests.test_wrong_screen_size_is_rejected",
     "test_release.ReleaseArchiveTests.test_archives_are_reproducible_and_never_future_dated",
+    "test_runtime_observation_flush.RuntimeObservationFlushTests.test_production_short_run_and_terminal_open_span_are_retained",
     "test_runtime_static.RuntimeStaticTests.test_hid_scan_is_owned_by_sdl_event_pump",
     "test_runtime_static.RuntimeStaticTests.test_legacy_panel_buffer_is_lazy",
     "test_runtime_static.RuntimeStaticTests.test_lifecycle_and_hardware_status_are_connected",

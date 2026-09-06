@@ -33,7 +33,9 @@ class InputMapper {
   // Sample HID once; held/touching are authoritative, down/up are ignored.
   // Pointer positions are bottom pixels; the bridge doubles/clamps once.
   // CursorStep is in 16-logical-pixel units; clicks and PointerUp use App.ui's
-  // current point. PointerUp.value==1 cancels UI press/drag without clicking.
+  // current point. Mixed D-pad uses 1px taps / 4px repeats (value=1 precise),
+  // while analog motion retains fractional delta until an integer pixel moves.
+  // PointerUp.value==1 cancels UI press/drag without clicking.
   // No UI coordinate is retained here. Do not mix update() and
   // dispatch_mixed() within an epoch (update is the legacy panel path).
   using ContextReader = std::function<InputContext()>;

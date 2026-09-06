@@ -28,6 +28,7 @@
 #include "cth3ds/action_codec.hpp"
 #include "cth3ds/atomic_save.hpp"
 #include "cth3ds/bottom_ui.hpp"
+#include "cth3ds/bounded_log.hpp"
 #include "cth3ds/crc32.hpp"
 #include "cth3ds/events.hpp"
 #include "cth3ds/fixed_step.hpp"
@@ -77,7 +78,7 @@ constexpr std::uint32_t kLifecycleExit = 1U << 4U;
 constexpr std::uint64_t kStateRefreshUs = 500000U;
 constexpr std::uint64_t kSystemRefreshUs = 2000000U;
 constexpr std::uint64_t kBatteryRefreshUs = 10000000U;
-constexpr std::uint64_t kTelemetryLogUs = 60000000U;
+constexpr std::uint64_t kTelemetryLogUs = 10000000U;
 
 constexpr const char* kOverlayVersion = "0.6.1";
 constexpr const char* kLogPath = "sdmc:/3ds/corsixth/boot.log";
@@ -129,7 +130,15 @@ std::size_t g_operation_sample_count=0;
 std::uint64_t g_operation_overflow=0;
 std::array<char,96> g_scene_identity{};
 bool g_window_has_operation=false;
-std::FILE* g_log = nullptr;
+BoundedLog g_log;
+#if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
+std::FILE* g_saved_stderr = nullptr;
+std::FILE* g_stderr_sink = nullptr;
+#endif
+std::uint64_t g_compact_flush_us = 0, g_log_time_us = 0, g_workload_time_us = 0;
+bool g_terminal_observation = false, g_terminal_observation_saved = false;
+int g_input_cursor_x = 0, g_input_cursor_y = 0; // diagnostic snapshot only
+std::uint64_t now_us() noexcept;
 bool g_log_attempted = false;
 u64 g_boot_started_ms = 0U;
 bool g_heap_watermarks_initialized = false;
@@ -229,34 +238,41 @@ void boot_log_open() {
   }
   g_log_attempted = true;
   g_boot_started_ms = osGetTime();
-  g_log = std::fopen(kLogPath, "w");
-  if (g_log == nullptr) {
-    return;
+  if (!g_log.open(kLogPath, "sdmc:/3ds/corsixth/boot.previous.log",
+                  "sdmc:/3ds/corsixth/boot.older.log")) return;
+#if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
+  // libctru/newlib FILE adapter funnels upstream stderr into the same bounded
+  // sink. A separate append descriptor would bypass the cap and write owner.
+  g_stderr_sink = funopen(nullptr, nullptr,
+    [](void*, const char* data, int count) -> int {
+      if (count > 0) g_log.write(data, static_cast<std::size_t>(count));
+      return count;
+    }, nullptr, nullptr);
+  if (g_stderr_sink) {
+    std::setvbuf(g_stderr_sink, nullptr, _IONBF, 0);
+    g_saved_stderr = stderr; stderr = g_stderr_sink;
   }
-  // Unbuffered: a freeze must not swallow the line that explains it.
-  std::setvbuf(g_log, nullptr, _IONBF, 0);
-  // Give CorsixTH's own diagnostics somewhere to land too.
-  if (std::freopen(kLogPath, "a", stderr) != nullptr) {
-    std::setvbuf(stderr, nullptr, _IONBF, 0);
-  }
+#endif
 }
 
 void boot_log(const char* format, ...) {
-  if (g_log == nullptr) {
-    return;
-  }
+  if (!g_log.available()) return;
+  const auto started = now_us();
   std::va_list arguments;
   va_start(arguments, format);
-  std::vfprintf(g_log, format, arguments);
+  g_log.vline(format, arguments);
   va_end(arguments);
-  std::fputc('\n', g_log);
+  g_log_time_us += now_us() - started;
 }
 
 void boot_log_close() {
-  if (g_log != nullptr) {
-    std::fclose(g_log);
-    g_log = nullptr;
+#if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
+  if (g_stderr_sink) {
+    stderr = g_saved_stderr; std::fclose(g_stderr_sink);
+    g_stderr_sink = g_saved_stderr = nullptr;
   }
+#endif
+  g_log.close();
 }
 
 u64 boot_elapsed_ms() noexcept {
@@ -651,9 +667,13 @@ int l_protected_adapter_call(lua_State* state) {
     if (!lua_istable(state,-2)) return luaL_error(state,"inputState must return a table");
     for (const char* field : {"cursor_x","cursor_y"}) {
       lua_getfield(state,-2,field);
-      const bool valid=lua_type(state,-1)==LUA_TNUMBER && std::isfinite(lua_tonumber(state,-1));
+      const auto value = lua_tonumber(state,-1);
+      const bool valid=lua_type(state,-1)==LUA_TNUMBER && std::isfinite(value) &&
+        value == std::floor(value) && value >= 0 && value <= (field[7] == 'x' ? 639 : 479);
       lua_pop(state,1);
       if(!valid)return luaL_error(state,"inputState invalid cursor: %s",field);
+      if (field[7] == 'x') g_input_cursor_x = static_cast<int>(value);
+      else g_input_cursor_y = static_cast<int>(value);
     }
     lua_getfield(state,-2,"input_context");
     if(lua_type(state,-1)!=LUA_TSTRING)return luaL_error(state,"inputState context must be a string");
@@ -665,7 +685,7 @@ int l_protected_adapter_call(lua_State* state) {
     else if(!std::strcmp(name,"dialog"))*request->context=InputContext::Dialog;
     else if(!std::strcmp(name,"text_input"))*request->context=InputContext::TextInput;
     else return luaL_error(state,"inputState unknown context: %s",name);
-  } else if (!std::strcmp(request->method,"handleAction") || !std::strcmp(request->method,"handlePointer") || !std::strcmp(request->method,"cancelPointer")) {
+  } else if (!std::strcmp(request->method,"handleAction") || !std::strcmp(request->method,"handlePointer") || !std::strcmp(request->method,"cancelPointer") || !std::strcmp(request->method,"prepareInput") || !std::strcmp(request->method,"samplePerformanceContext")) {
     if(!lua_isboolean(state,-2)||!lua_toboolean(state,-2))
       return luaL_error(state,"%s rejected: %s",request->method,lua_tostring(state,-1)?lua_tostring(state,-1):"expected true");
   }
@@ -789,17 +809,7 @@ class Runtime {
              ScreenLayout::kBottomWidth, ScreenLayout::kBottomHeight);
     boot_log_memory("S90");
     {
-      // Report whether the top screen lands on the exact 2:1 reduction. Any
-      // other ratio means the game window is not 640x480 and the present path
-      // is resampling, which is worth knowing when frame times look wrong.
-      const RectI viewport = calculate_letterbox_viewport(
-          ScreenLayout::kLegacyWidth, ScreenLayout::kLegacyHeight,
-          ScreenLayout::kTopWidth, ScreenLayout::kTopHeight);
-      int factor = 0;
-      const bool exact =
-          is_integer_downscale(ScreenLayout::kLegacyWidth, viewport.w, &factor);
-      boot_log("present: top viewport %dx%d at x=%d, exact reduction=%s (1/%d)",
-               viewport.w, viewport.h, viewport.x, exact ? "yes" : "no", factor);
+      boot_log("present: logical=640x480 top=400x240 native-crop bottom=320x240 half renderer=software gpu_utilization=unknown cpu_utilization=unknown");
     }
 
     boot_log("runtime: dependencies initialized mode=%s epoch=%llu",asset_mode_.c_str(),static_cast<unsigned long long>(epoch_));
@@ -914,13 +924,26 @@ class Runtime {
 
     if (bottom_mode_ == BottomScreenMode::Game) {
       std::string error;
+      InputContext last_context = InputContext::World;
       try {
+        if (!call_platform_method(state,"prepareInput",nullptr,&error)) throw std::runtime_error(error);
         const bool accepted=input_mapper_.dispatch_mixed(snapshot,std::min(delta_seconds,0.1F),
           [&] { InputContext context;
             if(!call_platform_method(state,"inputState",nullptr,&error,&context))throw std::runtime_error(error);
-            return context;
+            last_context = context; return context;
           },
-          [&](const Action& action){return call_platform_method(state,"handleAction",&action,&error);});
+          [&](const Action& action){
+            const bool ok = call_platform_method(state,"handleAction",&action,&error);
+            if (!ok) {
+              g_log.emergency();
+              const auto name = action_name(action.type);
+              boot_log("input-failed: action=%.*s context=%u x=%d y=%d dx=%.6f dy=%.6f held=%lu circle_x=%d circle_y=%d cursor_x=%d cursor_y=%d",
+                static_cast<int>(name.size()),name.data(),static_cast<unsigned>(last_context),
+                action.position.x,action.position.y,static_cast<double>(action.vector.x),static_cast<double>(action.vector.y),
+                static_cast<unsigned long>(snapshot.held),snapshot.circle_x,snapshot.circle_y,g_input_cursor_x,g_input_cursor_y);
+            }
+            return ok;
+          });
         if(!accepted)throw std::runtime_error(error.empty()?"input batch rejected":error);
       } catch(const std::exception& e) {
         cancel_input(state); report_fatal(e.what()); input_failed_=true; return;
@@ -936,6 +959,12 @@ class Runtime {
 
     const LifecycleDecision periodic = lifecycle_.tick(frame_started);
     apply_lifecycle_decision(state, periodic, false);
+
+    if (telemetry_log_gate_.due(frame_started)) {
+      const auto sample_started = now_us();
+      (void)call_platform_method(state,"samplePerformanceContext");
+      g_workload_time_us += now_us() - sample_started;
+    }
 
     const FrameScheduler::Decision decision = scheduler_.advance(frame_started);
     if (bottom_mode_ == BottomScreenMode::Panel && decision.render_bottom &&
@@ -1032,6 +1061,12 @@ class Runtime {
     }
   }
 
+  void focus_view(int x, int y) noexcept {
+    top_origin_ = {std::clamp(x - 200, 0, 240), std::clamp(y - 120, 0, 240)};
+    view_initialized_ = false;
+    request_redraw();
+  }
+
   bool display_failure(const char* code, const char* detail) {
     ++display_error_count_;
     if (display_error_ != detail) {
@@ -1063,7 +1098,7 @@ class Runtime {
     if (!valid_output_surface(output, 400, 240))
       return display_failure("E-DISPLAY", "INVALID TOP CANVAS");
     const Vec2i pointer{cursor_x, cursor_y};
-    if (view_initialized_ && (pointer.x != previous_pointer_.x || pointer.y != previous_pointer_.y))
+    if (!view_initialized_ || pointer.x != previous_pointer_.x || pointer.y != previous_pointer_.y)
       top_origin_ = follow_pointer_viewport(top_origin_, pointer, 640, 480, 400, 240);
     previous_pointer_ = pointer;
     view_initialized_ = true;
@@ -1093,6 +1128,10 @@ class Runtime {
         static_cast<unsigned long long>(top_submit_us_),
         static_cast<unsigned long long>(display_error_count_), top_origin_.x, top_origin_.y);
     top_attempts_ = top_copy_us_ = top_submit_us_ = display_error_count_ = 0;
+    boot_log("bottom-stats: attempts=%llu copy_us=%llu submit_us=%llu",
+      static_cast<unsigned long long>(bottom_attempts_),static_cast<unsigned long long>(bottom_copy_us_),
+      static_cast<unsigned long long>(bottom_submit_us_));
+    bottom_attempts_ = bottom_copy_us_ = bottom_submit_us_ = 0;
   }
 
   void stage(const char* code, const char* label) {
@@ -1500,6 +1539,7 @@ class Runtime {
       return false;
     }
 
+    const auto copy_started = now_us();
     const bool scaled = halve_rgba(static_cast<const std::uint32_t*>(source->pixels), source->w,
                      source->h, source->pitch / 4,
                      static_cast<std::uint32_t*>(bottom_surface_->pixels),
@@ -1529,7 +1569,11 @@ class Runtime {
     if (lock_source) {
       SDL_UnlockSurface(source);
     }
+    bottom_copy_us_ += now_us() - copy_started;
+    const auto submit_started = now_us();
     const bool submitted = scaled && SDL_UpdateWindowSurface(bottom_window_) == 0;
+    bottom_submit_us_ += now_us() - submit_started;
+    ++bottom_attempts_;
     if (submitted) { dirty_ = false; display_error_ = nullptr; }
     return submitted;
   }
@@ -1544,7 +1588,7 @@ class Runtime {
     if (!has_error && !show_stamp) {
       return;
     }
-    const std::string text = has_error ? state.notice : "R46 " + state.build_tag;
+    const std::string text = has_error ? state.notice : "R47 " + state.build_tag;
     if (text.empty()) {
       return;
     }
@@ -1631,7 +1675,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R46 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R47 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -1729,6 +1773,7 @@ class Runtime {
   bool view_initialized_{false};
   const char* display_error_{nullptr};
   std::uint64_t display_error_count_{0}, top_attempts_{0}, top_copy_us_{0}, top_submit_us_{0};
+  std::uint64_t bottom_attempts_{0}, bottom_copy_us_{0}, bottom_submit_us_{0};
   Uint32 game_window_id_{0U};
   BottomScreenMode bottom_mode_{BottomScreenMode::Game};
   std::uint64_t overlay_until_us_{0U};
@@ -2029,6 +2074,29 @@ int l_request_redraw(lua_State*) {
   return 0;
 }
 
+int l_focus_view(lua_State* state) {
+  const auto x = luaL_checkinteger(state, 1), y = luaL_checkinteger(state, 2);
+  if (x < 0 || x > 639 || y < 0 || y > 479) return luaL_error(state, "focus outside canvas");
+  runtime().focus_view(static_cast<int>(x), static_cast<int>(y));
+  return 0;
+}
+
+int l_workload(lua_State* state) {
+  luaL_checktype(state,1,LUA_TTABLE);
+  const auto language = table_string(state,1,"language","unknown");
+  const auto date = table_string(state,1,"game_date","unknown");
+  boot_log("workload: at_us=%llu scene=%s patients=%lld staff=%lld rooms=%lld speed=%lld date=%s camera_x=%lld camera_y=%lld language=%s music_enabled=%d",
+    static_cast<unsigned long long>(now_us()),g_scene_identity.data(),
+    static_cast<long long>(table_integer(state,1,"patients",-1)),
+    static_cast<long long>(table_integer(state,1,"staff",-1)),
+    static_cast<long long>(table_integer(state,1,"rooms",-1)),
+    static_cast<long long>(table_integer(state,1,"speed",-1)),date.c_str(),
+    static_cast<long long>(table_integer(state,1,"camera_x",0)),
+    static_cast<long long>(table_integer(state,1,"camera_y",0)),language.c_str(),
+    table_boolean(state,1,"music",false));
+  return 0;
+}
+
 int l_atomic_commit(lua_State* state) {
   const char* temporary = luaL_checkstring(state, 1);
   const char* final_path = luaL_checkstring(state, 2);
@@ -2131,6 +2199,8 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "allocation_failure", l_allocation_failure);
   set_function(state, "set_state", l_set_state);
   set_function(state, "request_redraw", l_request_redraw);
+  set_function(state, "focus_view", l_focus_view);
+  set_function(state, "workload", l_workload);
   set_function(state, "atomic_commit", l_atomic_commit);
   set_function(state, "recover_atomic", l_recover_atomic);
   set_function(state, "begin_critical_io", l_begin_critical_io);
@@ -2142,6 +2212,8 @@ int luaopen_th3ds(lua_State* state) {
 }
 
 void register_lua_module(lua_State* state) {
+  g_compact_flush_us=now_us();g_log_time_us=g_workload_time_us=0;
+  g_terminal_observation=g_terminal_observation_saved=false;
   g_operation_sample_count=0;g_operation_overflow=0;g_scene_identity.fill(0);g_window_has_operation=false;
   g_observation_state=state;g_timing.clear();g_timing.reset_window(now_us());
   g_memory_observations.clear();g_observation_flush_us=now_us();g_observation_flush_requested=false;
@@ -2150,6 +2222,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
+  boot_log("diagnostics: revision=R47 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2180,9 +2253,12 @@ void register_lua_module(lua_State* state) {
 }
 
 void report_fatal(const char* reason) noexcept {
+  g_log.emergency();
   const char* text = reason != nullptr ? reason : "unknown fatal error";
   boot_log("FATAL: %s", text);
   boot_log_memory("FATAL");
+  g_terminal_observation = true;
+  runtime_flush_observations(true);
   runtime().show_fatal(text);
   // Give the player time to read the lower screen before the process leaves.
   for (int i = 0; i < 600 && aptMainLoop(); ++i) {
@@ -2193,7 +2269,7 @@ void report_fatal(const char* reason) noexcept {
     gspWaitForVBlank();
   }
   SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);
-  boot_log_close();
+  // Main-loop teardown stops audio before closing the shared diagnostic sink.
 }
 
 void report_resource_memory(const char* category, std::uint64_t bytes,
@@ -2285,17 +2361,37 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
   }
 }
 void runtime_flush_observations(bool force) noexcept {
+  if (g_terminal_observation_saved) return;
   const auto now = now_us();
   g_observation_flush_requested = g_observation_flush_requested || force;
-  if (!g_observation_flush_requested && now - g_observation_flush_us < 60000000U) return;
+  const bool full = g_observation_flush_requested || now - g_observation_flush_us >= 60000000U;
+  if (!full && now - g_compact_flush_us < 10000000U) return;
   const auto p = g_timing.snapshot(now);
+  if (force || g_terminal_observation || now - g_compact_flush_us >= 10000000U) {
+    update_lua_memory(g_observation_state);
+    const auto m = heap_snapshot();
+    boot_log("perf: at_us=%llu scene=%s elapsed_us=%llu successful=%llu failed=%llu intervals=%llu mean_us=%.0f p95_us=%llu max_us=%llu gap_us=%llu heap_free=%llu heap_low=%llu lua=%llu linear_free=%llu log_us=%llu workload_us=%llu terminal=%d truncated=%d",
+      static_cast<unsigned long long>(now),g_scene_identity.data(),static_cast<unsigned long long>(p.elapsed_us),
+      static_cast<unsigned long long>(p.successful_presents),static_cast<unsigned long long>(p.failed_presents),
+      static_cast<unsigned long long>(p.intervals.count),p.intervals.count ? static_cast<double>(p.intervals.total_us)/static_cast<double>(p.intervals.count) : 0.0,
+      static_cast<unsigned long long>(p.intervals.p95_upper_us),static_cast<unsigned long long>(p.intervals.maximum_us),
+      static_cast<unsigned long long>(p.open_present_gap_us),static_cast<unsigned long long>(m.heap_available_estimate),
+      static_cast<unsigned long long>(m.heap_available_low_water),static_cast<unsigned long long>(m.lua_bytes),
+      static_cast<unsigned long long>(m.linear_free),static_cast<unsigned long long>(g_log_time_us),
+      static_cast<unsigned long long>(g_workload_time_us),g_terminal_observation,g_log.truncated());
+    g_compact_flush_us = now;
+  }
+  if (!full) return;
   // A save/load may span the scheduled flush time; retain it until quiescent.
-  for (const auto& stage : p.stages) if (stage.open != 0) return;
+  bool open = false;
+  for (const auto& stage : p.stages) if (stage.open != 0) open = true;
+  if (open && !g_terminal_observation) return;
+  boot_log("observation: terminal=%d active_spans=%d reset_allowed=%d",g_terminal_observation,open,!open);
   runtime().log_display_stats();
   const auto& d = p.intervals;
   boot_log("frame-interval-sum: overflowed=%d",d.total_overflowed);
   boot_log("segment: scene=%s stable_eligible=%d software_submission_only=1 operation_rows=%lu overflow=%llu",
-    g_scene_identity.data(),!g_window_has_operation && g_scene_identity[0] && p.interval_coverage_begin_us>=p.window_begin_us,(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
+    g_scene_identity.data(),!g_terminal_observation && !g_window_has_operation && g_scene_identity[0] && p.interval_coverage_begin_us>=p.window_begin_us,(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
   for(std::size_t i=0;i<g_operation_sample_count;++i){
     const auto& row=g_operation_samples[i];const auto& o=row.observation;const auto& m=o.sample;
     boot_log("operation-memory: site=%s phase=%s identity=%s timestamp=%llu heap_available=%llu arena=%llu lua=%llu lua_known=%d linear_free=%llu",
@@ -2315,9 +2411,9 @@ void runtime_flush_observations(bool force) noexcept {
       (unsigned long long)p.invalid_events);
   for (std::size_t i = 0; i < p.stages.size(); ++i) {
     const auto& s = p.stages[i];
-    boot_log("span: stage=%s count=%llu failed=%llu inclusive_us=%llu exclusive_us=%llu max=%llu",
+    boot_log("span: stage=%s count=%llu failed=%llu inclusive_us=%llu exclusive_us=%llu max=%llu open=%llu",
       kTimingStageNames[i], (unsigned long long)s.completed, (unsigned long long)s.failed,
-      (unsigned long long)s.inclusive_us, (unsigned long long)s.exclusive_us, (unsigned long long)s.maximum_us);
+      (unsigned long long)s.inclusive_us, (unsigned long long)s.exclusive_us, (unsigned long long)s.maximum_us,(unsigned long long)s.open);
   }
   for (std::size_t i = 0; i < g_memory_observations.checkpoints().size(); ++i) {
     const auto& s = g_memory_observations.checkpoints()[i];
@@ -2336,6 +2432,7 @@ void runtime_flush_observations(bool force) noexcept {
       (unsigned long long)s.maximum_requested_bytes, (unsigned long long)s.maximum_known_held_bytes,
       (unsigned long long)s.allocation_failures, (unsigned long long)s.unknown_temporary_samples, o.identity_truncated);
   }
+  if (g_terminal_observation) { g_terminal_observation_saved = true; return; }
   g_timing.reset_window(now); g_memory_observations.clear(); g_observation_flush_us = now;
   g_observation_flush_requested = false;
 }

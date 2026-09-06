@@ -18,6 +18,16 @@ local function clamp(value, low, high)
   return value
 end
 
+local function finite(value)
+  return type(value) == "number" and value == value and
+    value > -math.huge and value < math.huge
+end
+
+local function pixel(value, maximum)
+  assert(finite(value), "pointer coordinate must be finite")
+  return math.floor(clamp(value, 0, maximum))
+end
+
 local function count_table(value)
   if type(value) ~= "table" then return 0 end
   local count = 0
@@ -91,7 +101,7 @@ local function top_window(ui)
   for index = 1, #ui.windows do
     local window = ui.windows[index]
     if window and window.visible ~= false and window ~= ui.bottom_panel and
-       window ~= ui.menu_bar and window ~= ui.adviser and window ~= ui.subtitles then
+       window ~= ui.adviser and window ~= ui.subtitles then
       return window
     end
   end
@@ -134,6 +144,11 @@ function Platform.new(app, native, capabilities)
     last_world = nil,
     menu_checkpointed = false,
     first_level_checkpointed = false,
+    cursor_remainder_x = 0,
+    cursor_remainder_y = 0,
+    -- Observers must not retain a previous UI/world across a level load.
+    pointer_owners = setmetatable({}, {__mode = "v"}),
+    focus_owners = setmetatable({}, {__mode = "v"}),
   }, Platform)
   self:installAtomicSaves()
   self:installLoadTelemetry()
@@ -244,10 +259,74 @@ end
 -- Shared bridge contract for the subsequent InputMapper integration.
 function Platform:inputState()
   local ui = assert(self.app.ui, "input UI unavailable")
-  assert(type(ui.cursor_x) == "number" and type(ui.cursor_y) == "number",
+  assert(finite(ui.cursor_x) and finite(ui.cursor_y),
          "input UI cursor unavailable")
+  local context, window = self:inputContext(), top_window(ui)
+  local owners = self.pointer_owners
+  if owners.ui ~= ui or owners.window ~= window or owners.world ~= self.app.world or
+     self.pointer_context ~= context then
+    self:resetCursorResidual()
+    owners.ui, owners.window, owners.world = ui, window, self.app.world
+    self.pointer_context = context
+  end
   return {cursor_x = ui.cursor_x, cursor_y = ui.cursor_y,
-          input_context = self:inputContext()}
+          input_context = context}
+end
+
+function Platform:resetCursorResidual()
+  self.cursor_remainder_x, self.cursor_remainder_y = 0, 0
+end
+
+-- Called before a new HID sample, never between touch-down and touch-up.
+-- Keep existing UI geometry and direct-touch semantics; move focus only when
+-- a new menu/dialog appears. Native output observes the same UI cursor.
+function Platform:prepareInput()
+  local state = self:inputState()
+  local ui, owners = self.app.ui, self.focus_owners
+  local window = top_window(ui)
+  if owners.ui == ui and owners.window == window then return true end
+  self:resetCursorResidual()
+  if (ui.down_count or 0) ~= 0 then return true end
+  owners.ui, owners.window = ui, window
+  if not window or state.input_context == "build_room" or
+     state.input_context == "place_object" then return true end
+  local x, y = state.cursor_x, state.cursor_y
+  local s = window.apply_ui_scale and (self.app.config.ui_scale or 1) or 1
+  if window == ui.menu_bar then
+    local first = window.menus and window.menus[1]
+    x = first and ((first.x or 0) + (first.width or 32) / 2) * s or 16
+    y = 8 * s
+  elseif finite(window.x) and finite(window.y) and finite(window.width) and
+         finite(window.height) then
+    local left, top = window.x * s, window.y * s
+    local width, height = window.width * s, window.height * s
+    if x < left or x >= left + width or y < top or y >= top + height then
+      x, y = left + width / 2, top + math.min(height / 2, 40)
+    end
+  end
+  local ok, err = self:handlePointer{kind = "motion", x = x, y = y}
+  if not ok then return false, err end
+  if type(self.native.focus_view) == "function" then
+    self.native.focus_view(ui.cursor_x, ui.cursor_y)
+  end
+  return true
+end
+
+function Platform:closeMenuBar()
+  local ui = self.app.ui
+  local menu = ui and ui.menu_bar
+  if not menu or not menu.visible then return false end
+  -- Match the actual UIMenuBar:onTick terminal hide state immediately.
+  menu.open_menus, menu.active_menu = {}, false
+  menu.visible, menu.disappear_counter, menu.menu_disappear_counter = false, nil, nil
+  if menu.on_top then ui:sendToBottom(menu); menu.on_top = false end
+  self:resetCursorResidual()
+  if ui.cursor_y < 24 then
+    local ok, err = self:handlePointer{kind = "motion", x = ui.cursor_x, y = 32}
+    if not ok then error(err, 0) end
+  end
+  self.native.request_redraw()
+  return true
 end
 
 -- Logical pixels only. The native bridge converts bottom pixels exactly once.
@@ -257,9 +336,12 @@ function Platform:handlePointer(event)
     local kind = event.kind
     assert(kind == "motion" or kind == "down" or kind == "up" or kind == "click",
            "invalid pointer kind")
-    local x = clamp(event.x or state.cursor_x, 0, 639)
-    local y = clamp(event.y or state.cursor_y, 0, 479)
+    local x = pixel(event.x or state.cursor_x, 639)
+    local y = pixel(event.y or state.cursor_y, 479)
+    if not event.relative then self:resetCursorResidual() end
     local ui = self.app.ui
+    local menu = ui.menu_bar
+    local menu_was_active = menu and menu.active_menu
     assert(type(ui.setMouseReleased) == "function", "UI mouse capture unavailable")
     ui:setMouseReleased(false)
     self.app:dispatch("motion", x, y, x - state.cursor_x, y - state.cursor_y)
@@ -280,6 +362,8 @@ function Platform:handlePointer(event)
         self.app:dispatch("buttonup", button, current.cursor_x, current.cursor_y)
       end
     end
+    if menu_was_active and ui == self.app.ui and not menu.active_menu and
+       menu.disappear_counter ~= nil then self:closeMenuBar() end
     self.native.request_redraw()
   end)
   if not ok then return false, tostring(err) end
@@ -306,6 +390,7 @@ function Platform:inputContext()
     return false
   end
   if focused(ui) or focused(window) then return "text_input" end
+  if window and window == ui.menu_bar then return "menu" end
   -- Window order is front-to-back. A dialog above a blueprint wins.
   if window then
     local phase = window.phase
@@ -328,6 +413,25 @@ function Platform:dateParts(world)
   local month = safe_call(date, "monthOfYear") or 1
   local year = safe_call(date, "year") or safe_value(function() return date.year end, 1)
   return day, month, year
+end
+
+-- A ten-second diagnostic sample, separate from the per-input lightweight
+-- context. No resource loading, simulation mutation or cached UI collection.
+function Platform:samplePerformanceContext()
+  if type(self.native.workload) ~= "function" then return true end
+  local app, ui = self.app, self.app.ui
+  local hospital, world = ui and ui.hospital, app.world
+  local date = world and world.game_date
+  local date_text = date and type(date.tostring) == "function" and date:tostring() or "unknown"
+  self.native.workload{
+    patients = hospital and count_table(hospital.patients) or 0,
+    staff = hospital and count_table(hospital.staff) or 0,
+    rooms = hospital and count_table(hospital.rooms) or 0,
+    speed = world and world.game_speed or -1, game_date = date_text,
+    camera_x = ui and ui.screen_offset_x or 0, camera_y = ui and ui.screen_offset_y or 0,
+    language = app.config.language or "unknown", music = app.config.play_music == true,
+  }
+  return true
 end
 
 function Platform:syncBottomState()
@@ -413,6 +517,7 @@ function Platform:dispatchKey(name)
 end
 
 function Platform:cancelPointer()
+  self:resetCursorResidual()
   local ui = assert(self.app.ui, "input UI unavailable")
   local function clear(window)
     local button = window.active_button
@@ -445,10 +550,27 @@ function Platform:cancelPointer()
   return true
 end
 
-function Platform:moveCursor(dx, dy)
+function Platform:moveCursor(dx, dy, precise)
   local state = self:inputState()
-  return self:handlePointer{kind = "motion",
-    x = state.cursor_x + dx * 16, y = state.cursor_y + dy * 16}
+  if not finite(dx) or not finite(dy) then return false, "cursor delta must be finite" end
+  if precise then self:resetCursorResidual() end
+  local function advance(position, delta, remainder, maximum)
+    local movement = delta * 16 + remainder
+    if not finite(movement) then return nil end
+    local whole = movement < 0 and math.ceil(movement) or math.floor(movement)
+    local next_position = clamp(position + whole, 0, maximum)
+    -- Discard outward movement at an edge; no delayed jump when reversing.
+    if next_position == 0 and movement < 0 or next_position == maximum and movement > 0 then
+      return next_position, 0
+    end
+    return next_position, movement - whole
+  end
+  local x, rx = advance(state.cursor_x, dx, self.cursor_remainder_x, 639)
+  local y, ry = advance(state.cursor_y, dy, self.cursor_remainder_y, 479)
+  if not x or not y then return false, "cursor delta overflow" end
+  local ok, err = self:handlePointer{kind = "motion", x = x, y = y, relative = true}
+  if ok then self.cursor_remainder_x, self.cursor_remainder_y = rx, ry end
+  return ok, err
 end
 
 function Platform:click(button, double_click)
@@ -517,13 +639,16 @@ function Platform:handleAction(action)
       safe_call(ui, "scrollMap", -(action.dx or 0), -(action.dy or 0))
     end
   elseif kind == "cursor_step" then
-    local ok, err = self:moveCursor(action.dx or 0, action.dy or 0)
+    local ok, err = self:moveCursor(action.dx or 0, action.dy or 0, action.value == 1)
     if not ok then return false, err end
   elseif kind == "confirm" then
     local ok, err = self:click(1, false)
     if not ok then return false, err end
   elseif kind == "cancel" or kind == "close_top_window" then
-    if kind == "close_top_window" or context == "dialog" or
+    self:resetCursorResidual()
+    if top_window(ui) == ui.menu_bar and self:closeMenuBar() then
+      -- The menu owns cancellation; do not send Escape into the world.
+    elseif kind == "close_top_window" or context == "dialog" or
        context == "menu" or context == "text_input" then
       self:dispatchKey("Escape")
     else
@@ -531,7 +656,12 @@ function Platform:handleAction(action)
       if not ok then return false, err end
     end
   elseif kind == "open_quick_menu" then
-    if ui and type(ui.showMenuBar) == "function" then safe_call(ui, "showMenuBar") end
+    if ui and type(ui.showMenuBar) == "function" then
+      ui:showMenuBar()
+      -- Explicit X also refocuses a menu already visible after a hover.
+      self.focus_owners.window = nil
+      return self:prepareInput()
+    end
   elseif kind == "rotate_object" then
     local ok, err = self:click(3, false)
     if not ok then return false, err end
@@ -588,11 +718,13 @@ function Platform:handleAction(action)
   elseif kind == "next_category" then
     self:dispatchKey("Right")
   elseif kind == "lifecycle_suspend" then
+    self:resetCursorResidual()
     if world and world.game_speed ~= 0 then
       self.saved_speed = world.game_speed
       safe_call(world, "setSpeed", 0)
     end
   elseif kind == "lifecycle_resume" then
+    self:resetCursorResidual()
     if world and self.saved_speed then
       safe_call(world, "setSpeed", self.saved_speed)
       self.saved_speed = nil

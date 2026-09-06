@@ -101,6 +101,7 @@ if(CTH3DS_BUILD_TESTS)
     tests/test_audio_mixer.cpp
     tests/test_atomic_save.cpp
     tests/test_bottom_ui.cpp
+    tests/test_bounded_log.cpp
     tests/test_build_gesture.cpp
     tests/test_fixed_step.cpp
     tests/test_framebuffer_scaler.cpp

@@ -2607,10 +2607,16 @@ struct SDL_Event {int type=0;
  struct {int x=0,y=0,xrel=0,yrel=0;} motion;
  struct {int numFingers=0;double dTheta=0,dDist=0,x=0,y=0;} mgesture;
  struct {int event=0,data1=0,data2=0;} window;
- struct {void* data1=nullptr;} user;
+ struct {int code=0;void* data1=nullptr;} user;
 };
 cth3ds::Telemetry g_timing;
 std::uint64_t clock_us=0;
+// This timing seam generates no sound-over events. Real SDL event ownership,
+// queue behavior and completion deadlines are covered by test_sound_lifetime.
+Uint32 SDL_GetTicks(){return static_cast<Uint32>(clock_us/1000);}
+void cth3ds_poll_sound_callbacks(Uint32){}
+bool cth3ds_consume_sound_callback(const SDL_Event&){return true;}
+void cth3ds_clear_sound_callbacks(){}
 int delayed=-1,failure=0,iterations=0,infinite_loop_counter=0;
 bool g_top_present_seen=false,g_top_present_ok=false;
 std::string_view dispatch;

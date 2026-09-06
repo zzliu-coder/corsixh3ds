@@ -2484,7 +2484,8 @@ class U3GeneratedClockTests(unittest.TestCase):
         top = function_body((cls.upstream/'CorsixTH/Src/th_gfx_sdl.cpp').read_text(), 'bool render_target::end_frame()')
         runtime = (ROOT/'src/3ds/runtime_3ds.cpp').read_text()
         bottom = function_body(runtime, '  void after_frame(bool draw_success)')
-        code = HARNESS.replace('// INSERT_TOP', top).replace('// INSERT_BOTTOM', bottom).replace('// INSERT_LOOP', loop)
+        present = function_body(runtime, 'bool runtime_present_game(int cursor_x, int cursor_y) noexcept')
+        code = HARNESS.replace('// INSERT_TOP', top).replace('// INSERT_BOTTOM', bottom).replace('// INSERT_LOOP', loop).replace('// INSERT_PRESENT', present)
         source = directory/'loop.cpp'
         source.write_text(code)
         compiler = shutil.which('clang++') or shutil.which('g++')
@@ -2506,7 +2507,7 @@ class U3GeneratedClockTests(unittest.TestCase):
         baseline = self.run_case(-1)
         self.assertEqual(baseline['success'], 301)
         self.assertEqual(baseline['count'], 300)
-        for delayed in (2, 4, 5, 7):
+        for delayed in (2, 3, 4, 5, 7):
             with self.subTest(delayed=delayed):
                 value = self.run_case(delayed)
                 self.assertEqual(value['sum']-baseline['sum'], 300*7000)
@@ -2515,7 +2516,7 @@ class U3GeneratedClockTests(unittest.TestCase):
                                      301*7000 if stage == delayed else 0)
 
     def test_actual_loop_top_draw_and_bottom_failures_are_not_successes(self):
-        for failure in (1, 2, 3):
+        for failure in (1, 2, 3, 5):
             with self.subTest(failure=failure):
                 value = self.run_case(-1, failure)
                 self.assertEqual(value['success'], 0)
@@ -2648,15 +2649,21 @@ enum class BottomScreenMode{Game,Panel};
 struct Runtime {
  bool initialized_=true;BottomScreenMode bottom_mode_=BottomScreenMode::Game;
  bool mirror_game_to_bottom(){spend(5);return failure!=3;}
+ bool present_game(int,int){spend(4);return failure!=1;}
  // INSERT_BOTTOM
 };
-void runtime_after_frame(bool ok){static Runtime runtime;runtime.after_frame(ok);}
+Runtime& runtime(){static Runtime value;return value;}
+void boot_log(const char*){}
+// INSERT_PRESENT
+void runtime_after_frame(bool ok){runtime().after_frame(ok);}
 }
 using cth3ds::now_us;
 constexpr int SDL_BLENDMODE_BLEND=1;
 void SDL_ClearError(){}
 const char* SDL_GetError(){return failure==1?"present-failed":"";}
-void SDL_RenderPresent(void*){spend(4);}
+// Real pixel/ownership operations run in test_dual_screen_canvas. Here the
+// flush belongs to the generated game's render span; LCD submission is Top.
+int SDL_RenderFlush(void*){clock_us+=500;return failure==5?-1:0;}
 void SDL_SetRenderDrawBlendMode(void*,int){}
 void SDL_SetRenderDrawColor(void*,int,int,int,int){}
 void SDL_RenderFillRect(void*,void*){}

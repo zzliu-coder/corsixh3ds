@@ -249,9 +249,10 @@ void boot_log_open() {
   // libctru/newlib FILE adapter funnels upstream stderr into the same bounded
   // sink. A separate append descriptor would bypass the cap and write owner.
   g_stderr_sink = funopen(nullptr, nullptr,
-    [](void*, const char* data, int count) -> int {
-      if (count > 0) g_log.write(data, static_cast<std::size_t>(count));
-      return count;
+    [](void*, const char* data, std::size_t count) -> int {
+      const auto accepted = std::min(count, static_cast<std::size_t>(std::numeric_limits<int>::max()));
+      if (accepted > 0) g_log.write(data, accepted);
+      return static_cast<int>(accepted);
     }, nullptr, nullptr);
   if (g_stderr_sink) {
     std::setvbuf(g_stderr_sink, nullptr, _IONBF, 0);

@@ -120,7 +120,8 @@ assert(loadfile(menu_methods))()
 function GameUI:showMenuBar() self.menu_bar:appear() end
 do
  local p,app,ui=fresh()
- local focused,selected=0,0
+ local focused,selected,saved_config=0,0,0
+ app.saveConfig=function()saved_config=saved_config+1 end
  p.native.focus_view=function(x,y) focused=focused+1;assert(x==ui.cursor_x and y==ui.cursor_y) end
  ui.sendToTop=function()end;ui.sendToBottom=function()end;ui.playSound=function()end
  local root={x=0,width=64,level=1,items={{handler=function()selected=selected+1 end}}}
@@ -143,7 +144,7 @@ do
  assert(p:inputState().input_context=='world')
  assert(p:handleAction{type='open_quick_menu'})
  assert(p:handleAction{type='cancel'})
- assert(not menu.visible and ui.cursor_y>=24 and selected==1)
+ assert(not menu.visible and ui.cursor_y>=24 and selected==1 and saved_config==2)
  local dialog={visible=true,x=450,y=350,width=120,height=100}
  ui.windows={dialog};assert(p:prepareInput())
  assert(ui.cursor_x==510 and ui.cursor_y==390)

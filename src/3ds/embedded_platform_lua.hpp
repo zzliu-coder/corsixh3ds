@@ -316,6 +316,9 @@ function Platform:closeMenuBar()
   local ui = self.app.ui
   local menu = ui and ui.menu_bar
   if not menu or not menu.visible then return false end
+  -- Upstream's delayed menu closure saves changed checkbox/volume options.
+  -- Preserve that side effect when B/leaf selection closes it immediately.
+  if type(self.app.saveConfig) == "function" then self.app:saveConfig() end
   -- Match the actual UIMenuBar:onTick terminal hide state immediately.
   menu.open_menus, menu.active_menu = {}, false
   menu.visible, menu.disappear_counter, menu.menu_disappear_counter = false, nil, nil

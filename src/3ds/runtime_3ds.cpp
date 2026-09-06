@@ -1,3 +1,8 @@
+// newlib hides the BSD FILE callback API in strict C++17 unless requested
+// before any system header. Keep the feature opt-in local to this 3DS TU.
+#if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE 1
+#endif
 #include "runtime_3ds.hpp"
 
 #include <3ds.h>

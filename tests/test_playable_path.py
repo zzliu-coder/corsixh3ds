@@ -2245,8 +2245,11 @@ PINNED_SOURCE = (
     'EgPZzvgXxuq52ajQrav/C3/LUIk='
 )
 
+SOURCE_HASHES['CorsixTH/Src/th_gfx_sdl.h'] = 'e5b396bfbd1a1d6ea544005e381bbb209da7c96457fec35d622d0c506b4def3a'
+
 def original_sources(root):
     files=json.loads(zlib.decompress(base64.b64decode(PINNED_SOURCE)))
+    files['CorsixTH/Src/th_gfx_sdl.h'] = (ROOT/'tests/fixtures/th_gfx_sdl.h.pinned').read_text(encoding='utf-8')
     for name,text in files.items():
         assert hashlib.sha256(text.encode()).hexdigest()==SOURCE_HASHES[name]
         path=root/name
@@ -2259,7 +2262,7 @@ def generated_sources(directory):
     generated = original_sources(directory / 'upstream')
     originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in generated.rglob('*') if path.is_file()}
-    if originals != SOURCE_HASHES or len(originals) != 20:
+    if originals != SOURCE_HASHES or len(originals) != 21:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
     tracked = subprocess.check_output(

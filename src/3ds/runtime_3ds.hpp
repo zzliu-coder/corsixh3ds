@@ -8,6 +8,7 @@
 
 struct lua_State;
 struct SDL_Window;
+struct SDL_Surface;
 union SDL_Event;
 
 namespace cth3ds {
@@ -21,9 +22,12 @@ void register_lua_module(lua_State* state);
 [[nodiscard]] bool runtime_audio_reserve(std::size_t bytes, const char* identity) noexcept;
 void runtime_tick(lua_State* state);
 
-//! Tell the platform layer which window CorsixTH renders into. SDL2 cannot
-//! enumerate windows, and the lower screen has to read that window's surface.
+//! Register the physical upper window. It has no SDL_Renderer attached.
 void runtime_set_game_window(SDL_Window* window) noexcept;
+//! Borrow the native-resolution source owned by render_target. Clear before free.
+void runtime_set_game_canvas(SDL_Surface* surface) noexcept;
+//! Present an already-flushed source. Cursor coordinates come from the game UI.
+[[nodiscard]] bool runtime_present_game(int cursor_x, int cursor_y) noexcept;
 
 //! Called immediately after CorsixTH presents a frame, so the lower screen can
 //! mirror it at half size while the pixels are still current.

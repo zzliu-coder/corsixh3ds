@@ -38,8 +38,8 @@ TOOLCHAIN="${DEVKITPRO}/cmake/3DS.cmake"
 BUILD="${CTH3DS_BUILD_DIR}/CorsixTH"
 set_cmake_generator
 
-# CorsixTH keeps its 640x480 logical canvas. The patched SDL2 N3DS framebuffer
-# letterboxes it to 400x240 and exposes a second 320x240 window for the touch UI.
+# CorsixTH draws into its owned 640x480 surface. Runtime copies a native 400x240
+# viewport to the upper window and a 320x240 overview to the lower window.
 ci_diag_step configure "${BUILD_EVIDENCE_DIR}/configure.log"
 cmake -S "${UPSTREAM_DIR}" -B "${BUILD}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
   -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \

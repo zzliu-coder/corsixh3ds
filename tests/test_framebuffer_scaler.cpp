@@ -10,6 +10,32 @@ TEST(framebuffer_scaler_top_screen_preserves_aspect_ratio) {
             (cth3ds::RectI{40, 0, 320, 240}));
 }
 
+TEST(native_view_follows_pointer_with_dead_zone_and_clamped_edges) {
+  EXPECT_EQ(cth3ds::follow_pointer_viewport({120,120}, {320,240}, 640,480,400,240), (cth3ds::Vec2i{120,120}));
+  EXPECT_EQ(cth3ds::follow_pointer_viewport({120,120}, {639,479}, 640,480,400,240), (cth3ds::Vec2i{240,240}));
+  EXPECT_EQ(cth3ds::follow_pointer_viewport({240,240}, {0,0}, 640,480,400,240), (cth3ds::Vec2i{0,0}));
+  EXPECT_EQ(cth3ds::follow_pointer_viewport({999,999}, {999,999}, 640,480,400,240), (cth3ds::Vec2i{240,240}));
+}
+
+TEST(native_view_preserves_every_pixel_and_padded_rows) {
+  const std::uint32_t src[] = {0,1,2,3,999, 10,11,12,13,999, 20,21,22,23,999};
+  std::uint32_t dst[] = {77,77,77,77,77,77};
+  EXPECT_TRUE(cth3ds::copy_rgba_view(src,4,3,5,{1,1},dst,2,2,3));
+  EXPECT_EQ(dst[0],11U); EXPECT_EQ(dst[1],12U); EXPECT_EQ(dst[2],77U);
+  EXPECT_EQ(dst[3],21U); EXPECT_EQ(dst[4],22U); EXPECT_EQ(dst[5],77U);
+  EXPECT_FALSE(cth3ds::copy_rgba_view(src,4,3,5,{3,1},dst,2,2,3));
+  EXPECT_FALSE(cth3ds::copy_rgba_view(src,4,3,3,{0,0},dst,2,2,3));
+}
+
+TEST(native_and_half_views_convert_n3ds_pixel_order) {
+  const std::uint32_t src[] = {0x44332211U,0,0,0};
+  std::uint32_t dst[4]{};
+  EXPECT_TRUE(cth3ds::copy_rgba_view(src,2,2,2,{0,0},dst,2,2,2,true));
+  EXPECT_EQ(dst[0],0x11223344U);
+  EXPECT_TRUE(cth3ds::halve_rgba(src,2,2,2,dst,1,true));
+  EXPECT_EQ(dst[0],0x11223344U);
+}
+
 TEST(framebuffer_scaler_bottom_screen_is_native) {
   EXPECT_EQ(cth3ds::calculate_letterbox_viewport(320, 240, 320, 240),
             (cth3ds::RectI{0, 0, 320, 240}));

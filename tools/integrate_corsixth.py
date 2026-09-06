@@ -25,6 +25,7 @@ from sound_lifetime import (sound_transaction, patch_sound_lifetime,
 from sound_callbacks import patch_sound_callbacks, check_sound_callbacks
 from sprite_residency import patch_sprite_residency, check_sprite_residency
 from load_recovery import patch_load_recovery, check_load_recovery
+from dual_screen_canvas import patch_dual_screen, check_dual_screen
 
 UPSTREAM_TAG = "v0.70.1"
 UPSTREAM_COMMIT = "56bd5d00f76331c7f76d7b696726a7926303ca0c"
@@ -1899,6 +1900,7 @@ def patch_sound_initialization(root: Path, dry_run: bool = False) -> list[Change
 
 def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors: list[str] = check_sound_lifetime(root, SOUND_INIT_R41_TRANSACTION)
+    errors.extend(check_dual_screen(root))
     errors.extend(check_sound_callbacks(root))
     errors.extend(check_sprite_residency(root))
     errors.extend(check_load_recovery(root))
@@ -1988,7 +1990,9 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
             preview=Path(temp)/"upstream"
             shutil.copytree(root,preview,ignore=shutil.ignore_patterns(".git"))
             patch_sources(preview,False);patch_product_sources(preview,False)
-            return patch_u3_observations(preview,False)
+            changes = patch_u3_observations(preview,False)
+            changes.extend(Change(path, "dual-screen-canvas") for path in patch_dual_screen(preview))
+            return changes
     changes = []
     operations = [('CorsixTH/Src/sdl_core.cpp',
   '    do {\n      // CORSIXTH_3DS_BEGIN: bottom-event-filter',
@@ -2667,6 +2671,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                            patch_sound_callbacks(root))
             changes.extend(Change(path, "sprite-residency") for path in
                            patch_sprite_residency(root))
+            changes.extend(Change(path, "dual-screen-canvas") for path in
+                           patch_dual_screen(root))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)
             manifest_path = root / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"

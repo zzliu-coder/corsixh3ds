@@ -58,7 +58,9 @@ class RuntimeStaticTests(unittest.TestCase):
             self.assertIn(token, self.runtime)
 
     def test_mirror_contract_failure_is_explicit(self) -> None:
-        self.assertIn('startup_code_ = "E-MIRROR"', self.runtime)
+        self.assertIn('display_failure("E-MIRROR", "INVALID MIRROR CANVAS")', self.runtime)
+        self.assertIn('if (display_error_ != detail)', self.runtime)
+        self.assertIn('++display_error_count_', self.runtime)
         self.assertNotIn("using panel", self.runtime)
 
     def test_legacy_panel_buffer_is_lazy(self) -> None:

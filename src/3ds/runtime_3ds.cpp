@@ -851,7 +851,7 @@ class Runtime {
     input_mapper_.reset();input_failed_=false;
     initialized_ = false; ready_ = false;
     lua_state_ = nullptr;
-    game_window_=nullptr;game_window_id_=0;
+    game_window_=nullptr;game_window_id_=0;game_surface_=nullptr;
     resource_start_failed_=false;resource_session_.reset();
     pending_lifecycle_.store(0);exit_requested_.store(false);
     lifecycle_.reset(0);last_tick_us_=0;scheduler_.reset(0);
@@ -995,7 +995,9 @@ class Runtime {
   void force_render_bottom() {
     dirty_ = true;
     if (bottom_mode_ == BottomScreenMode::Game) {
-      mirror_game_to_bottom();
+      // Game pixels are published only by after_frame, after SDL_RenderFlush.
+      // A UI/lifecycle notification may arrive while draw commands are queued.
+      scheduler_.request_redraw();
     } else {
       render_bottom();
     }
@@ -1007,6 +1009,7 @@ class Runtime {
   void set_game_window(SDL_Window* window) noexcept {
     game_window_ = window;
     game_window_id_ = window != nullptr ? SDL_GetWindowID(window) : 0U;
+    if (!window) { game_surface_ = nullptr; return; }
     boot_log("runtime: game window registered (id %lu)",
              static_cast<unsigned long>(game_window_id_));
     try {
@@ -1017,6 +1020,79 @@ class Runtime {
     } catch (...) {
       boot_log("runtime: early lower screen failed: unknown error");
     }
+  }
+
+  void set_game_canvas(SDL_Surface* surface) noexcept {
+    game_surface_ = surface;
+    view_initialized_ = false;
+    if (surface) {
+      top_origin_ = {(surface->w - 400) / 2, (surface->h - 240) / 2};
+      boot_log("canvas: owned %dx%d format=%lu pitch=%d top=400x240 native bottom=320x240 half",
+               surface->w, surface->h, static_cast<unsigned long>(surface->format->format), surface->pitch);
+    }
+  }
+
+  bool display_failure(const char* code, const char* detail) {
+    ++display_error_count_;
+    if (display_error_ != detail) {
+      display_error_ = detail;
+      startup_code_ = code;
+      startup_label_ = detail;
+      boot_log("display: %s %s", code, detail);
+      render_boot_page(true);
+    }
+    return false;
+  }
+
+  bool valid_output_surface(const SDL_Surface* surface, int width, int height) const {
+    if (!game_surface_ || !game_surface_->pixels || !game_surface_->format ||
+        game_surface_->w != 640 || game_surface_->h != 480 ||
+        game_surface_->pitch < 640 * 4 || game_surface_->pitch % 4 != 0 ||
+        !surface || !surface->pixels || !surface->format ||
+        surface->w != width || surface->h != height ||
+        surface->pitch < width * 4 || surface->pitch % 4 != 0) return false;
+    const auto src = game_surface_->format->format;
+    const auto dst = surface->format->format;
+    return (src == SDL_PIXELFORMAT_ABGR8888 || src == SDL_PIXELFORMAT_RGBA8888) &&
+           (dst == SDL_PIXELFORMAT_ABGR8888 || dst == SDL_PIXELFORMAT_RGBA8888);
+  }
+
+  bool present_game(int cursor_x, int cursor_y) {
+    if (!game_window_ || !game_surface_) return false;
+    SDL_Surface* output = SDL_GetWindowSurface(game_window_);
+    if (!valid_output_surface(output, 400, 240))
+      return display_failure("E-DISPLAY", "INVALID TOP CANVAS");
+    const Vec2i pointer{cursor_x, cursor_y};
+    if (view_initialized_ && (pointer.x != previous_pointer_.x || pointer.y != previous_pointer_.y))
+      top_origin_ = follow_pointer_viewport(top_origin_, pointer, 640, 480, 400, 240);
+    previous_pointer_ = pointer;
+    view_initialized_ = true;
+    const bool lock = SDL_MUSTLOCK(output) != 0;
+    if (lock && SDL_LockSurface(output) != 0)
+      return display_failure("E-DISPLAY", "TOP LOCK FAILED");
+    const auto before = now_us();
+    const bool copied = copy_rgba_view(static_cast<const std::uint32_t*>(game_surface_->pixels),
+        640, 480, game_surface_->pitch / 4, top_origin_,
+        static_cast<std::uint32_t*>(output->pixels), 400, 240, output->pitch / 4,
+        game_surface_->format->format != output->format->format);
+    top_copy_us_ += now_us() - before;
+    if (lock) SDL_UnlockSurface(output);
+    const auto submitted_at = now_us();
+    const bool submitted = copied && SDL_UpdateWindowSurface(game_window_) == 0;
+    top_submit_us_ += now_us() - submitted_at;
+    ++top_attempts_;
+    if (!submitted) return display_failure("E-DISPLAY", "TOP PRESENT FAILED");
+    return true;
+  }
+
+  void log_display_stats() noexcept {
+    if (!top_attempts_ && !display_error_count_) return;
+    boot_log("display-stats: attempts=%llu copy_us=%llu submit_us=%llu errors=%llu view_x=%d view_y=%d",
+        static_cast<unsigned long long>(top_attempts_),
+        static_cast<unsigned long long>(top_copy_us_),
+        static_cast<unsigned long long>(top_submit_us_),
+        static_cast<unsigned long long>(display_error_count_), top_origin_.x, top_origin_.y);
+    top_attempts_ = top_copy_us_ = top_submit_us_ = display_error_count_ = 0;
   }
 
   void stage(const char* code, const char* label) {
@@ -1407,25 +1483,10 @@ class Runtime {
     if (bottom_window_ == nullptr || game_window_ == nullptr) {
       return false;
     }
-    SDL_Surface* source = SDL_GetWindowSurface(game_window_);
+    SDL_Surface* source = game_surface_;
     bottom_surface_ = SDL_GetWindowSurface(bottom_window_);
-    if (source == nullptr || bottom_surface_ == nullptr) {
-      return false;
-    }
-    if (source->format->format != bottom_surface_->format->format ||
-        source->w < ScreenLayout::kBottomWidth * 2 ||
-        source->h < ScreenLayout::kBottomHeight * 2 ||
-        source->pitch % 4 != 0 || bottom_surface_->pitch % 4 != 0) {
-      // Keep this as an explicit fault. A silent switch to the legacy panel
-      // makes a bad game-surface contract look like a successful UI change.
-      boot_log("mirror: unsupported source %dx%d fmt %lu",
-               source->w, source->h,
-               static_cast<unsigned long>(source->format->format));
-      startup_code_ = "E-MIRROR";
-      startup_label_ = "UNSUPPORTED GAME SURFACE";
-      render_boot_page(true);
-      return false;
-    }
+    if (!valid_output_surface(bottom_surface_, 320, 240))
+      return display_failure("E-MIRROR", "INVALID MIRROR CANVAS");
 
     const bool lock_source = SDL_MUSTLOCK(source) != 0;
     if (lock_source && SDL_LockSurface(source) != 0) {
@@ -1442,9 +1503,25 @@ class Runtime {
     const bool scaled = halve_rgba(static_cast<const std::uint32_t*>(source->pixels), source->w,
                      source->h, source->pitch / 4,
                      static_cast<std::uint32_t*>(bottom_surface_->pixels),
-                     bottom_surface_->pitch / 4);
+                     bottom_surface_->pitch / 4,
+                     source->format->format != bottom_surface_->format->format);
 
-    if (scaled) draw_overlay_strip();
+    if (scaled) {
+      // The overview's outline identifies exactly what is visible above.
+      auto* pixels = static_cast<std::uint32_t*>(bottom_surface_->pixels);
+      const int pitch = bottom_surface_->pitch / 4;
+      const int x = top_origin_.x / 2, y = top_origin_.y / 2;
+      const auto color = SDL_MapRGBA(bottom_surface_->format, 255, 255, 255, 255);
+      for (int dx = 0; dx < 200; ++dx) {
+        pixels[y * pitch + x + dx] = color;
+        pixels[(y + 119) * pitch + x + dx] = color;
+      }
+      for (int dy = 0; dy < 120; ++dy) {
+        pixels[(y + dy) * pitch + x] = color;
+        pixels[(y + dy) * pitch + x + 199] = color;
+      }
+      draw_overlay_strip();
+    }
 
     if (lock_destination) {
       SDL_UnlockSurface(bottom_surface_);
@@ -1453,7 +1530,7 @@ class Runtime {
       SDL_UnlockSurface(source);
     }
     const bool submitted = scaled && SDL_UpdateWindowSurface(bottom_window_) == 0;
-    if (submitted) dirty_ = false;
+    if (submitted) { dirty_ = false; display_error_ = nullptr; }
     return submitted;
   }
 
@@ -1467,7 +1544,7 @@ class Runtime {
     if (!has_error && !show_stamp) {
       return;
     }
-    const std::string text = has_error ? state.notice : state.build_tag;
+    const std::string text = has_error ? state.notice : "R46 " + state.build_tag;
     if (text.empty()) {
       return;
     }
@@ -1554,7 +1631,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH 3DS ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R46 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -1646,6 +1723,12 @@ class Runtime {
 
   lua_State* lua_state_{nullptr};
   SDL_Window* game_window_{nullptr};
+  SDL_Surface* game_surface_{nullptr}; // borrowed; render_target owns the pixels
+  Vec2i top_origin_{120, 120};
+  Vec2i previous_pointer_{};
+  bool view_initialized_{false};
+  const char* display_error_{nullptr};
+  std::uint64_t display_error_count_{0}, top_attempts_{0}, top_copy_us_{0}, top_submit_us_{0};
   Uint32 game_window_id_{0U};
   BottomScreenMode bottom_mode_{BottomScreenMode::Game};
   std::uint64_t overlay_until_us_{0U};
@@ -2144,6 +2227,20 @@ void runtime_set_game_window(SDL_Window* window) noexcept {
   runtime().set_game_window(window);
 }
 
+void runtime_set_game_canvas(SDL_Surface* surface) noexcept {
+  runtime().set_game_canvas(surface);
+}
+
+bool runtime_present_game(int cursor_x, int cursor_y) noexcept {
+  RuntimeTimingScope top(TimingStage::Top);
+  bool success = false;
+  try { success = runtime().present_game(cursor_x, cursor_y); }
+  catch (...) { boot_log("display: native present exception"); }
+  top.finish(success);
+  runtime_top_present_complete(success);
+  return success;
+}
+
 std::uint64_t runtime_span_begin(TimingStage stage) noexcept {
   if(stage==TimingStage::Save||stage==TimingStage::Load||stage==TimingStage::Restore)g_window_has_operation=true;
   return g_timing.begin_span(stage, now_us());
@@ -2194,6 +2291,7 @@ void runtime_flush_observations(bool force) noexcept {
   const auto p = g_timing.snapshot(now);
   // A save/load may span the scheduled flush time; retain it until quiescent.
   for (const auto& stage : p.stages) if (stage.open != 0) return;
+  runtime().log_display_stats();
   const auto& d = p.intervals;
   boot_log("frame-interval-sum: overflowed=%d",d.total_overflowed);
   boot_log("segment: scene=%s stable_eligible=%d software_submission_only=1 operation_rows=%lu overflow=%llu",

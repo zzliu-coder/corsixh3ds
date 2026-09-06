@@ -30,7 +30,7 @@ inline constexpr int kMaxScalerAxis = 512;
 
 // True when the mapping degenerates to "take every Nth pixel", which the
 // device path implements without any per-pixel index lookup. 640x480 -> 320x240
-// (the CorsixTH top screen case) hits this with a factor of 2.
+// (the CorsixTH lower-screen overview) hits this with a factor of 2.
 [[nodiscard]] bool is_integer_downscale(int source_span, int viewport_span,
                                         int* factor) noexcept;
 
@@ -48,13 +48,27 @@ struct CropView {
                                              int destination_width,
                                              int destination_height) noexcept;
 
+// Keep the logical pointer inside a native-pixel viewport without moving the
+// view for every small cursor motion. Both pointer and origin are logical pixels.
+[[nodiscard]] Vec2i follow_pointer_viewport(Vec2i origin, Vec2i pointer,
+    int source_width, int source_height, int view_width, int view_height,
+    int margin = 32) noexcept;
+
+// Copy an exact native-pixel rectangle, including padded source/destination rows.
+// swap_bytes converts ABGR8888 words to the N3DS RGBA8888 window format.
+[[nodiscard]] bool copy_rgba_view(const std::uint32_t* source,
+    int source_width, int source_height, int source_pitch_pixels,
+    Vec2i origin, std::uint32_t* destination, int view_width, int view_height,
+    int destination_pitch_pixels, bool swap_bytes = false) noexcept;
+
 // Exact 2:1 reduction of an RGBA8888 image, taking every second pixel on both
 // axes. This is what the lower screen shows: a whole 640x480 CorsixTH frame in
 // 320x240, so touch coordinates map back by a plain doubling.
 [[nodiscard]] bool halve_rgba(const std::uint32_t* source, int source_width,
                               int source_height, int source_pitch_pixels,
                               std::uint32_t* destination,
-                              int destination_pitch_pixels) noexcept;
+                              int destination_pitch_pixels,
+                              bool swap_bytes = false) noexcept;
 
 // Nearest-neighbour RGBA8888 scaler used by host tests and the simulator. The
 // SDL2/N3DS dependency patch implements the same mapping for 16/24/32-bit

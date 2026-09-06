@@ -45,6 +45,10 @@
 
 extern "C" int luaopen_lfs(lua_State* state);
 extern "C" int luaopen_lpeg(lua_State* state);
+#ifndef CTH3DS_STUB_BUILD
+// Generated game binding; invoked on the main thread, never in an APT hook.
+void cth3ds_suspend_sound_callbacks(bool suspend, Uint32 now);
+#endif
 
 // libctru's default allocator reserves as much as 32 MiB for linear memory on
 // an Old 3DS. CorsixTH's startup pressure is ordinary malloc/new memory (Lua,
@@ -767,6 +771,10 @@ class Runtime {
     const std::uint64_t current = now_us();
     lifecycle_.set_autosave_enabled(asset_mode_ == "th3ds");
     lifecycle_.reset(current);
+    lifecycle_audio_suspended_ = false;
+#ifndef CTH3DS_STUB_BUILD
+    cth3ds_suspend_sound_callbacks(false, SDL_GetTicks());
+#endif
     last_tick_us_ = current;
     state_refresh_gate_.reset(current, true);
     system_refresh_gate_.reset(current, true);
@@ -1267,7 +1275,11 @@ class Runtime {
                                 const LifecycleDecision& decision,
                                 bool is_resume) {
     const auto restore_token=is_resume?runtime_span_begin(TimingStage::Restore):0;
-    if (decision.pause_audio) {
+    if (decision.pause_audio && !lifecycle_audio_suspended_) {
+      lifecycle_audio_suspended_ = true;
+#ifndef CTH3DS_STUB_BUILD
+      cth3ds_suspend_sound_callbacks(true, SDL_GetTicks());
+#endif
       for(int c=0;c<32;++c) { audio_paused_before_[c]=Mix_Paused(c)!=0; if(!audio_paused_before_[c])Mix_Pause(c); }
       music_paused_before_=Mix_PausedMusic()!=0;Mix_PauseMusic();
     }
@@ -1291,7 +1303,11 @@ class Runtime {
         boot_log("runtime-core: resume commit");
       }
     }
-    if (decision.resume_audio) {
+    if (decision.resume_audio && lifecycle_audio_suspended_) {
+#ifndef CTH3DS_STUB_BUILD
+      cth3ds_suspend_sound_callbacks(false, SDL_GetTicks());
+#endif
+      lifecycle_audio_suspended_ = false;
       for(int c=0;c<32;++c)if(!audio_paused_before_[c])Mix_Resume(c);
       if(!music_paused_before_)Mix_ResumeMusic();
       scheduler_.reset(now_us());last_tick_us_=now_us();
@@ -1659,6 +1675,7 @@ class Runtime {
   std::uint64_t epoch_{0};
   bool audio_paused_before_[32]{};
   bool music_paused_before_{false};
+  bool lifecycle_audio_suspended_{false};
   bool apt_hooked_{false};
   bool ptmu_ready_{false};
   bool resource_start_failed_{false};

@@ -27,6 +27,8 @@ struct sound_deadline {
 };
 std::array<sound_deadline, 1000> sound_deadlines{};
 Uint32 sound_deadline_token = 0;
+bool sound_deadlines_suspended = false;
+Uint32 sound_suspend_started = 0;
 
 Uint32 next_sound_token() {
   if (++sound_deadline_token == 0) ++sound_deadline_token;
@@ -36,6 +38,7 @@ void clear_sound_deadlines() {
   for (auto& item : sound_deadlines) item.active = false;
 }
 bool schedule_sound_deadline(int id, Uint32 duration, Uint32 now) {
+  if (sound_deadlines_suspended) now = sound_suspend_started;
   sound_deadline* slot = nullptr;
   for (auto& item : sound_deadlines) {
     if (item.active && item.id == id) { slot = &item; break; }
@@ -50,6 +53,7 @@ void stop_sound_deadline(int id) {
     if (item.active && item.id == id) item.active = false;
 }
 void pause_sound_deadline(int id, bool pause, Uint32 now) {
+  if (sound_deadlines_suspended) now = sound_suspend_started;
   for (auto& item : sound_deadlines) {
     if (!item.active || item.id != id || item.paused == pause) continue;
     if (pause) {
@@ -143,6 +147,7 @@ EXPORTS = '''
 #ifdef CORSIXTH_3DS
 // Called only by the SDL/Lua game thread, including pause/stop/owner changes.
 void cth3ds_poll_sound_callbacks(Uint32 now) {
+  if (sound_deadlines_suspended) return;
   for (auto& item : sound_deadlines) {
     if (!item.active || item.paused || item.queued || now - item.start < item.remaining) continue;
     SDL_Event event{};
@@ -163,11 +168,34 @@ bool cth3ds_consume_sound_callback(const SDL_Event& event) {
   return false;
 }
 void cth3ds_clear_sound_callbacks() { clear_sound_deadlines(); }
+void cth3ds_suspend_sound_callbacks(bool suspend, Uint32 now) {
+  if (sound_deadlines_suspended == suspend) return;
+  if (suspend) {
+    sound_suspend_started = now;
+    for (auto& item : sound_deadlines) {
+      if (!item.active) continue;
+      item.queued = false;
+      item.token = next_sound_token();
+    }
+  } else {
+    const Uint32 paused_time = now - sound_suspend_started;
+    for (auto& item : sound_deadlines)
+      if (item.active && !item.paused) item.start += paused_time;
+  }
+  sound_deadlines_suspended = suspend;
+}
 #endif
 '''
 
 
 def binding(text):
+    # Upgrade an already assembled first R42 candidate as well as a clean pin.
+    previous_state = STATE_NEW.replace('bool sound_deadlines_suspended = false;\nUint32 sound_suspend_started = 0;\n', '').replace('  if (sound_deadlines_suspended) now = sound_suspend_started;\n', '')
+    if previous_state in text and STATE_NEW not in text:
+        text = replace_exact(text, previous_state, STATE_NEW, 'lifecycle deadline upgrade')
+    previous_exports = EXPORTS.split('void cth3ds_suspend_sound_callbacks(', 1)[0].replace('  if (sound_deadlines_suspended) return;\n', '') + '#endif\n'
+    if previous_exports in text and EXPORTS not in text:
+        text = replace_exact(text, previous_exports, EXPORTS, 'lifecycle export upgrade')
     edits = [
         (STATE_OLD, STATE_NEW, 'main-thread records'),
         (CALLBACK_OLD, '#ifndef CORSIXTH_3DS\n' + CALLBACK_OLD + '\n#endif', 'desktop-only timer'),

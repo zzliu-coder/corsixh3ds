@@ -368,6 +368,38 @@ static int test_main_thread_callbacks(const std::string& dir) {
   cth3ds_poll_sound_callbacks(1);
   CHECK(cth3ds_consume_sound_callback(next_completion())); // queue rejection retained
 
+  CHECK(schedule_sound_deadline(201,100,100));
+  CHECK(schedule_sound_deadline(202,100,100));
+  pause_sound_deadline(202,true,120); // user-paused clip stays paused after HOME
+  cth3ds_suspend_sound_callbacks(true,140);
+  cth3ds_suspend_sound_callbacks(true,500); // repeated system hook is idempotent
+  cth3ds_poll_sound_callbacks(1000); no_completion();
+  cth3ds_suspend_sound_callbacks(false,1000);
+  cth3ds_suspend_sound_callbacks(false,1050);
+  cth3ds_poll_sound_callbacks(1059); no_completion();
+  cth3ds_poll_sound_callbacks(1060);
+  auto system_event=next_completion(); CHECK(system_event.user.code==201);
+  CHECK(cth3ds_consume_sound_callback(system_event)); no_completion();
+  pause_sound_deadline(202,false,2000);
+  cth3ds_poll_sound_callbacks(2079); no_completion();
+  cth3ds_poll_sound_callbacks(2080);
+  CHECK(cth3ds_consume_sound_callback(next_completion()));
+
+  CHECK(schedule_sound_deadline(203,0,0));
+  cth3ds_poll_sound_callbacks(1); auto before_sleep=next_completion();
+  cth3ds_suspend_sound_callbacks(true,1);
+  CHECK(!cth3ds_consume_sound_callback(before_sleep));
+  cth3ds_suspend_sound_callbacks(false,1000);
+  cth3ds_poll_sound_callbacks(1000);
+  CHECK(cth3ds_consume_sound_callback(next_completion()));
+
+  CHECK(schedule_sound_deadline(204,100,0xffffffe0U));
+  cth3ds_suspend_sound_callbacks(true,0xfffffff0U);
+  cth3ds_suspend_sound_callbacks(false,0x100U);
+  cth3ds_poll_sound_callbacks(0x153U); no_completion();
+  cth3ds_poll_sound_callbacks(0x154U);
+  CHECK(cth3ds_consume_sound_callback(next_completion()));
+
   for(int i=0;i<1000;++i) CHECK(schedule_sound_deadline(i, 0, 0));
   CHECK(!schedule_sound_deadline(1001, 0, 0));
   cth3ds_poll_sound_callbacks(1);

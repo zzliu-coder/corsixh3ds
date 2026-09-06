@@ -84,6 +84,11 @@ class SoundLifetimeTests(unittest.TestCase):
         self.assertIn('if (!cth3ds_consume_sound_callback(e)) { nargs = 0; break; }',core)
         self.assertIn('lua_pushinteger(L, e.user.code);',core)
         self.assertIn('cth3ds_clear_sound_callbacks();\n  cth3ds::runtime_shutdown(L);',core)
+        runtime=(ROOT/'src/3ds/runtime_3ds.cpp').read_text()
+        self.assertIn('cth3ds_suspend_sound_callbacks(true, SDL_GetTicks());',runtime)
+        self.assertIn('cth3ds_suspend_sound_callbacks(false, SDL_GetTicks());',runtime)
+        self.assertIn('decision.pause_audio && !lifecycle_audio_suspended_',runtime)
+        self.assertIn('decision.resume_audio && lifecycle_audio_suspended_',runtime)
         self.assertEqual(integrate([str(self.upstream),'--overlay-root',str(ROOT),'--check']),0)
 
 class LoadRecoveryTests(unittest.TestCase):

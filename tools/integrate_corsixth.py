@@ -19,6 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
+# CORSIXTH_3DS_LIFETIME_REPAIR_V1
+from sound_lifetime import (sound_transaction, patch_sound_lifetime,
+                            check_sound_lifetime, SoundPatchError)
+from sound_callbacks import patch_sound_callbacks, check_sound_callbacks
+from sprite_residency import patch_sprite_residency, check_sprite_residency
+from load_recovery import patch_load_recovery, check_load_recovery
+
 UPSTREAM_TAG = "v0.70.1"
 UPSTREAM_COMMIT = "56bd5d00f76331c7f76d7b696726a7926303ca0c"
 OVERLAY_VERSION = "0.6.1"
@@ -1167,7 +1174,16 @@ def patch_product_sources(root: Path, dry_run: bool) -> list[Change]:
             preview=Path(temp)/"upstream"
             shutil.copytree(root,preview,ignore=shutil.ignore_patterns(".git"))
             patch_sources(preview,False)
-            return patch_product_sources(preview,False) + patch_sound_initialization(preview)
+            changes = patch_product_sources(preview,False) + patch_sound_initialization(preview)
+            changes.extend(Change(path, "sound-lifetime") for path in
+                           patch_sound_lifetime(preview, SOUND_INIT_R41_TRANSACTION))
+            changes.extend(Change(path, "load-recovery") for path in
+                           patch_load_recovery(preview))
+            changes.extend(Change(path, "sound-callbacks") for path in
+                           patch_sound_callbacks(preview))
+            changes.extend(Change(path, "sprite-residency") for path in
+                           patch_sprite_residency(preview))
+            return changes
     changes = []
     def patch(relative, replacements):
         path = root / relative
@@ -1799,7 +1815,7 @@ void sound_player::populate_from(sound_archive* pArchive) {
   }
 }
 '''.strip()
-SOUND_INIT_TRANSACTION = r'''
+SOUND_INIT_R41_TRANSACTION = r'''
 void sound_player::populate_from(sound_archive* pArchive) {
 #ifdef CORSIXTH_3DS
   // CORSIXTH_3DS_SOUND_INIT_TRANSACTION_V1
@@ -1865,20 +1881,27 @@ void sound_player::populate_from(sound_archive* pArchive) {
 '''.strip()
 
 
+SOUND_INIT_TRANSACTION = sound_transaction(SOUND_INIT_R41_TRANSACTION)
+
 def patch_sound_initialization(root: Path, dry_run: bool = False) -> list[Change]:
-    """Upgrade the original product consumer, including already integrated U1 trees."""
+    """Upgrade pristine U1, R41, and already-repaired generated sound consumers."""
     path = root / "CorsixTH/Src/th_sound.cpp"
     text = read_text(path)
-    if SOUND_INIT_TRANSACTION in text:
+    if text.count(SOUND_INIT_TRANSACTION) == 1:
         return []
-    if text.count(SOUND_INIT_LEGACY) != 1:
+    variants = [old for old in (SOUND_INIT_LEGACY, SOUND_INIT_R41_TRANSACTION)
+                if text.count(old) == 1]
+    if len(variants) != 1:
         raise IntegrationError("sound initialization source mismatch: CorsixTH/Src/th_sound.cpp")
-    write_text(path, text.replace(SOUND_INIT_LEGACY, SOUND_INIT_TRANSACTION, 1), dry_run)
+    write_text(path, text.replace(variants[0], SOUND_INIT_TRANSACTION, 1), dry_run)
     return [Change("CorsixTH/Src/th_sound.cpp", "sound-init-transaction")]
 
 
 def check_integrated(root: Path, overlay: Path) -> list[str]:
-    errors: list[str] = []
+    errors: list[str] = check_sound_lifetime(root, SOUND_INIT_R41_TRANSACTION)
+    errors.extend(check_sound_callbacks(root))
+    errors.extend(check_sprite_residency(root))
+    errors.extend(check_load_recovery(root))
     if SOUND_INIT_TRANSACTION not in read_text(root / "CorsixTH/Src/th_sound.cpp"):
         errors.append("sound initialization transaction missing or changed")
     marker_files = {
@@ -2634,7 +2657,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         changes.extend(patch_product_sources(root, args.dry_run))
         if not args.dry_run:
             changes.extend(patch_sound_initialization(root))
+            changes.extend(Change(path, "sound-lifetime") for path in
+                           patch_sound_lifetime(root, SOUND_INIT_R41_TRANSACTION))
+            changes.extend(Change(path, "load-recovery") for path in
+                           patch_load_recovery(root))
         changes.extend(patch_u3_observations(root, args.dry_run))
+        if not args.dry_run:
+            changes.extend(Change(path, "sound-callbacks") for path in
+                           patch_sound_callbacks(root))
+            changes.extend(Change(path, "sprite-residency") for path in
+                           patch_sprite_residency(root))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)
             manifest_path = root / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"
@@ -2661,7 +2693,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for change in changes:
                 print(f"  {change.operation:8s} {change.path}")
         return 0
-    except IntegrationError as exc:
+    except (IntegrationError, SoundPatchError, ValueError) as exc:
         if args.json:
             print(json.dumps({"ok": False, "error": str(exc)}, indent=2, sort_keys=True))
         else:

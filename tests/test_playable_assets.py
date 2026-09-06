@@ -131,18 +131,20 @@ static int freed=0, halted=0;
 void Mix_FreeChunk(Mix_Chunk* p) {if (p) {++freed;delete p;}}
 int Mix_HaltChannel(int) {++halted;return 0;}
 void sound_observe(const char*,const char*,const char*,size_t,size_t) {}
-struct sound_archive {size_t count;size_t get_number_of_sounds() const {return count;}};
+struct sound_archive {size_t count;size_t get_number_of_sounds() const {return count;} size_t metadata_bytes() const {return 0;}};
 class sound_player {
  public:
   static constexpr int number_of_channels=32;
   Mix_Chunk** sounds=nullptr;size_t sound_count=0;
-  sound_archive* archive=nullptr;
+  sound_archive* archive=nullptr;size_t archive_metadata_bytes=0;
+  static inline sound_player* singleton=nullptr;
+  sound_player() {singleton=this;}
   std::vector<uint64_t> used_at;
   std::vector<size_t> allocated_bytes;
   std::array<std::atomic<bool>,number_of_channels> finished{};
   std::array<int,number_of_channels> channels{};
   size_t cache_bytes=0;uint64_t cache_clock=0;
-  ~sound_player() {populate_from(nullptr);}
+  ~sound_player() {populate_from(nullptr);if(singleton==this)singleton=nullptr;}
   void populate_from(sound_archive*);
   size_t owner_bytes() const {return cache_bytes+sound_count*sizeof(Mix_Chunk*)+
     used_at.capacity()*sizeof(uint64_t)+allocated_bytes.capacity()*sizeof(size_t);}

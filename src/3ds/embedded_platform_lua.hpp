@@ -192,10 +192,22 @@ function Platform:installLoadTelemetry()
   local app, native = self.app, self.native
   local original_load = assert(app.load, "App.load missing")
   app.load = function(instance, filename)
-    local recovery = instance.savegame_dir .. "recovery-before-load.sav"
+    -- CORSIXTH_3DS_LOAD_RECOVERY_V1: preserve the file being requested.
+    -- FAT names are case-insensitive. Compare the basename conservatively so
+    -- directory aliases cannot overwrite the requested recovery or its backup.
+    local requested = tostring(filename):gsub("\\", "/"):match("([^/]+)$") or ""
+    requested = requested:lower()
+    local recovery_name = "recovery-before-load.sav"
+    if requested == recovery_name or requested == recovery_name .. ".bak" or
+       requested == recovery_name .. ".tmp" then
+      recovery_name = "recovery-before-load-alt.sav"
+    end
+    local recovery = instance.savegame_dir .. recovery_name
+    instance._3ds_preload_recovery = nil
     if instance.world then
       local saved, result = pcall(instance.save, instance, recovery)
       if not saved or result ~= true then return false, "preload recovery save failed: " .. tostring(result) end
+      instance._3ds_preload_recovery = recovery
     end
     native_checkpoint(native, "save_load", "load-begin", filename)
     local transaction = false

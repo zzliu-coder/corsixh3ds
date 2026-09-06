@@ -158,6 +158,27 @@ class IntegratorTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("does not match the 0.70.1 source signature", error)
 
+    def test_existing_sound_consumer_upgrades_once_and_check_rejects_stale_body(self):
+        from integrate_corsixth import SOUND_INIT_LEGACY, SOUND_INIT_TRANSACTION
+        with tempfile.TemporaryDirectory() as temporary:
+            upstream = self.make_upstream(Path(temporary) / 'upstream')
+            code, _, error = self.run_main(str(upstream))
+            self.assertEqual(code, 0, error)
+            sound = upstream / 'CorsixTH/Src/th_sound.cpp'
+            expected = sound.read_bytes()
+            text = expected.decode()
+            self.assertEqual(text.count(SOUND_INIT_TRANSACTION), 1)
+            sound.write_text(text.replace(SOUND_INIT_TRANSACTION, SOUND_INIT_LEGACY))
+            code, _, error = self.run_main(str(upstream), '--check')
+            self.assertNotEqual(code, 0)
+            self.assertIn('sound initialization transaction', error)
+            code, _, error = self.run_main(str(upstream))
+            self.assertEqual(code, 0, error)
+            self.assertEqual(sound.read_bytes(), expected)
+            code, output, error = self.run_main(str(upstream))
+            self.assertEqual(code, 0, error)
+            self.assertIn('Applied 0 changes', output)
+
 
 if __name__ == "__main__":
     unittest.main()

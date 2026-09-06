@@ -1,0 +1,56 @@
+{
+  "verdict": "READY_FOR_USER_DEVICE_TEST",
+  "candidate_commit": "c9375bf8556940d8f5a92cb4cde59bedef639d59",
+  "candidate_tree": "21468c3aa695a1113381cbe40a6f89f55caa460a",
+  "upstream_commit": "56bd5d00f76331c7f76d7b696726a7926303ca0c",
+  "host_completed_at": "2026-09-06T09:18:34.471837+00:00",
+  "verification_owner": "ROOT_IMPLEMENTATION_THREAD_SELF_CHECK",
+  "native": {
+    "configurations": ["GNU13 Debug", "GNU13 Release", "Clang Debug", "Clang ASan+UBSan"],
+    "passed_per_configuration": 134,
+    "failed": 0,
+    "debug_repeat": 50,
+    "macos_leak_sanitizer": "NOT_SUPPORTED"
+  },
+  "python": {"selected": 195, "passed": 194, "failed": 0, "errors": 0, "skipped": 1,
+    "skip_reason": "case-insensitive filesystem"},
+  "focused": {
+    "strict_lua_sound_adapter_tests": 26,
+    "real_sdl_texture_create_evict_cycles": 5000,
+    "texture_controlled_budget_bytes": 6291456,
+    "real_sound_bank_indices": 747,
+    "real_sound_playable_entries": 746,
+    "real_sound_lifecycle_cycles": 100,
+    "real_sound_accounted_cache_peak_bytes": 3105928,
+    "native_serializer_controlled_world_scenarios": 7,
+    "native_serializer_save_load_cycles": 30,
+    "real_hospital_world_executed": false,
+    "physical_audio_output_observed": false
+  },
+  "cross_build": {
+    "verdict": "PASS",
+    "final_3dsx_bytes": 2646672,
+    "final_3dsx_sha256": "d9ee5d59852970ab70352182cd2be85cfcee8c8291602cf01ee442731fd692e1",
+    "final_elf_sha256": "903bd8c09f41302402f44056ffe1b91e0b5f1dfe68b788e3b573f560e1e8e2e7",
+    "strong_linear_heap_8mib_symbol": "PASS",
+    "runtime_session_link_path": "PASS"
+  },
+  "private_sd_zip": {
+    "files": 801,
+    "bytes": 163925078,
+    "sha256": "8de811777943c58d687a2ff1a370e37d19dc49d2fcfa41b259b619162faaddc1",
+    "all_file_crc_sha256_readback": "PASS",
+    "original_game_input_comparison": "PASS",
+    "resource_mode": "loose-selected-English-bounded-audio-and-sprite-textures",
+    "published": false
+  },
+  "public_ci_this_candidate": "NOT_REVIEWED",
+  "independent_context_review_this_round": "NOT_RUN_ROOT_DIRECT",
+  "device_acceptance": "NOT_PROVEN",
+  "whole_device_memory_and_fps": "NOT_PROVEN",
+  "first_level_play_save_reopen": "NOT_PROVEN",
+  "historical_rh07_product": "FAIL_RETAINED_ON_ORIGINAL_IDENTITY",
+  "historical_rh09_product": "FAIL_RETAINED_ON_ORIGINAL_IDENTITY",
+  "large_input_bundle_redownloads_this_round": 0,
+  "private_game_assets_and_saves_uploaded": false
+}

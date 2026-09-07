@@ -12,6 +12,8 @@ constexpr int LUA_OK = 0;
 constexpr int LUA_TTABLE = 5;
 constexpr int LUA_TNUMBER = 3;
 constexpr int LUA_TSTRING = 4;
+constexpr int LUA_TFUNCTION = 6;
+constexpr int LUA_MULTRET = -1;
 inline int lua_type(lua_State*,int){return 0;}
 inline lua_Number lua_tonumber(lua_State*,int){return 0;}
 constexpr int LUA_GCCOUNT = 3;
@@ -44,6 +46,7 @@ inline void lua_pushvalue(lua_State*, int) {}
 inline void lua_pushcclosure(lua_State*, lua_CFunction, int) {}
 #define lua_pushcfunction(L, f) lua_pushcclosure((L), (f), 0)
 inline int lua_pcall(lua_State*, int, int, int) { return LUA_OK; }
+inline void lua_remove(lua_State*, int) {}
 inline void luaL_checktype(lua_State*, int, int) {}
 inline const char* luaL_checkstring(lua_State*, int) { return "stub"; }
 inline lua_Integer luaL_checkinteger(lua_State*, int) { return 0; }

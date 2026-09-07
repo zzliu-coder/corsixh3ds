@@ -122,6 +122,23 @@ class BuildScriptTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertEqual(result.stdout.strip(),
                                      f"{n} passed, 0 failed, 0 errors, 0 skipped; IDs {digest}")
+                official = "test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds"
+                missing_reason = "official tex3ds tool unavailable; required in 3DS device lane"
+                if official in ids:
+                    missing_tool = copy.deepcopy(payload)
+                    row = next(item for item in missing_tool["execution"]["outcomes"]
+                               if item["id"] == official)
+                    row.update(outcome="skipped", detail=missing_reason)
+                    missing_tool["execution"]["totals"].update(passed=n-1, skipped=1)
+                    with self.subTest(reference=label, control="exact-tool-skip"):
+                        result = execute(missing_tool)
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertEqual(result.stdout.strip(),
+                                         f"{n-1} passed, 0 failed, 0 errors, 1 skipped; IDs {digest}")
+                    row["detail"] += " unrelated reason"
+                    with self.subTest(reference=label, control="wrong-tool-skip-reason"):
+                        result = execute(missing_tool)
+                        self.assertNotEqual(result.returncode, 0)
                 controls = []
                 def change(name, section, field, value):
                     changed = copy.deepcopy(payload)

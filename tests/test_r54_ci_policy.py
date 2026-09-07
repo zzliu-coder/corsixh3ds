@@ -1,5 +1,6 @@
 """Keep tex3ds skipping bound to one ID/reason and forbid it in the required lane."""
 import importlib.util
+import io
 import os
 from pathlib import Path
 import unittest
@@ -30,4 +31,24 @@ class CiPolicyTests(unittest.TestCase):
                 case=test_gpu_renderer.GpuRendererTests('test_upload_matches_official_tex3ds')
                 case.run(result);self.assertEqual(len(result.failures),1)
                 self.assertFalse(result.errors or result.skipped)
+        # One parent test may contain multiple failed/error/skipped subtests.
+        # Keep its single selected ID and strongest outcome; later successes
+        # cannot turn an earlier failure into a pass or an unstarted test.
+        class Subtests(unittest.TestCase):
+            def runTest(self):
+                for item in range(3):
+                    with self.subTest(item=item):
+                        if item==0 and self.mode in ('failure','mixed'):
+                            self.fail('first subtest failed')
+                        if item==1 and self.mode in ('error','mixed'):
+                            raise RuntimeError('second subtest errored')
+                        if item==0 and self.mode=='skip':
+                            self.skipTest('subtest-only skip')
+        for mode,expected in (('pass','passed'),('failure','failed'),
+                              ('error','errors'),('mixed','errors'),('skip','skipped')):
+            case=Subtests();case.mode=mode
+            result=runner.RecordingRunner(stream=io.StringIO(),selected_ids=[case.id()]).run(case)
+            self.assertEqual(set(result.outcomes),{case.id()},mode)
+            self.assertEqual(result.outcomes[case.id()]['outcome'],expected,mode)
+            self.assertFalse(result.synthetic_events,mode)
 if __name__=='__main__':unittest.main()

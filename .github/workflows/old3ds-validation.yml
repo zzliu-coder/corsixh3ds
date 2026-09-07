@@ -161,7 +161,9 @@ jobs:
               if item == official else {"id": item, "outcome": "passed"} for item in selected]
           require(outcomes in (expected_passes, expected_missing_tool),
                   "only the exact tex3ds tool-missing ID/reason may skip in this host lane")
-          skipped = int(outcomes == expected_missing_tool)
+          # Historical manifests predate this test, so their two expected
+          # lists are identical. Count actual skips, not list equality.
+          skipped = sum(row["outcome"] == "skipped" for row in outcomes)
           require(execution.get("totals") == {
               "selected": n, "accounted": n, "passed": n-skipped, "failed": 0, "errors": 0, "skipped": skipped,
           }, "complete ID-bound outcomes and exact totals")
@@ -175,7 +177,7 @@ jobs:
               "implementation_sha256": runner.sha256_file(implementation), "version": sys.version,
               "implementation": sys.implementation.name, "cache_tag": sys.implementation.cache_tag,
           }, "actual executing interpreter")
-          print(f"{n-skipped} passed, 0 failed, 0 errors, {skipped} exact tool skip; IDs {digest}")
+          print(f"{n-skipped} passed, 0 failed, 0 errors, {skipped} skipped; IDs {digest}")
           PY
       - name: Upload host Python receipt
         if: always()

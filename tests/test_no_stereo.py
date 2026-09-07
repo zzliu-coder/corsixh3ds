@@ -40,7 +40,12 @@ class NoStereoscopicRenderingTests(unittest.TestCase):
             ("bottom_target", "GFX_BOTTOM", "GFX_LEFT"),
         ])
         self.assertEqual(renderer.count("C3D_RenderTargetSetOutput("), 2)
-        self.assertEqual(renderer.count("GFX_LEFT"), 2)
+        # R54 also reads the ordinary framebuffer for startup diagnostics.
+        # Validate each consumer's selector, independently of the number of
+        # output registrations; readback must not become a second-eye path.
+        reads = re.findall(r"gfxGetFramebuffer\(\s*(\w+)\s*,\s*(\w+)\s*,", renderer)
+        self.assertEqual(reads, [("screen", "GFX_LEFT")])
+        self.assertEqual(renderer.count("GFX_LEFT"), len(outputs) + len(reads))
 
 
 if __name__ == "__main__":

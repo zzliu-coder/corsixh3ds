@@ -173,6 +173,13 @@ class RecordingResult(unittest.TextTestResult):
             row: Dict[str, Any] = {"id": test_id, "outcome": outcome}
             if detail:
                 row["detail"] = detail
+            previous = self.outcomes.get(test_id)
+            if previous:
+                severity = {"passed": 0, "skipped": 1, "failed": 2, "errors": 3}
+                if severity[previous["outcome"]] > severity[outcome]:
+                    row["outcome"] = previous["outcome"]
+                if previous.get("detail"):
+                    row["detail"] = previous["detail"] + ("\n" + detail if detail else "")
             self.outcomes[test_id] = row
 
     def addSuccess(self, test: Any) -> None:
@@ -189,7 +196,13 @@ class RecordingResult(unittest.TextTestResult):
 
     def addSkip(self, test: Any, reason: str) -> None:
         super().addSkip(test, reason)
-        self._record(test, "skipped", reason)
+        self._record(getattr(test, "test_case", test), "skipped", reason)
+
+    def addSubTest(self, test: Any, subtest: Any, err: Any) -> None:
+        super().addSubTest(test, subtest, err)
+        if err is not None:
+            outcome = "failed" if issubclass(err[0], test.failureException) else "errors"
+            self._record(test, outcome, self._exc_info_to_string(err, subtest))
 
     def addExpectedFailure(self, test: Any, err: Any) -> None:
         super().addExpectedFailure(test, err)

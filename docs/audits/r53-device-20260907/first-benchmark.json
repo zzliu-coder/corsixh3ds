@@ -1,0 +1,1587 @@
+{
+  "benchmark_protocol": "PASS",
+  "samples": [
+    {
+      "speed": "Normal",
+      "start": {
+        "line": 160,
+        "at_us": 13971930052,
+        "event": "SAMPLE-BEGIN",
+        "speed": "Normal",
+        "date": "1-04-01T49"
+      },
+      "end": {
+        "line": 248,
+        "at_us": 14032339833,
+        "event": "SAMPLE-END",
+        "speed": "Normal",
+        "date": "1-04-04T30"
+      },
+      "elapsed_seconds": 60.409781,
+      "actual_workload_speeds": [
+        "Normal"
+      ],
+      "workload": [
+        {
+          "line": 197,
+          "at_us": 13974486561,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "Normal",
+          "hours_per_tick": 1,
+          "tick_rate": 3,
+          "date": "1-04-02T03",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 207,
+          "at_us": 13984508591,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "Normal",
+          "hours_per_tick": 1,
+          "tick_rate": 3,
+          "date": "1-04-02T24",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 217,
+          "at_us": 13994774526,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "Normal",
+          "hours_per_tick": 1,
+          "tick_rate": 3,
+          "date": "1-04-02T47",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 227,
+          "at_us": 14005187139,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "Normal",
+          "hours_per_tick": 1,
+          "tick_rate": 3,
+          "date": "1-04-03T20",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 237,
+          "at_us": 14015278930,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "Normal",
+          "hours_per_tick": 1,
+          "tick_rate": 3,
+          "date": "1-04-03T42",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 247,
+          "at_us": 14025324218,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "Normal",
+          "hours_per_tick": 1,
+          "tick_rate": 3,
+          "date": "1-04-04T14",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        }
+      ],
+      "windows": [],
+      "compact_snapshots_cumulative_do_not_sum": [
+        {
+          "line": 188,
+          "at_us": 13973882325,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 1406893,
+          "successful": 2,
+          "failed": 0,
+          "intervals": 2,
+          "mean_us": 703476,
+          "p95_us": 970887,
+          "max_us": 970887,
+          "gap_us": 1995,
+          "heap_free": 27480384,
+          "heap_low": 27480384,
+          "lua": 9703888,
+          "linear_free": 6213632,
+          "log_us": 3490228,
+          "workload_us": 68653,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 13972475432,
+          "present_hz_from_rounded_mean": 1.4215126031307395
+        },
+        {
+          "line": 198,
+          "at_us": 13984352283,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 11876851,
+          "successful": 24,
+          "failed": 0,
+          "intervals": 24,
+          "mean_us": 494871,
+          "p95_us": 970887,
+          "max_us": 970887,
+          "gap_us": 1992,
+          "heap_free": 26926288,
+          "heap_low": 26926288,
+          "lua": 9914137,
+          "linear_free": 6213632,
+          "log_us": 3638722,
+          "workload_us": 82896,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 13972475432,
+          "present_hz_from_rounded_mean": 2.020728634330967
+        },
+        {
+          "line": 208,
+          "at_us": 13994628037,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 22152605,
+          "successful": 47,
+          "failed": 0,
+          "intervals": 47,
+          "mean_us": 471336,
+          "p95_us": 970887,
+          "max_us": 970887,
+          "gap_us": 1884,
+          "heap_free": 26664264,
+          "heap_low": 26664264,
+          "lua": 10124037,
+          "linear_free": 6213632,
+          "log_us": 3805147,
+          "workload_us": 100230,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 13972475432,
+          "present_hz_from_rounded_mean": 2.1216287319449396
+        },
+        {
+          "line": 218,
+          "at_us": 14005045919,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 32570487,
+          "successful": 70,
+          "failed": 0,
+          "intervals": 70,
+          "mean_us": 465297,
+          "p95_us": 970887,
+          "max_us": 970887,
+          "gap_us": 1783,
+          "heap_free": 26315752,
+          "heap_low": 26315752,
+          "lua": 10360533,
+          "linear_free": 6213632,
+          "log_us": 3960225,
+          "workload_us": 114588,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 13972475432,
+          "present_hz_from_rounded_mean": 2.149164941961801
+        },
+        {
+          "line": 228,
+          "at_us": 14015135048,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 42659616,
+          "successful": 92,
+          "failed": 0,
+          "intervals": 92,
+          "mean_us": 463695,
+          "p95_us": 970887,
+          "max_us": 970887,
+          "gap_us": 1738,
+          "heap_free": 25923872,
+          "heap_low": 25922096,
+          "lua": 10577040,
+          "linear_free": 6213632,
+          "log_us": 4113438,
+          "workload_us": 133126,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 13972475432,
+          "present_hz_from_rounded_mean": 2.1565899998921707
+        },
+        {
+          "line": 238,
+          "at_us": 14025182008,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 52706576,
+          "successful": 114,
+          "failed": 0,
+          "intervals": 114,
+          "mean_us": 462340,
+          "p95_us": 970887,
+          "max_us": 970887,
+          "gap_us": 1823,
+          "heap_free": 25583672,
+          "heap_low": 25583672,
+          "lua": 10807283,
+          "linear_free": 6213632,
+          "log_us": 4272069,
+          "workload_us": 153623,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 13972475432,
+          "present_hz_from_rounded_mean": 2.162910412250725
+        }
+      ],
+      "preferred_compact": {
+        "line": 238,
+        "at_us": 14025182008,
+        "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+        "elapsed_us": 52706576,
+        "successful": 114,
+        "failed": 0,
+        "intervals": 114,
+        "mean_us": 462340,
+        "p95_us": 970887,
+        "max_us": 970887,
+        "gap_us": 1823,
+        "heap_free": 25583672,
+        "heap_low": 25583672,
+        "lua": 10807283,
+        "linear_free": 6213632,
+        "log_us": 4272069,
+        "workload_us": 153623,
+        "terminal": 0,
+        "truncated": 0,
+        "begin_us": 13972475432,
+        "present_hz_from_rounded_mean": 2.162910412250725
+      },
+      "simulation": {
+        "begin_us": 13973882325,
+        "end_us": 14025182008,
+        "nominal_work_fraction": 0.11789546535794383,
+        "dropped_us": 45258673,
+        "rebases": 0
+      },
+      "cpu_inclusive_do_not_sum": {
+        "world": {
+          "calls": 336,
+          "inclusive_us": 6614347,
+          "intervals": [
+            {
+              "line": 204,
+              "at_us": 13984352283,
+              "name": "world",
+              "calls": 66,
+              "total_us": 1272758,
+              "max_us": 62943,
+              "units": 66,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13973882325
+            },
+            {
+              "line": 214,
+              "at_us": 13994628037,
+              "name": "world",
+              "calls": 69,
+              "total_us": 1307435,
+              "max_us": 60863,
+              "units": 69,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13984352283
+            },
+            {
+              "line": 224,
+              "at_us": 14005045919,
+              "name": "world",
+              "calls": 69,
+              "total_us": 1419231,
+              "max_us": 145340,
+              "units": 69,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13994628037
+            },
+            {
+              "line": 234,
+              "at_us": 14015135048,
+              "name": "world",
+              "calls": 66,
+              "total_us": 1262962,
+              "max_us": 70784,
+              "units": 66,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14005045919
+            },
+            {
+              "line": 244,
+              "at_us": 14025182008,
+              "name": "world",
+              "calls": 66,
+              "total_us": 1351961,
+              "max_us": 148153,
+              "units": 66,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14015135048
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 194,
+              "at_us": 13973882325,
+              "name": "world",
+              "calls": 63,
+              "total_us": 1299369,
+              "max_us": 143033,
+              "units": 63,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13963748497
+            }
+          ]
+        },
+        "ui": {
+          "calls": 336,
+          "inclusive_us": 525831,
+          "intervals": [
+            {
+              "line": 205,
+              "at_us": 13984352283,
+              "name": "ui",
+              "calls": 66,
+              "total_us": 181932,
+              "max_us": 99438,
+              "units": 66,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13973882325
+            },
+            {
+              "line": 215,
+              "at_us": 13994628037,
+              "name": "ui",
+              "calls": 69,
+              "total_us": 87875,
+              "max_us": 1482,
+              "units": 69,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13984352283
+            },
+            {
+              "line": 225,
+              "at_us": 14005045919,
+              "name": "ui",
+              "calls": 69,
+              "total_us": 87879,
+              "max_us": 1438,
+              "units": 69,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13994628037
+            },
+            {
+              "line": 235,
+              "at_us": 14015135048,
+              "name": "ui",
+              "calls": 66,
+              "total_us": 84759,
+              "max_us": 1478,
+              "units": 66,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14005045919
+            },
+            {
+              "line": 245,
+              "at_us": 14025182008,
+              "name": "ui",
+              "calls": 66,
+              "total_us": 83386,
+              "max_us": 5292,
+              "units": 66,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14015135048
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 195,
+              "at_us": 13973882325,
+              "name": "ui",
+              "calls": 63,
+              "total_us": 74996,
+              "max_us": 1415,
+              "units": 63,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13963748497
+            }
+          ]
+        },
+        "temperature": {
+          "calls": 112,
+          "inclusive_us": 2624447,
+          "intervals": [
+            {
+              "line": 200,
+              "at_us": 13984352283,
+              "name": "temperature",
+              "calls": 22,
+              "total_us": 515882,
+              "max_us": 23549,
+              "units": 360448,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13973882325
+            },
+            {
+              "line": 210,
+              "at_us": 13994628037,
+              "name": "temperature",
+              "calls": 23,
+              "total_us": 538986,
+              "max_us": 23536,
+              "units": 376832,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13984352283
+            },
+            {
+              "line": 220,
+              "at_us": 14005045919,
+              "name": "temperature",
+              "calls": 23,
+              "total_us": 538625,
+              "max_us": 23619,
+              "units": 376832,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13994628037
+            },
+            {
+              "line": 230,
+              "at_us": 14015135048,
+              "name": "temperature",
+              "calls": 22,
+              "total_us": 515247,
+              "max_us": 23538,
+              "units": 360448,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14005045919
+            },
+            {
+              "line": 240,
+              "at_us": 14025182008,
+              "name": "temperature",
+              "calls": 22,
+              "total_us": 515707,
+              "max_us": 23560,
+              "units": 360448,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14015135048
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 190,
+              "at_us": 13973882325,
+              "name": "temperature",
+              "calls": 21,
+              "total_us": 492365,
+              "max_us": 23575,
+              "units": 344064,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13963748497
+            }
+          ]
+        },
+        "pathfind": {
+          "calls": 35,
+          "inclusive_us": 1687,
+          "intervals": [
+            {
+              "line": 201,
+              "at_us": 13984352283,
+              "name": "pathfind",
+              "calls": 6,
+              "total_us": 272,
+              "max_us": 130,
+              "units": 6,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13973882325
+            },
+            {
+              "line": 211,
+              "at_us": 13994628037,
+              "name": "pathfind",
+              "calls": 6,
+              "total_us": 172,
+              "max_us": 40,
+              "units": 6,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13984352283
+            },
+            {
+              "line": 221,
+              "at_us": 14005045919,
+              "name": "pathfind",
+              "calls": 9,
+              "total_us": 589,
+              "max_us": 164,
+              "units": 9,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13994628037
+            },
+            {
+              "line": 231,
+              "at_us": 14015135048,
+              "name": "pathfind",
+              "calls": 6,
+              "total_us": 272,
+              "max_us": 92,
+              "units": 6,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14005045919
+            },
+            {
+              "line": 241,
+              "at_us": 14025182008,
+              "name": "pathfind",
+              "calls": 8,
+              "total_us": 382,
+              "max_us": 68,
+              "units": 8,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14015135048
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 191,
+              "at_us": 13973882325,
+              "name": "pathfind",
+              "calls": 7,
+              "total_us": 381,
+              "max_us": 109,
+              "units": 7,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13963748497
+            }
+          ]
+        },
+        "input_state": {
+          "calls": 0,
+          "inclusive_us": 0,
+          "intervals": [
+            {
+              "line": 202,
+              "at_us": 13984352283,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13973882325
+            },
+            {
+              "line": 212,
+              "at_us": 13994628037,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13984352283
+            },
+            {
+              "line": 222,
+              "at_us": 14005045919,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13994628037
+            },
+            {
+              "line": 232,
+              "at_us": 14015135048,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14005045919
+            },
+            {
+              "line": 242,
+              "at_us": 14025182008,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14015135048
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 192,
+              "at_us": 13973882325,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13963748497
+            }
+          ]
+        },
+        "input_action": {
+          "calls": 117,
+          "inclusive_us": 123606,
+          "intervals": [
+            {
+              "line": 203,
+              "at_us": 13984352283,
+              "name": "input_action",
+              "calls": 23,
+              "total_us": 21843,
+              "max_us": 14199,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13973882325
+            },
+            {
+              "line": 213,
+              "at_us": 13994628037,
+              "name": "input_action",
+              "calls": 24,
+              "total_us": 25439,
+              "max_us": 17326,
+              "units": 24,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13984352283
+            },
+            {
+              "line": 223,
+              "at_us": 14005045919,
+              "name": "input_action",
+              "calls": 24,
+              "total_us": 22361,
+              "max_us": 14350,
+              "units": 24,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13994628037
+            },
+            {
+              "line": 233,
+              "at_us": 14015135048,
+              "name": "input_action",
+              "calls": 23,
+              "total_us": 26047,
+              "max_us": 18529,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14005045919
+            },
+            {
+              "line": 243,
+              "at_us": 14025182008,
+              "name": "input_action",
+              "calls": 23,
+              "total_us": 27916,
+              "max_us": 20488,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14015135048
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 193,
+              "at_us": 13973882325,
+              "name": "input_action",
+              "calls": 22,
+              "total_us": 35739,
+              "max_us": 14991,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 13963748497
+            }
+          ]
+        }
+      }
+    },
+    {
+      "speed": "And then some more",
+      "start": {
+        "line": 360,
+        "at_us": 14070808689,
+        "event": "SAMPLE-BEGIN",
+        "speed": "And then some more",
+        "date": "1-04-02T04"
+      },
+      "end": {
+        "line": 448,
+        "at_us": 14130946356,
+        "event": "SAMPLE-END",
+        "speed": "And then some more",
+        "date": "1-04-04T36"
+      },
+      "elapsed_seconds": 60.137667,
+      "actual_workload_speeds": [
+        "And then some more"
+      ],
+      "workload": [
+        {
+          "line": 397,
+          "at_us": 14072338285,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "And then some more",
+          "hours_per_tick": 1,
+          "tick_rate": 1,
+          "date": "1-04-02T06",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 407,
+          "at_us": 14082712340,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "And then some more",
+          "hours_per_tick": 1,
+          "tick_rate": 1,
+          "date": "1-04-02T29",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 417,
+          "at_us": 14092921046,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "And then some more",
+          "hours_per_tick": 1,
+          "tick_rate": 1,
+          "date": "1-04-03T01",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 427,
+          "at_us": 14103177249,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "And then some more",
+          "hours_per_tick": 1,
+          "tick_rate": 1,
+          "date": "1-04-03T24",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 437,
+          "at_us": 14113420465,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "And then some more",
+          "hours_per_tick": 1,
+          "tick_rate": 1,
+          "date": "1-04-03T47",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        },
+        {
+          "line": 447,
+          "at_us": 14123570884,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "patients": 3,
+          "staff": 17,
+          "rooms": 3,
+          "speed": "And then some more",
+          "hours_per_tick": 1,
+          "tick_rate": 1,
+          "date": "1-04-04T19",
+          "camera_x": -454,
+          "camera_y": 1634,
+          "language": "English",
+          "music_enabled": 0
+        }
+      ],
+      "windows": [],
+      "compact_snapshots_cumulative_do_not_sum": [
+        {
+          "line": 398,
+          "at_us": 14081676062,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 10401915,
+          "successful": 22,
+          "failed": 0,
+          "intervals": 22,
+          "mean_us": 472814,
+          "p95_us": 524287,
+          "max_us": 1059321,
+          "gap_us": 2090,
+          "heap_free": 26561376,
+          "heap_low": 18527704,
+          "lua": 9941886,
+          "linear_free": 6213632,
+          "log_us": 6986628,
+          "workload_us": 232519,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 14071274147,
+          "present_hz_from_rounded_mean": 2.1149965948554823
+        },
+        {
+          "line": 408,
+          "at_us": 14091826114,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 20551967,
+          "successful": 44,
+          "failed": 0,
+          "intervals": 44,
+          "mean_us": 467091,
+          "p95_us": 1048575,
+          "max_us": 1059321,
+          "gap_us": 2032,
+          "heap_free": 26179192,
+          "heap_low": 18527704,
+          "lua": 10157131,
+          "linear_free": 6213632,
+          "log_us": 7141868,
+          "workload_us": 246989,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 14071274147,
+          "present_hz_from_rounded_mean": 2.1409104435752346
+        },
+        {
+          "line": 418,
+          "at_us": 14102158169,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 30884022,
+          "successful": 67,
+          "failed": 0,
+          "intervals": 67,
+          "mean_us": 460956,
+          "p95_us": 1048575,
+          "max_us": 1059321,
+          "gap_us": 2070,
+          "heap_free": 25892640,
+          "heap_low": 18527704,
+          "lua": 10395803,
+          "linear_free": 6213632,
+          "log_us": 7295298,
+          "workload_us": 267527,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 14071274147,
+          "present_hz_from_rounded_mean": 2.169404455088989
+        },
+        {
+          "line": 428,
+          "at_us": 14112411940,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 41137793,
+          "successful": 90,
+          "failed": 0,
+          "intervals": 90,
+          "mean_us": 457088,
+          "p95_us": 1048575,
+          "max_us": 1059321,
+          "gap_us": 1923,
+          "heap_free": 25618832,
+          "heap_low": 18527704,
+          "lua": 10623454,
+          "linear_free": 6213632,
+          "log_us": 7454107,
+          "workload_us": 287473,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 14071274147,
+          "present_hz_from_rounded_mean": 2.1877625315037803
+        },
+        {
+          "line": 438,
+          "at_us": 14122577148,
+          "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+          "elapsed_us": 51303001,
+          "successful": 112,
+          "failed": 0,
+          "intervals": 112,
+          "mean_us": 458064,
+          "p95_us": 1048575,
+          "max_us": 1059321,
+          "gap_us": 1958,
+          "heap_free": 25240248,
+          "heap_low": 18527704,
+          "lua": 10848617,
+          "linear_free": 6213632,
+          "log_us": 7625829,
+          "workload_us": 324377,
+          "terminal": 0,
+          "truncated": 0,
+          "begin_us": 14071274147,
+          "present_hz_from_rounded_mean": 2.1831010513814664
+        }
+      ],
+      "preferred_compact": {
+        "line": 438,
+        "at_us": 14122577148,
+        "scene": "level:sdmc:/3ds/corsixth/Levels/example.level",
+        "elapsed_us": 51303001,
+        "successful": 112,
+        "failed": 0,
+        "intervals": 112,
+        "mean_us": 458064,
+        "p95_us": 1048575,
+        "max_us": 1059321,
+        "gap_us": 1958,
+        "heap_free": 25240248,
+        "heap_low": 18527704,
+        "lua": 10848617,
+        "linear_free": 6213632,
+        "log_us": 7625829,
+        "workload_us": 324377,
+        "terminal": 0,
+        "truncated": 0,
+        "begin_us": 14071274147,
+        "present_hz_from_rounded_mean": 2.1831010513814664
+      },
+      "simulation": {
+        "begin_us": 14071274147,
+        "end_us": 14122577148,
+        "nominal_work_fraction": 0.03929594683944512,
+        "dropped_us": 49309664,
+        "rebases": 0
+      },
+      "cpu_inclusive_do_not_sum": {
+        "world": {
+          "calls": 112,
+          "inclusive_us": 6766879,
+          "intervals": [
+            {
+              "line": 404,
+              "at_us": 14081676062,
+              "name": "world",
+              "calls": 22,
+              "total_us": 1242557,
+              "max_us": 62058,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14071274147
+            },
+            {
+              "line": 414,
+              "at_us": 14091826114,
+              "name": "world",
+              "calls": 22,
+              "total_us": 1376895,
+              "max_us": 168011,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14081676062
+            },
+            {
+              "line": 424,
+              "at_us": 14102158169,
+              "name": "world",
+              "calls": 23,
+              "total_us": 1395595,
+              "max_us": 148718,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14091826114
+            },
+            {
+              "line": 434,
+              "at_us": 14112411940,
+              "name": "world",
+              "calls": 23,
+              "total_us": 1310143,
+              "max_us": 60712,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14102158169
+            },
+            {
+              "line": 444,
+              "at_us": 14122577148,
+              "name": "world",
+              "calls": 22,
+              "total_us": 1441689,
+              "max_us": 164496,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14112411940
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 367,
+              "at_us": 14071274147,
+              "name": "world",
+              "calls": 23,
+              "total_us": 1422551,
+              "max_us": 145144,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14060870532
+            }
+          ]
+        },
+        "ui": {
+          "calls": 112,
+          "inclusive_us": 144107,
+          "intervals": [
+            {
+              "line": 405,
+              "at_us": 14081676062,
+              "name": "ui",
+              "calls": 22,
+              "total_us": 28066,
+              "max_us": 1447,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14071274147
+            },
+            {
+              "line": 415,
+              "at_us": 14091826114,
+              "name": "ui",
+              "calls": 22,
+              "total_us": 27707,
+              "max_us": 1337,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14081676062
+            },
+            {
+              "line": 425,
+              "at_us": 14102158169,
+              "name": "ui",
+              "calls": 23,
+              "total_us": 30245,
+              "max_us": 1466,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14091826114
+            },
+            {
+              "line": 435,
+              "at_us": 14112411940,
+              "name": "ui",
+              "calls": 23,
+              "total_us": 29799,
+              "max_us": 1423,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14102158169
+            },
+            {
+              "line": 445,
+              "at_us": 14122577148,
+              "name": "ui",
+              "calls": 22,
+              "total_us": 28290,
+              "max_us": 1448,
+              "units": 22,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14112411940
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 368,
+              "at_us": 14071274147,
+              "name": "ui",
+              "calls": 23,
+              "total_us": 38616,
+              "max_us": 11805,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14060870532
+            }
+          ]
+        },
+        "temperature": {
+          "calls": 112,
+          "inclusive_us": 2624153,
+          "intervals": [
+            {
+              "line": 400,
+              "at_us": 14081676062,
+              "name": "temperature",
+              "calls": 22,
+              "total_us": 515187,
+              "max_us": 23564,
+              "units": 360448,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14071274147
+            },
+            {
+              "line": 410,
+              "at_us": 14091826114,
+              "name": "temperature",
+              "calls": 22,
+              "total_us": 515879,
+              "max_us": 23628,
+              "units": 360448,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14081676062
+            },
+            {
+              "line": 420,
+              "at_us": 14102158169,
+              "name": "temperature",
+              "calls": 23,
+              "total_us": 538852,
+              "max_us": 23553,
+              "units": 376832,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14091826114
+            },
+            {
+              "line": 430,
+              "at_us": 14112411940,
+              "name": "temperature",
+              "calls": 23,
+              "total_us": 538541,
+              "max_us": 23568,
+              "units": 376832,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14102158169
+            },
+            {
+              "line": 440,
+              "at_us": 14122577148,
+              "name": "temperature",
+              "calls": 22,
+              "total_us": 515694,
+              "max_us": 23577,
+              "units": 360448,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14112411940
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 363,
+              "at_us": 14071274147,
+              "name": "temperature",
+              "calls": 23,
+              "total_us": 538907,
+              "max_us": 23602,
+              "units": 376832,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14060870532
+            }
+          ]
+        },
+        "pathfind": {
+          "calls": 31,
+          "inclusive_us": 1053,
+          "intervals": [
+            {
+              "line": 401,
+              "at_us": 14081676062,
+              "name": "pathfind",
+              "calls": 4,
+              "total_us": 101,
+              "max_us": 30,
+              "units": 4,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14071274147
+            },
+            {
+              "line": 411,
+              "at_us": 14091826114,
+              "name": "pathfind",
+              "calls": 7,
+              "total_us": 258,
+              "max_us": 60,
+              "units": 7,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14081676062
+            },
+            {
+              "line": 421,
+              "at_us": 14102158169,
+              "name": "pathfind",
+              "calls": 4,
+              "total_us": 142,
+              "max_us": 46,
+              "units": 4,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14091826114
+            },
+            {
+              "line": 431,
+              "at_us": 14112411940,
+              "name": "pathfind",
+              "calls": 9,
+              "total_us": 309,
+              "max_us": 69,
+              "units": 9,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14102158169
+            },
+            {
+              "line": 441,
+              "at_us": 14122577148,
+              "name": "pathfind",
+              "calls": 7,
+              "total_us": 243,
+              "max_us": 53,
+              "units": 7,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14112411940
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 364,
+              "at_us": 14071274147,
+              "name": "pathfind",
+              "calls": 9,
+              "total_us": 468,
+              "max_us": 103,
+              "units": 9,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14060870532
+            }
+          ]
+        },
+        "input_state": {
+          "calls": 0,
+          "inclusive_us": 0,
+          "intervals": [
+            {
+              "line": 402,
+              "at_us": 14081676062,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14071274147
+            },
+            {
+              "line": 412,
+              "at_us": 14091826114,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14081676062
+            },
+            {
+              "line": 422,
+              "at_us": 14102158169,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14091826114
+            },
+            {
+              "line": 432,
+              "at_us": 14112411940,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14102158169
+            },
+            {
+              "line": 442,
+              "at_us": 14122577148,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14112411940
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 365,
+              "at_us": 14071274147,
+              "name": "input_state",
+              "calls": 0,
+              "total_us": 0,
+              "max_us": 0,
+              "units": 0,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14060870532
+            }
+          ]
+        },
+        "input_action": {
+          "calls": 117,
+          "inclusive_us": 142005,
+          "intervals": [
+            {
+              "line": 403,
+              "at_us": 14081676062,
+              "name": "input_action",
+              "calls": 23,
+              "total_us": 22248,
+              "max_us": 15212,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14071274147
+            },
+            {
+              "line": 413,
+              "at_us": 14091826114,
+              "name": "input_action",
+              "calls": 23,
+              "total_us": 21167,
+              "max_us": 14462,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14081676062
+            },
+            {
+              "line": 423,
+              "at_us": 14102158169,
+              "name": "input_action",
+              "calls": 24,
+              "total_us": 27805,
+              "max_us": 20529,
+              "units": 24,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14091826114
+            },
+            {
+              "line": 433,
+              "at_us": 14112411940,
+              "name": "input_action",
+              "calls": 24,
+              "total_us": 26956,
+              "max_us": 19937,
+              "units": 24,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14102158169
+            },
+            {
+              "line": 443,
+              "at_us": 14122577148,
+              "name": "input_action",
+              "calls": 23,
+              "total_us": 43829,
+              "max_us": 36895,
+              "units": 23,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14112411940
+            }
+          ],
+          "excluded_cross_boundary": [
+            {
+              "line": 366,
+              "at_us": 14071274147,
+              "name": "input_action",
+              "calls": 24,
+              "total_us": 37174,
+              "max_us": 16103,
+              "units": 24,
+              "enabled": 1,
+              "inclusive": 1,
+              "begin_us": 14060870532
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "marks": [
+    {
+      "line": 55,
+      "at_us": 13941604175,
+      "event": "WARMUP",
+      "speed": "Normal",
+      "date": "1-04-01T00"
+    },
+    {
+      "line": 160,
+      "at_us": 13971930052,
+      "event": "SAMPLE-BEGIN",
+      "speed": "Normal",
+      "date": "1-04-01T49"
+    },
+    {
+      "line": 248,
+      "at_us": 14032339833,
+      "event": "SAMPLE-END",
+      "speed": "Normal",
+      "date": "1-04-04T30"
+    },
+    {
+      "line": 257,
+      "at_us": 14040590085,
+      "event": "WARMUP",
+      "speed": "And then some more",
+      "date": "1-04-01T00"
+    },
+    {
+      "line": 360,
+      "at_us": 14070808689,
+      "event": "SAMPLE-BEGIN",
+      "speed": "And then some more",
+      "date": "1-04-02T04"
+    },
+    {
+      "line": 448,
+      "at_us": 14130946356,
+      "event": "SAMPLE-END",
+      "speed": "And then some more",
+      "date": "1-04-04T36"
+    },
+    {
+      "line": 457,
+      "at_us": 14139991272,
+      "event": "COMPLETE",
+      "speed": "Normal",
+      "date": "1-04-01T00"
+    }
+  ],
+  "backend_selections": [
+    {
+      "line": 11,
+      "selected": "software",
+      "reason": "startup-pixel-contract-failed"
+    }
+  ],
+  "device_visual_save_audio": "NOT_PROVEN",
+  "fps_30": "NOT_PROVEN",
+  "boundary": "Use exact window bounds. Compact snapshots are cumulative; do not sum them. Deferred full flush can include a following load; show overhang and prefer wholly contained compact intervals. GPU completion time is not utilization; normal simulation and device visuals/save reload also required."
+}

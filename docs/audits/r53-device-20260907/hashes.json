@@ -1,0 +1,76 @@
+{
+  "schema": "corsixh3ds.review-file-hashes/v1",
+  "boundary": "Integrity inventory only; hashes.json excludes itself. Product acceptance remains separate.",
+  "files": [
+    {
+      "file": ".gitignore",
+      "bytes": 128,
+      "sha256": "1ec29f074f9c526f96a07ab72275553498fa71ed078b9d7feda9a0289514f686"
+    },
+    {
+      "file": "README.md",
+      "bytes": 13743,
+      "sha256": "60ecc5e2f8b6ae617f7facea8acc77586c332cd4e378dda10784791462e046d7"
+    },
+    {
+      "file": "analyze_benchmark.py",
+      "bytes": 6141,
+      "sha256": "212c5ee9477b6ed17add324bda54180ec58dc3466a5680aa94aaa110f1bda532"
+    },
+    {
+      "file": "first-benchmark.json",
+      "bytes": 44332,
+      "sha256": "717155c716813892a3bd8345eaba3d74f3e26248cea391faa63459d0ddc6ed12"
+    },
+    {
+      "file": "first-boot.log",
+      "bytes": 168907,
+      "sha256": "d1bb6f5503d685cbc7fcae00720dda4bdbcc12b500d6dbb970c0262a34a3714b"
+    },
+    {
+      "file": "first-gamelog.txt",
+      "bytes": 216,
+      "sha256": "cf3dbbde1f1369dc13f852617e7d44a3ab805c6c999a302c518b5ea4b590213d"
+    },
+    {
+      "file": "identity.json",
+      "bytes": 5086,
+      "sha256": "dada986f9719ffa88aed647728d36f485ca3a114cc0a3c5083b99e41dce3795a"
+    },
+    {
+      "file": "reproduce_watch_context.lua",
+      "bytes": 3703,
+      "sha256": "438c343c09d92af644c0f2dda139cb04ed9169059b110351e078242a738d44ad"
+    },
+    {
+      "file": "second-benchmark.json",
+      "bytes": 590,
+      "sha256": "845fdc53362ea10cba5191c1d3ca62bb7b6cc8860de77be7b022c810f8de18e2"
+    },
+    {
+      "file": "second-boot.log",
+      "bytes": 289515,
+      "sha256": "c7a22d7e7039a0a1607d60d05ad7295c236e7c48f9e573fdd627c12e1814df86"
+    },
+    {
+      "file": "second-gamelog.txt",
+      "bytes": 216,
+      "sha256": "cf3dbbde1f1369dc13f852617e7d44a3ab805c6c999a302c518b5ea4b590213d"
+    },
+    {
+      "file": "sessions.json",
+      "bytes": 197892,
+      "sha256": "98eeeea82487120093dd71556489ee9f24d249d708286f1ec0aaa0be4cc472e6"
+    },
+    {
+      "file": "verify_evidence.py",
+      "bytes": 2099,
+      "sha256": "9a32eeabd8bf0d60ecd137b18b2986c7c4c9f8618a3d73d0e0e0d4720c6be718"
+    },
+    {
+      "file": "watch-context-result.txt",
+      "bytes": 291,
+      "sha256": "10fd92879978dea7b2367666a361cf677080edd7fbf7b93519bfcfaa358dab45"
+    }
+  ]
+}

@@ -54,7 +54,7 @@ jobs:
       - name: Install native host runtime inputs
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ lua5.4 liblua5.4-0 python3-venv
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3-venv
           mkdir -p "$RUNNER_TEMP/cth3ds-bin"
           ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua"
           echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"
@@ -111,12 +111,62 @@ jobs:
             --manifest "$PWD/tests/host-python-suite.json" \
             --output "$PWD/artifacts/verification/host-python-${{ matrix.python }}.json"
           python - "$PWD/artifacts/verification/host-python-${{ matrix.python }}.json" <<'PY'
-          import json, pathlib, sys
-          totals = json.loads(pathlib.Path(sys.argv[1]).read_text())["execution"]["totals"]
-          expected = {"selected": 149, "accounted": 149, "passed": 149, "failed": 0, "errors": 0, "skipped": 0}
-          if totals != expected:
-              raise SystemExit(f"host Python contract mismatch: {totals}")
-          print("149 passed, 0 failed, 0 errors, 0 skipped")
+          import importlib.util, json, pathlib, sys
+          repo = pathlib.Path.cwd().resolve(strict=True)
+          manifest_path = repo / "tests/host-python-suite.json"
+          spec = importlib.util.spec_from_file_location(
+              "host_suite_contract", repo / "scripts/run_host_python_suite.py")
+          runner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(runner)
+          manifest = runner.load_manifest(manifest_path)
+          selected = manifest["test_ids"]
+          discovered, _ = runner.discover(repo)
+          receipt = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit("host Python contract mismatch: " + message)
+          require(discovered == selected, "live discovery differs from manifest")
+          n = len(selected)
+          digest = runner.ids_sha256(selected)
+          require(receipt.get("schema") == runner.SCHEMA and receipt.get("verdict") == "PASS",
+                  "schema/verdict")
+          require(not runner.git(repo, "status", "--porcelain=v1", "--untracked-files=no"),
+                  "current tracked checkout is dirty")
+          require(receipt.get("candidate") == {
+              "repository": str(repo),
+              "commit": runner.git(repo, "rev-parse", "HEAD^{commit}"),
+              "tree": runner.git(repo, "rev-parse", "HEAD^{tree}"),
+              "parents": runner.git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:],
+              "tracked_worktree_clean": True,
+          }, "actual candidate head/tree/complete parents")
+          require(receipt.get("manifest") == {
+              "path": str(manifest_path), "sha256": runner.sha256_file(manifest_path),
+              "baseline_count": manifest["baseline"]["count"],
+              "baseline_sorted_ids_sha256": manifest["baseline"]["sorted_ids_sha256"],
+          }, "actual manifest identity")
+          for phase in ("discovery", "selection"):
+              require(receipt.get(phase) == {
+                  "count": n, "unique": n, "sorted_ids_sha256": digest,
+              }, phase + " count/ID digest")
+          execution = receipt.get("execution", {})
+          require(execution.get("count") == n and execution.get("sorted_ids_sha256") == digest,
+                  "execution count/ID digest")
+          require(execution.get("outcomes") == [{"id": item, "outcome": "passed"} for item in selected],
+                  "each selected ID must have exactly one passed outcome")
+          require(execution.get("totals") == {
+              "selected": n, "accounted": n, "passed": n, "failed": 0, "errors": 0, "skipped": 0,
+          }, "complete zero-error/zero-failure/zero-skip totals")
+          require(receipt.get("mismatches") == {name: [] for name in (
+              "missing_ids", "extra_ids", "duplicate_ids", "unstarted_ids",
+              "synthetic_events", "unexpected_skips")}, "runner mismatch records")
+          executable = pathlib.Path(sys.executable).absolute()
+          implementation = executable.resolve(strict=True)
+          require(receipt.get("interpreter") == {
+              "executable": str(executable), "implementation_realpath": str(implementation),
+              "implementation_sha256": runner.sha256_file(implementation), "version": sys.version,
+              "implementation": sys.implementation.name, "cache_tag": sys.implementation.cache_tag,
+          }, "actual executing interpreter")
+          print(f"{n} passed, 0 failed, 0 errors, 0 skipped; IDs {digest}")
           PY
       - name: Upload host Python receipt
         if: always()
@@ -260,7 +310,7 @@ jobs:
           ./scripts/run_ci_command.sh host-${{ matrix.name }}-setup
           artifacts/ci/host-${{ matrix.name }}-setup --
           bash -c 'sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 python3 python3-venv &&
+          cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3 python3-venv &&
           mkdir -p "$RUNNER_TEMP/cth3ds-bin" &&
           ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua" &&
           echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"'
@@ -279,7 +329,7 @@ jobs:
             echo "runner_image_version=${ImageVersion:-unset}"
             echo "container=$CTH3DS_HOST_CONTAINER"
             cat /etc/os-release
-            dpkg-query -W cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 python3 python3-venv
+            dpkg-query -W cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3 python3-venv
             sha256sum "$(command -v cmake)" "$(command -v ninja)" \
               "$(command -v gcc-13)" "$(command -v g++-13)" "$(command -v clang)" \
               "$(command -v lua)"
@@ -401,7 +451,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git curl ca-certificates tar make cmake ninja-build g++ clang \
-            lua5.4 liblua5.4-0 python3 python3-venv
+            lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3 python3-venv
           dkp-pacman -S --needed --noconfirm \
             3ds-cmake=1.5.2-1 3ds-pkg-config=0.28-5 3ds-zlib=1.3.1-1 \
             3ds-libpng=1.6.53-1 3ds-freetype=2.14.1-1 3ds-bzip2=1.0.8-1
@@ -470,9 +520,13 @@ jobs:
         id: fresh
         continue-on-error: true
         timeout-minutes: 150
+        shell: bash
         run: |
           bundle_root="$(cat "$RUNNER_TEMP/cth3ds-input/bundle-root.txt")"
-          ./scripts/run_verifier_python.sh \
+          . scripts/ci_diagnostics.sh
+          cth3ds_run_fresh_command \
+            "$PWD/artifacts/verification/fresh-chain-final-seal/fresh-command-outcome.json" \
+            8940 ./scripts/run_verifier_python.sh \
             --input-bundle "$bundle_root" \
             --runtime-version 3.9.25 \
             --env-dir "$RUNNER_TEMP/cth3ds-fresh-env39" \

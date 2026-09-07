@@ -1,6 +1,7 @@
 #include "cth3ds/framebuffer_scaler.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 
 namespace cth3ds {
@@ -86,10 +87,79 @@ CropView calculate_centre_crop(int source_width, int source_height,
   return view;
 }
 
+namespace {
+std::uint32_t output_pixel(std::uint32_t pixel, bool swap_bytes) noexcept {
+  if (!swap_bytes) return pixel;
+  return ((pixel & 0xffU) << 24U) | ((pixel & 0xff00U) << 8U) |
+         ((pixel >> 8U) & 0xff00U) | (pixel >> 24U);
+}
+}  // namespace
+
+Vec2i follow_pointer_viewport(Vec2i origin, Vec2i pointer,
+    int source_width, int source_height, int view_width, int view_height,
+    int margin) noexcept {
+  if (view_width <= 0 || view_height <= 0 || source_width < view_width ||
+      source_height < view_height) return {};
+  const int mx = std::clamp(margin, 0, (view_width - 1) / 2);
+  const int my = std::clamp(margin, 0, (view_height - 1) / 2);
+  pointer.x = std::clamp(pointer.x, 0, source_width - 1);
+  pointer.y = std::clamp(pointer.y, 0, source_height - 1);
+  origin.x = std::clamp(origin.x, 0, source_width - view_width);
+  origin.y = std::clamp(origin.y, 0, source_height - view_height);
+  if (pointer.x < origin.x + mx) origin.x = pointer.x - mx;
+  else if (pointer.x >= origin.x + view_width - mx)
+    origin.x = pointer.x - view_width + mx + 1;
+  if (pointer.y < origin.y + my) origin.y = pointer.y - my;
+  else if (pointer.y >= origin.y + view_height - my)
+    origin.y = pointer.y - view_height + my + 1;
+  return {std::clamp(origin.x, 0, source_width - view_width),
+          std::clamp(origin.y, 0, source_height - view_height)};
+}
+
+bool scale_rgba_view(const std::uint32_t* source, int source_width,
+    int source_height, int source_pitch_pixels, RectI view,
+    std::uint32_t* destination, int width, int height,
+    int destination_pitch_pixels, bool swap_bytes) noexcept {
+  if (!source || !destination || source == destination || view.x < 0 || view.y < 0 ||
+      view.w <= 0 || view.h <= 0 || source_width < view.w || source_height < view.h ||
+      view.x > source_width - view.w || view.y > source_height - view.h ||
+      source_pitch_pixels < source_width || destination_pitch_pixels < width) return false;
+  if (view.w == width && view.h == height)
+    return copy_rgba_view(source, source_width, source_height, source_pitch_pixels,
+        {view.x, view.y}, destination, width, height, destination_pitch_pixels, swap_bytes);
+  std::array<std::uint16_t, kMaxScalerAxis> columns{}, rows{};
+  if (!build_nearest_axis_table(view.w, width, columns.data(), kMaxScalerAxis) ||
+      !build_nearest_axis_table(view.h, height, rows.data(), kMaxScalerAxis)) return false;
+  for (int y = 0; y < height; ++y) {
+    const auto* row = source + static_cast<std::ptrdiff_t>(view.y + rows[static_cast<std::size_t>(y)]) * source_pitch_pixels + view.x;
+    auto* out = destination + static_cast<std::ptrdiff_t>(y) * destination_pitch_pixels;
+    for (int x = 0; x < width; ++x) out[x] = output_pixel(row[columns[static_cast<std::size_t>(x)]], swap_bytes);
+  }
+  return true;
+}
+
+bool copy_rgba_view(const std::uint32_t* source, int source_width,
+    int source_height, int source_pitch_pixels, Vec2i origin,
+    std::uint32_t* destination, int view_width, int view_height,
+    int destination_pitch_pixels, bool swap_bytes) noexcept {
+  if (!source || !destination || source == destination || view_width <= 0 ||
+      view_height <= 0 || source_width < view_width || source_height < view_height ||
+      source_pitch_pixels < source_width || destination_pitch_pixels < view_width ||
+      origin.x < 0 || origin.y < 0 || origin.x > source_width - view_width ||
+      origin.y > source_height - view_height) return false;
+  for (int y = 0; y < view_height; ++y) {
+    const auto* row = source + static_cast<std::ptrdiff_t>(y + origin.y) *
+                               source_pitch_pixels + origin.x;
+    auto* out = destination + static_cast<std::ptrdiff_t>(y) * destination_pitch_pixels;
+    for (int x = 0; x < view_width; ++x) out[x] = output_pixel(row[x], swap_bytes);
+  }
+  return true;
+}
+
 bool halve_rgba(const std::uint32_t* source, int source_width,
                 int source_height, int source_pitch_pixels,
                 std::uint32_t* destination,
-                int destination_pitch_pixels) noexcept {
+                int destination_pitch_pixels, bool swap_bytes) noexcept {
   if (source == nullptr || destination == nullptr || source_width < 2 ||
       source_height < 2 || source_pitch_pixels < source_width ||
       destination_pitch_pixels < source_width / 2) {
@@ -103,7 +173,7 @@ bool halve_rgba(const std::uint32_t* source, int source_width,
     auto* destination_row =
         destination + static_cast<std::ptrdiff_t>(y) * destination_pitch_pixels;
     for (int x = 0; x < output_width; ++x) {
-      destination_row[x] = source_row[x * 2];
+      destination_row[x] = output_pixel(source_row[x * 2], swap_bytes);
     }
   }
   return true;

@@ -1,0 +1,4 @@
+# These explicitly reviewed diagnostic text logs are intentional public evidence.
+!first-boot.log
+!second-boot.log
+__pycache__/

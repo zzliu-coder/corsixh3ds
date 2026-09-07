@@ -31,7 +31,7 @@ class EmbeddedAdapterTests(unittest.TestCase):
 
     def test_header_contains_attach_entry_point(self) -> None:
         header = (ROOT / "src" / "3ds" / "embedded_platform_lua.hpp").read_text()
-        self.assertIn("function module.attach(app, native)", header)
+        self.assertIn("function module.attach(app, native, capabilities)", header)
         self.assertIn("kEmbeddedPlatformLua", header)
 
     def test_runtime_uses_the_embedded_fallback(self) -> None:

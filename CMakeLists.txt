@@ -56,7 +56,10 @@ endif()
 
 
 if(CTH3DS_BUILD_3DS_SYNTAX_CHECK)
-  add_library(cth3ds-3ds-syntax OBJECT src/3ds/runtime_3ds.cpp)
+  include(src/3ds/sources.cmake)
+  set(CTH3DS_NATIVE_SOURCE_PATHS ${CTH3DS_PLATFORM_SOURCES})
+  list(TRANSFORM CTH3DS_NATIVE_SOURCE_PATHS PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/3ds/")
+  add_library(cth3ds-3ds-syntax OBJECT ${CTH3DS_NATIVE_SOURCE_PATHS})
   target_include_directories(cth3ds-3ds-syntax PRIVATE
     tests/stubs
     include
@@ -101,9 +104,11 @@ if(CTH3DS_BUILD_TESTS)
     tests/test_audio_mixer.cpp
     tests/test_atomic_save.cpp
     tests/test_bottom_ui.cpp
+    tests/test_bounded_log.cpp
     tests/test_build_gesture.cpp
     tests/test_fixed_step.cpp
     tests/test_framebuffer_scaler.cpp
+    tests/test_handheld_r48.cpp
     tests/test_interval_gate.cpp
     tests/test_input_mapper.cpp
     tests/test_lifecycle.cpp

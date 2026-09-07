@@ -10,7 +10,7 @@ struct ActionName {
   std::string_view name;
 };
 
-constexpr std::array<ActionName, 52> kActionNames{{
+constexpr std::array<ActionName, 57> kActionNames{{
     {ActionType::None, "none"},
     {ActionType::PanCamera, "pan_camera"},
     {ActionType::CursorStep, "cursor_step"},
@@ -56,6 +56,11 @@ constexpr std::array<ActionName, 52> kActionNames{{
     {ActionType::LifecycleSuspend, "lifecycle_suspend"},
     {ActionType::LifecycleResume, "lifecycle_resume"},
     {ActionType::LifecycleExit, "lifecycle_exit"},
+    {ActionType::MoveViewport, "move_viewport"},
+    {ActionType::ToggleView, "toggle_view"},
+    {ActionType::OpenSaveSlots, "open_save_slots"},
+    {ActionType::ShowHelp, "show_help"},
+    {ActionType::TextKeyboard, "text_keyboard"},
     // Reserved aliases keep the table size stable if actions are appended.
     {ActionType::OpenDashboard, "dashboard"},
     {ActionType::OpenBuild, "build"},

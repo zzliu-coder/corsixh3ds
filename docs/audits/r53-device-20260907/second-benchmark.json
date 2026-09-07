@@ -1,0 +1,15 @@
+{
+  "benchmark_protocol": "NOT_PROVEN",
+  "samples": [],
+  "marks": [],
+  "backend_selections": [
+    {
+      "line": 11,
+      "selected": "software",
+      "reason": "startup-pixel-contract-failed"
+    }
+  ],
+  "device_visual_save_audio": "NOT_PROVEN",
+  "fps_30": "NOT_PROVEN",
+  "boundary": "Use exact window bounds. Compact snapshots are cumulative; do not sum them. Deferred full flush can include a following load; show overhang and prefer wholly contained compact intervals. GPU completion time is not utilization; normal simulation and device visuals/save reload also required."
+}

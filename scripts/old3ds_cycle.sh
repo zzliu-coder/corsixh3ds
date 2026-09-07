@@ -70,12 +70,12 @@ CTH3DS_BUILD_DIR="${BUILD_DIR}" CTH3DS_DEPS_PREFIX="${CTH3DS_ROOT}/build-3ds/dep
 if [[ "${DEPLOY_MODE}" == "full" ]]; then
   CTH3DS_BUILD_DIR="${BUILD_DIR}" CTH3DS_DEPS_PREFIX="${CTH3DS_ROOT}/build-3ds/deps" \
   CTH3DS_DIST_DIR="${DIST_DIR}" \
-    "${CTH3DS_ROOT}/scripts/package_sd.sh" --theme-hospital "${GAME_SOURCE}" --no-data-pack \
+    "${CTH3DS_ROOT}/scripts/package_sd.sh" --theme-hospital "${GAME_SOURCE}" --asset-mode loose \
     >"${RUN_DIR}/logs/package.log" 2>&1
 else
   CTH3DS_BUILD_DIR="${BUILD_DIR}" CTH3DS_DEPS_PREFIX="${CTH3DS_ROOT}/build-3ds/deps" \
   CTH3DS_DIST_DIR="${DIST_DIR}" \
-    "${CTH3DS_ROOT}/scripts/package_sd.sh" \
+    "${CTH3DS_ROOT}/scripts/package_sd.sh" --theme-hospital "${GAME_SOURCE}" --asset-mode loose \
     >"${RUN_DIR}/logs/package.log" 2>&1
 fi
 

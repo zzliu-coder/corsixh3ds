@@ -75,3 +75,15 @@ TEST(lifecycle_reset_anchors_periodic_autosave_to_current_time) {
   EXPECT_FALSE(controller.tick(5999999).request_autosave);
   EXPECT_TRUE(controller.tick(6000000).request_autosave);
 }
+
+TEST(lifecycle_loose_has_bounded_pause_restore_and_no_native_serialization) {
+  cth3ds::LifecycleController controller;
+  controller.set_autosave_enabled(false);controller.reset(0);
+  EXPECT_FALSE(controller.tick(120000000).request_autosave);
+  const auto sleep=controller.signal(cth3ds::LifecycleSignal::Sleep,120000001);
+  EXPECT_TRUE(sleep.pause_audio);EXPECT_TRUE(sleep.pause_simulation);EXPECT_FALSE(sleep.request_autosave);
+  const auto wake=controller.signal(cth3ds::LifecycleSignal::Wake,130000000);
+  EXPECT_TRUE(wake.resume_audio);EXPECT_FALSE(wake.request_autosave);
+  const auto exit=controller.signal(cth3ds::LifecycleSignal::Exit,130000001);
+  EXPECT_TRUE(exit.request_exit);EXPECT_FALSE(exit.request_autosave);
+}

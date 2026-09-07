@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import os
 import unittest
 from pathlib import Path
@@ -18,9 +19,8 @@ class FinalElfRuntimeCoreTests(unittest.TestCase):
         self.assertIn("runtime-core: mount commit", source)
         self.assertIn("runtime-core: mount rollback", source)
 
-        integrator = (ROOT / "tools/integrate_corsixth.py").read_text(
-            encoding="utf-8"
-        )
+        from integrate_corsixth import copy_overlay, patch_sources
+        integrator = inspect.getsource(copy_overlay) + inspect.getsource(patch_sources)
         self.assertIn("${CTH3DS_COMMON_SOURCES}", integrator)
         self.assertIn("cth3ds::runtime_initialize(L)", integrator)
         self.assertIn("cth3ds::runtime_shutdown(L)", integrator)

@@ -38,8 +38,8 @@ TOOLCHAIN="${DEVKITPRO}/cmake/3DS.cmake"
 BUILD="${CTH3DS_BUILD_DIR}/CorsixTH"
 set_cmake_generator
 
-# CorsixTH keeps its 640x480 logical canvas. The patched SDL2 N3DS framebuffer
-# letterboxes it to 400x240 and exposes a second 320x240 window for the touch UI.
+# CorsixTH draws into its owned 640x480 surface. Runtime copies a native 400x240
+# viewport to the upper window and a 320x240 overview to the lower window.
 ci_diag_step configure "${BUILD_EVIDENCE_DIR}/configure.log"
 cmake -S "${UPSTREAM_DIR}" -B "${BUILD}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
   -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \
@@ -189,10 +189,13 @@ result = {
     "elf": elf,
     "elf_symbols": elf_present,
     "production_entry": roots,
+    "entry_scope": "mode-gated native initialization; RuntimeSession is th3ds experiment only",
+    "player_ready_guard": any("mainloop(" in name and any("runtime_assert_ready(" in edge for edge in edges) for name, edges in functions.items()),
     "runtime_session_call_path": edge_path,
     "whole_archive_used": whole_archive,
     "pass": all(archive_present.values()) and all(elf_present.values())
-            and bool(edge_path) and not whole_archive,
+            and bool(edge_path) and not whole_archive
+            and any("mainloop(" in name and any("runtime_assert_ready(" in edge for edge in edges) for name, edges in functions.items()),
 }
 pathlib.Path(report).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 if not result["pass"]:

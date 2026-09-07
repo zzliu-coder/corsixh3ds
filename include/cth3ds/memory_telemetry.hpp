@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <string_view>
 
@@ -141,6 +142,9 @@ enum class ResourceMemoryCategory : std::uint8_t {
   SaveLoad,
   Transition,
   Other,
+  Texture,
+  Map,
+  World,
   Count,
 };
 
@@ -149,7 +153,7 @@ inline constexpr std::array<std::string_view,
     kResourceMemoryCategoryNames{{
         "language",       "sound_archive", "sound_decoded", "vspr_table",
         "vspr_data",      "vspr_decoded",  "adapter",       "menu",
-        "level",          "save_load",     "transition",    "other",
+        "level",          "save_load",     "transition",    "other", "texture", "map", "world",
     }};
 
 constexpr ResourceMemoryCategory resource_memory_category(
@@ -162,12 +166,14 @@ constexpr ResourceMemoryCategory resource_memory_category(
   return ResourceMemoryCategory::Other;
 }
 
-inline constexpr std::array<std::string_view, 13U> kMemoryCheckpointNames{{
+inline constexpr std::array<std::string_view, 27U> kMemoryCheckpointNames{{
     "language_discovery", "language_selected", "sound_archive_read",
     "sound_archive_copy", "sound_decode",      "vspr_table",
     "vspr_data",          "vspr_decode",       "adapter_attach",
     "menu",               "first_level",       "save_load",
-    "transition",
+    "transition", "sound_index", "sound_read", "sound_play", "sound_evict",
+    "sound_release", "textures", "map", "world", "save", "reload", "restore",
+    "release", "gc", "allocation_failure",
 }};
 
 constexpr bool is_memory_checkpoint(std::string_view name) noexcept {
@@ -187,6 +193,12 @@ constexpr ResourceMemoryCategory checkpoint_resource_category(
   if (checkpoint == "sound_archive_read" || checkpoint == "sound_archive_copy") {
     return ResourceMemoryCategory::SoundArchive;
   }
+  if (checkpoint == "sound_index" || checkpoint == "sound_read") return ResourceMemoryCategory::SoundArchive;
+  if (checkpoint == "sound_play" || checkpoint == "sound_evict" || checkpoint == "sound_release") return ResourceMemoryCategory::SoundDecoded;
+  if (checkpoint == "textures") return ResourceMemoryCategory::Texture;
+  if (checkpoint == "map") return ResourceMemoryCategory::Map;
+  if (checkpoint == "world") return ResourceMemoryCategory::World;
+  if (checkpoint == "save" || checkpoint == "reload" || checkpoint == "restore") return ResourceMemoryCategory::SaveLoad;
   if (checkpoint == "sound_decode") return ResourceMemoryCategory::SoundDecoded;
   if (checkpoint == "vspr_table") return ResourceMemoryCategory::VsprTable;
   if (checkpoint == "vspr_data") return ResourceMemoryCategory::VsprData;
@@ -292,6 +304,133 @@ inline ContiguousProbeResult probe_largest_contiguous(
   result.verified_bytes = low * policy.granularity_bytes;
   result.met_minimum = result.verified_bytes >= policy.minimum_success_bytes;
   return result;
+}
+
+
+// Allocation observations are diagnostic subsets. Neither Lua nor held resource
+// bytes are added to the allocator total. Opaque temporary bytes stay unknown.
+struct MemorySample {
+  std::uint64_t timestamp_us{0}, env_heap_total{0}, arena{0}, uordblks{0}, fordblks{0};
+  std::uint64_t linear_total{0}, linear_free{0}, lua_bytes{0};
+  bool lua_known{false};
+  [[nodiscard]] constexpr std::uint64_t heap_available_estimate() const noexcept {
+    return estimate_heap_available(env_heap_total, arena, fordblks);
+  }
+  [[nodiscard]] constexpr std::uint64_t heap_used_estimate() const noexcept {
+    return env_heap_total - heap_available_estimate();
+  }
+};
+struct MemoryObservation {
+  MemorySample sample{};
+  MemoryGate gate{MemoryGate::Operation};
+  std::array<char, 32> stage{}, phase{};
+  std::array<char, 96> resource{};
+  std::uint64_t requested_bytes{0}, held_bytes{0};
+  bool requested_known{false}, held_known{false}, allocation_failed{false};
+  bool opaque_temporary_unknown{true}, identity_truncated{false};
+};
+inline MemoryObservation memory_observation(
+    const MemorySample& sample, MemoryGate gate, std::string_view stage,
+    std::string_view phase, std::string_view resource,
+    std::uint64_t requested_bytes = 0, bool requested_known = false,
+    std::uint64_t held_bytes = 0, bool held_known = false,
+    bool allocation_failed = false, bool opaque_temporary_unknown = true) noexcept {
+  MemoryObservation o;
+  o.sample = sample; o.gate = gate;
+  const auto copy = [&](auto& buffer, std::string_view value) {
+    const auto length = std::min(value.size(), buffer.size() - 1U);
+    std::copy_n(value.begin(), length, buffer.begin());
+    if (length != value.size()) o.identity_truncated = true;
+  };
+  copy(o.stage, stage); copy(o.phase, phase); copy(o.resource, resource);
+  o.requested_bytes = requested_bytes; o.requested_known = requested_known;
+  o.held_bytes = held_bytes; o.held_known = held_known;
+  o.allocation_failed = allocation_failed;
+  o.opaque_temporary_unknown = opaque_temporary_unknown;
+  return o;
+}
+struct MemoryCheckpointSummary {
+  std::uint64_t samples{0}, first_us{0}, last_us{0};
+  std::uint64_t minimum_heap_available{0}, maximum_heap_used{0};
+  std::uint64_t maximum_arena_used{0}, minimum_linear_free{0}, maximum_lua_bytes{0};
+  std::uint64_t maximum_requested_bytes{0}, maximum_known_held_bytes{0};
+  std::uint64_t allocation_failures{0}, unknown_temporary_samples{0}, lua_known_samples{0};
+  // Last observation gives phase/resource/current holdings including release=0.
+  // Peaks are sampled lower bounds, with no promise about unobserved allocators.
+  MemoryObservation latest{};
+};
+class MemoryTelemetry {
+ public:
+  bool observe(std::string_view checkpoint, const MemoryObservation& o) noexcept {
+    std::size_t index = 0;
+    while (index < kMemoryCheckpointNames.size() && kMemoryCheckpointNames[index] != checkpoint) ++index;
+    if (index == kMemoryCheckpointNames.size() || (started_ && o.sample.timestamp_us < last_us_)) {
+      ++invalid_events_; return false;
+    }
+    started_ = true; last_us_ = o.sample.timestamp_us;
+    auto& s = checkpoints_[index];
+    const auto available = o.sample.heap_available_estimate();
+    if (s.samples == 0) {
+      s.first_us = o.sample.timestamp_us;
+      s.minimum_heap_available = available;
+      s.minimum_linear_free = o.sample.linear_free;
+    }
+    ++s.samples; s.last_us = o.sample.timestamp_us;
+    s.minimum_heap_available = std::min(s.minimum_heap_available, available);
+    s.minimum_linear_free = std::min(s.minimum_linear_free, o.sample.linear_free);
+    s.maximum_heap_used = std::max(s.maximum_heap_used, o.sample.heap_used_estimate());
+    s.maximum_arena_used = std::max(s.maximum_arena_used, o.sample.uordblks);
+    if (o.sample.lua_known) {
+      ++s.lua_known_samples; s.maximum_lua_bytes = std::max(s.maximum_lua_bytes, o.sample.lua_bytes);
+    }
+    if (o.requested_known) s.maximum_requested_bytes = std::max(s.maximum_requested_bytes, o.requested_bytes);
+    if (o.held_known) s.maximum_known_held_bytes = std::max(s.maximum_known_held_bytes, o.held_bytes);
+    if (o.allocation_failed) { ++s.allocation_failures; last_failure_ = o; has_failure_ = true; }
+    if (o.opaque_temporary_unknown) ++s.unknown_temporary_samples;
+    s.latest = o; return true;
+  }
+  [[nodiscard]] const auto& checkpoints() const noexcept { return checkpoints_; }
+  [[nodiscard]] const MemoryObservation& last_failure() const noexcept { return last_failure_; }
+  [[nodiscard]] bool has_failure() const noexcept { return has_failure_; }
+  [[nodiscard]] std::uint64_t invalid_events() const noexcept { return invalid_events_; }
+  void clear() noexcept {
+    checkpoints_.fill({}); last_failure_ = {}; invalid_events_ = last_us_ = 0;
+    started_ = has_failure_ = false;
+  }
+ private:
+  std::array<MemoryCheckpointSummary, kMemoryCheckpointNames.size()> checkpoints_{};
+  MemoryObservation last_failure_{};
+  std::uint64_t invalid_events_{0}, last_us_{0};
+  bool started_{false}, has_failure_{false};
+};
+
+constexpr std::string_view memory_gate_name(MemoryGate gate) noexcept {
+  switch (gate) {
+    case MemoryGate::Boot: return "Boot";
+    case MemoryGate::SelectedLanguage: return "SelectedLanguage";
+    case MemoryGate::MenuStable: return "MenuStable";
+    case MemoryGate::LevelStable: return "LevelStable";
+    case MemoryGate::Operation: return "Operation";
+  }
+  return "Invalid";
+}
+// The same explicit gate supplies both the actual probe and its diagnostic.
+constexpr ContiguousProbePolicy memory_gate_probe_policy(MemoryGate gate) noexcept {
+  const auto p = memory_gate_policy(gate);
+  return {64U * 1024U, p.probe_bytes, p.probe_reserve_bytes, p.probe_bytes};
+}
+inline int format_memory_gate_probe(char* buffer, std::size_t capacity,
+                                   MemoryGate gate, const ContiguousProbeResult& result) noexcept {
+  const auto name = memory_gate_name(gate);
+  const auto policy = memory_gate_probe_policy(gate);
+  return std::snprintf(buffer, capacity,
+      "gate=%.*s required_probe=%llu verified=%llu attempted_limit=%llu reserve=%llu result=%s",
+      static_cast<int>(name.size()), name.data(),
+      static_cast<unsigned long long>(policy.minimum_success_bytes),
+      static_cast<unsigned long long>(result.verified_bytes),
+      static_cast<unsigned long long>(result.attempted_limit_bytes),
+      static_cast<unsigned long long>(policy.reserve_bytes),
+      result.verified_bytes >= policy.minimum_success_bytes && policy.minimum_success_bytes != 0 ? "PASS" : "FAIL");
 }
 
 }  // namespace cth3ds

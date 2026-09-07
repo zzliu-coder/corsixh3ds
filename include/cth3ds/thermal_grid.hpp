@@ -1,0 +1,78 @@
+#pragma once
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <vector>
+
+namespace cth3ds {
+// Exact division for the neighbour sum (<= 16*65535), no ARM software divide.
+inline std::uint32_t thermal_average(std::uint32_t n,unsigned d) noexcept {
+  constexpr std::array<std::uint32_t,17> reciprocal{{0,0,2147483648U,1431655766U,
+    1073741824U,858993460U,715827883U,613566757U,536870912U,477218589U,
+    429496730U,390451573U,357913942U,330382100U,306783379U,286331154U,268435456U}};
+  if(d<=1)return n;
+  auto q=static_cast<std::uint32_t>((static_cast<std::uint64_t>(n)*reciprocal[d])>>32U);
+  return q-(q*d>n?1U:0U);
+}
+class ThermalGrid {
+  struct Cell {std::uint8_t flags{},weight[4]{},sum{};bool dirty{true};};
+  std::vector<Cell> stencil_;
+  std::vector<std::uint16_t> old_;
+  int width_{};
+ public:
+  template<class Tile,class Object>
+  void update(Tile* tiles,int width,int height,int previous,int current,
+              std::uint16_t air,std::uint16_t radiator,Object radiator_type) {
+    const int count=width*height;
+    if(count<=0)return;
+    if(stencil_.size()!=static_cast<std::size_t>(count)||width_!=width){
+      std::vector<Cell> fresh(static_cast<std::size_t>(count));
+      std::vector<std::uint16_t> values(static_cast<std::size_t>(count));
+      stencil_.swap(fresh);old_.swap(values);width_=width;
+    }
+    radiator=std::max(air,radiator);
+    // Observe authoritative flags and object membership once. This covers all
+    // setters, construction/undo and depersist without fragile invalidation hooks.
+    for(int i=0;i<count;++i){
+      const auto& f=tiles[i].flags;
+      unsigned flags=(f.can_travel_n?1U:0U)|(f.can_travel_s?2U:0U)|
+        (f.can_travel_e?4U:0U)|(f.can_travel_w?8U:0U)|(f.hospital?16U:0U)|(f.room?32U:0U);
+      if(f.hospital)for(const auto object:tiles[i].objects)
+        if(object==radiator_type){flags|=64U;break;}
+      auto& cell=stencil_[i];
+      if(cell.flags!=flags){
+        cell.flags=static_cast<std::uint8_t>(flags);cell.dirty=true;
+        for(const int neighbour:{i-width,i+width,i+1,i-1})
+          if(neighbour>=0 && neighbour<count)stencil_[neighbour].dirty=true;
+      }
+      old_[i]=tiles[i].aiTemperature[previous];
+    }
+    // Preserve the pinned engine's linear-array neighbour bounds, including
+    // east/west boundary behaviour. Changing that would change game rules.
+    for(int i=0;i<count;++i){
+      auto& cell=stencil_[i];
+      if(cell.dirty){
+        const int neighbours[4]{i-width,i+width,i+1,i-1};cell.sum=0;
+        for(unsigned side=0;side<4;++side){
+          const int n=neighbours[side];unsigned weight=0;
+          if(n>=0&&n<count)
+            weight=(cell.flags&(1U<<side)) || ((cell.flags^stencil_[n].flags)&48U)==0 ?4U:1U;
+          cell.weight[side]=static_cast<std::uint8_t>(weight);cell.sum+=weight;
+        }cell.dirty=false;
+      }
+      std::uint32_t sum=0;
+      if(cell.weight[0])sum+=old_[i-width]*cell.weight[0];
+      if(cell.weight[1])sum+=old_[i+width]*cell.weight[1];
+      if(cell.weight[2])sum+=old_[i+1]*cell.weight[2];
+      if(cell.weight[3])sum+=old_[i-1]*cell.weight[3];
+      std::uint32_t value=old_[i];
+      if(cell.sum)value=(value*3U+thermal_average(sum,cell.sum))/4U;
+      if(!(cell.flags&16U))value=(value*99U+air)/100U;
+      else if(cell.flags&64U)value=(value+radiator)/2U;
+      else value=value*999U/1000U;
+      tiles[i].aiTemperature[current]=static_cast<std::uint16_t>(value);
+    }
+  }
+  std::size_t bytes() const noexcept {return stencil_.capacity()*sizeof(Cell)+old_.capacity()*sizeof(std::uint16_t);}
+};
+} // namespace cth3ds

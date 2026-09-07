@@ -1,52 +1,25 @@
-# External Audit Handoff
+# 当前外部审查入口：R53 两次真机运行
 
-Generated: 2026-09-03 16:57 CST
+更新：2026-09-07。本仓库 main 同步至最新 R53 产品代码及本次交接文档。
 
-## Next Session Goal
+**请先读 [两次运行的完整诊断、日志与复现](docs/audits/r53-device-20260907/README.md)。**
 
-Independently review the frozen CorsixTH Old 3DS port source and identify reproducible correctness, ownership, integration, build-evidence, and device-validation gaps.
+- 受测产品：`367a887e1d851879fd94bcc755874d00c08f97d5`。
+- 产品 tree：`9ebb14005287ff565d415147a9aaa741a5609954`。
+- 本次发布前文档 HEAD：`707b271436b1accd3b015a5a8ff1d396537fdc64`。
+- 两次设备二进制及不可变运行文件读回一致，设备读取没有写操作。
+- **GPU 自检 FAIL**：两次均 1024/1024 像素不一致，自动回退 software。
+- **30FPS 目标 FAIL**：第一轮 Normal 有效样本约 2.163Hz，模拟推进约标称基础步长工作量的 11.79%。
+- **emergency 滚图缺陷已在电脑端复现**：上游接受事件留下 UIWatch，适配器把计时 HUD 识别为 Dialog，禁止地图移动。
+- 两轮均保存完成并正常退出；完整存档逐一重开恢复、准确事件与摇杆时间线、忙医院容量、中文、音乐仍为 NOT_PROVEN。
 
-## Current State
+公开资料包括完整两轮 boot 日志、两个简短 gamelog、机器分析、摘要及只读复现脚本。
+存档内容、原版游戏资源、个人配置、工具链、二进制不随本次代码审查发布。
+来源/边界见 [PUBLICATION_MANIFEST.json](PUBLICATION_MANIFEST.json)。
 
-- Internal frozen source commit: `9ff2b84114df9070d578c88fe927255369c12b6d`
-- Internal frozen source tree: `a0827cfe96655a2660d33752654c70de007152c3`
-- Sole parent: `bedf567a4810d0479fba5ebcae7b49020d2988f3`
-- Evidence protocol: `FAIL` at the frozen baseline; C3-R5 remediation is diagnosed but has not been constructed or independently accepted.
-- Runtime product correctness: `FAIL`.
-- Real product resource integration: `FAIL`.
-- Old 3DS memory peak and device runtime: `NOT_PROVEN`.
-- Host tests and devkitARM compile/link results exist, but do not establish product or device acceptance.
-- Further construction and automated progression were paused before this publication.
+当前任务优先级：真实 GPU 输出正确 → HUD/模态窗口与滚图边界 → 同存档性能/模拟计时 → 中文音乐与后期容量。
+统一账本仍为 [滚动计划](docs/ROLLING_PLAN.md)，构建方式见 [开发循环](docs/DEVELOPMENT_LOOP.md)。
+本次交接没有修改游戏执行代码或重新安装设备。
 
-## User Intent And Scope
-
-- Review the source as a work in progress.
-- Keep host, cross-build, final-artifact, and real-device conclusions separate.
-- Require a concrete source path or reproducible result for every formal finding.
-- The repository intentionally contains no proprietary Theme Hospital game data.
-
-## Source Layout
-
-- `include/cth3ds`, `src/common`, `src/3ds`: Runtime Core and platform implementation.
-- `lua/3ds`: Lua platform adapter.
-- `tools`, `scripts`: upstream integration, resource conversion, build, packaging, and evidence tooling.
-- `tests`: host, simulator, integration, cross-build, and evidence-protocol tests.
-- `docs`: architecture and prior evidence documentation.
-
-The CorsixTH upstream source is intentionally not vendored. Run `scripts/bootstrap_upstream.sh` to obtain pinned CorsixTH `v0.70.1` commit `56bd5d00f76331c7f76d7b696726a7926303ca0c` and apply this port. That operation still does not provide the proprietary Theme Hospital data required to play.
-
-## Publication Transformations
-
-This public repository is a single-commit source snapshot rather than the internal Git history. Program source bytes come from the frozen tree above. Two local absolute paths in `docs/evidence/runtime-core-acceptance.json` were replaced with `<LOCAL_WORKSPACE>` to avoid publishing a workstation username and directory layout. No executable source was altered by publication.
-
-## First Audit Actions
-
-1. Verify `PUBLICATION_MANIFEST.json` and the repository tree.
-2. Run the host test and upstream integration checks documented in `README.md`.
-3. Trace real graphics, audio, font, sprite, and level resource consumption to `RuntimeSession` rather than accepting symbol presence alone.
-4. Review level-transition commit/rollback, HOME and exit saving, lease release, and failure atomicity.
-5. Record real Old 3DS behavior as `NOT_PROVEN` until device evidence is collected.
-
-## Important Boundary
-
-This snapshot is suitable for source review. It is not a release claim and is not evidence that the game is currently playable on Old 3DS.
+2026-09-03 的首次冻结报告及发布清单移入 [历史发布目录](docs/archive/publication-20260903/)。
+历史的通过或失败只适用于各自固定提交；读取当前入口时不应沿用旧快照结论。

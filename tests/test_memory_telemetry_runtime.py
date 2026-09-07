@@ -127,7 +127,7 @@ local fail_load = false
 local function saw(name, phase)
   return checkpoints[name .. ":" .. phase] == true
 end
-local native = {{
+local native = {{span_begin=function()return 1 end,span_end=function()end,observe_memory=function()end,flush_observations=function()end,
   checkpoint = function(name, phase)
     checkpoints[name .. ":" .. phase] = true
   end,
@@ -157,46 +157,94 @@ local app = {{
     local handle = assert(io.open(filename, "wb"))
     handle:write("SAVE")
     handle:close()
-    return "saved"
+    return true
   end,
   load = function(self, filename)
     if fail_load then error("synthetic load failure") end
-    return filename, nil, 3
+    return true
   end,
 }}
-local platform = module.attach(app, native)
+local platform = module.attach(app, native, {{resource_events=false,asset_mode="loose",epoch=1}})
 assert(saw("language_selected", "observed-at-adapter-attach"))
-assert(saw("menu", "ready"))
-assert(resource_events[1] == "menu:true")
-app.world = {{}}
-platform:syncBottomState()
-assert(saw("transition", "world-changed"))
-assert(saw("first_level", "ready"))
-assert(resource_events[2] == "level:true")
-assert(app:save({save_root} .. "slot.sav") == "saved")
-assert(saw("save_load", "save-begin"))
-assert(saw("save_load", "save-complete"))
-assert(resource_events[3] == "save-begin:true")
-assert(resource_events[4] == "save-end:true")
-local first, second, third = app:load("slot.sav")
-assert(first == "slot.sav" and second == nil and third == 3)
-assert(saw("save_load", "load-begin"))
-assert(saw("save_load", "load-complete"))
-assert(resource_events[5] == "load-begin:true")
-assert(resource_events[6] == "load-end:true")
-fail_save = true
-assert(not pcall(app.save, app, {save_root} .. "failed.sav"))
-assert(resource_events[7] == "save-begin:true")
-assert(resource_events[8] == "save-end:false")
-fail_load = true
-assert(not pcall(app.load, app, "failed.sav"))
-assert(resource_events[9] == "load-begin:true")
-assert(resource_events[10] == "load-end:false")
+assert(#resource_events==0)
+assert(app:save({save_root} .. "slot.sav") == true)
+assert(saw("save_load", "save-begin") and saw("save_load", "save-complete"))
+app.world={{}}
+assert(app:load("slot.sav")==true)
+assert(saw("save_load", "load-begin") and saw("save_load", "load-complete"))
+fail_save=true
+assert(not pcall(app.save,app,{save_root}.."failed.sav"))
+assert(app:load("slot.sav")==false) -- failed recovery cancels preload
+fail_save=false;fail_load=true
+assert(app:load("failed.sav")==false)
+assert(saw("save_load","load-failed"))
+assert(#resource_events==0)
 """
-            result = subprocess.run(
-                [lua, "-"], input=script, text=True, capture_output=True
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
+            from test_lua_runtime import LuaRuntimeTests
+            LuaRuntimeTests.setUpClass()
+            LuaRuntimeTests().run_lua(script)
+
+
+class MeasurementComponentRuntimeTests(unittest.TestCase):
+    """Execute the actual public components with fixed clock/allocator inputs."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        compiler = shutil.which("clang++") or shutil.which("g++")
+        if compiler is None:
+            raise RuntimeError("C++ compiler required for measurement contract")
+        cls.temporary = tempfile.TemporaryDirectory()
+        root = Path(cls.temporary.name)
+        source = root / "measurement.cpp"
+        source.write_text(r'''
+#include "cth3ds/telemetry.hpp"
+#include "cth3ds/memory_telemetry.hpp"
+#include <iostream>
+int main() {
+  cth3ds::Telemetry timing;
+  timing.present_complete(0, cth3ds::PresentResult::Success);
+  auto save = timing.begin_span(cth3ds::TimingStage::Save, 1000);
+  timing.end_span(save, 70001000, false);
+  timing.present_complete(70002000, cth3ds::PresentResult::Success);
+  const auto t = timing.snapshot();
+  cth3ds::MemoryTelemetry memory;
+  cth3ds::MemorySample sample{7, 5200, 3000, 2400, 600, 800, 300, 1000, true};
+  memory.observe("save", cth3ds::memory_observation(sample,
+      cth3ds::MemoryGate::Operation, "save", "failed", "state", 4096, true,
+      128, true, true));
+  const auto& m = memory.checkpoints()[21];
+  std::cout << "{\"interval_us\":" << t.intervals.total_us
+    << ",\"save_failed\":" << t.stages[7].failed
+    << ",\"heap_used\":" << sample.heap_used_estimate()
+    << ",\"failure_request\":" << memory.last_failure().requested_bytes
+    << ",\"timing_bytes\":" << sizeof(timing)
+    << ",\"memory_bytes\":" << sizeof(memory) << "}";
+  (void)m;
+}
+''', encoding="utf-8")
+        binary = root / "measurement"
+        built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "include"), str(source),
+            str(ROOT / "src/common/telemetry.cpp"), "-o", str(binary)],
+            text=True, capture_output=True)
+        if built.returncode:
+            raise RuntimeError(built.stderr)
+        run = subprocess.run([str(binary)], text=True, capture_output=True, check=True)
+        cls.observed = json.loads(run.stdout)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.temporary.cleanup()
+
+    def test_save_without_frames_contributes_full_interval_and_failure(self) -> None:
+        self.assertEqual(self.observed["interval_us"], 70002000)
+        self.assertEqual(self.observed["save_failed"], 1)
+
+    def test_known_allocator_values_and_fixed_storage(self) -> None:
+        self.assertEqual(self.observed["heap_used"], 2400)
+        self.assertEqual(self.observed["failure_request"], 4096)
+        self.assertLessEqual(self.observed["timing_bytes"], 20 * 1024)
+        self.assertLessEqual(self.observed["memory_bytes"], 16 * 1024)
 
 
 if __name__ == "__main__":

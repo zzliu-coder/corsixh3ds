@@ -1,62 +1,58 @@
 {
-  "schema": "corsixh3ds.public-source-snapshot/v1",
-  "generated_at": "2026-09-03T16:57:29+08:00",
-  "source_identity": {
-    "commit": "9ff2b84114df9070d578c88fe927255369c12b6d",
-    "tree": "a0827cfe96655a2660d33752654c70de007152c3",
-    "sole_parent": "bedf567a4810d0479fba5ebcae7b49020d2988f3",
-    "commits_above_parent": 1,
-    "source_clean": true
-  },
+  "schema": "corsixh3ds.public-source-handoff/v2",
+  "updated_at": "2026-09-07",
+  "repository": "https://github.com/zzliu-coder/corsixh3ds",
   "publication": {
-    "mode": "single_commit_sanitized_source_snapshot",
-    "remote": "https://github.com/zzliu-coder/corsixh3ds",
+    "mode": "pull_request_merge_preserving_existing_history",
     "branch": "main",
-    "source_files_before_publication_metadata": 190,
-    "internal_git_history_included": false,
-    "build_outputs_included": false,
-    "audit_work_directories_included": false
+    "previous_main": "844121cd86e5905c8a53c4574fab399d11ea0849",
+    "source_before_handoff": "707b271436b1accd3b015a5a8ff1d396537fdc64",
+    "runtime_source_changed_in_handoff": false,
+    "remote_head_verification": "Performed after publication; immutable publication commit is the containing Git commit."
+  },
+  "tested_product": {
+    "commit": "367a887e1d851879fd94bcc755874d00c08f97d5",
+    "tree": "9ebb14005287ff565d415147a9aaa741a5609954",
+    "binary_bytes": 2750948,
+    "binary_sha256": "d14b47248b990665c5f679e3d8378be2531422bbf48427b5c0c7b7db7ce8391c"
   },
   "upstream": {
-    "corsixth_vendored": false,
+    "fully_vendored": false,
     "tag": "v0.70.1",
     "commit": "56bd5d00f76331c7f76d7b696726a7926303ca0c",
-    "reconstruction": "scripts/bootstrap_upstream.sh"
+    "reconstruction": "scripts/bootstrap_upstream.sh",
+    "note": "Port code and licensed bounded upstream test fixtures are tracked; original Theme Hospital data is excluded."
   },
-  "privacy_redactions": [
-    {
-      "file": "docs/evidence/runtime-core-acceptance.json",
-      "field": "final_elf_proof.archive",
-      "replacement_prefix": "<LOCAL_WORKSPACE>"
-    },
-    {
-      "file": "docs/evidence/runtime-core-acceptance.json",
-      "field": "final_elf_proof.elf",
-      "replacement_prefix": "<LOCAL_WORKSPACE>"
-    }
+  "evidence": {
+    "entry": "docs/audits/r53-device-20260907/README.md",
+    "identity": "docs/audits/r53-device-20260907/identity.json",
+    "hashes": "docs/audits/r53-device-20260907/hashes.json",
+    "log_policy": "Explicitly selected text logs only; byte-preserving in this capture because privacy scan required zero substitutions.",
+    "captured_at": "2026-09-07T12:00:41.378360+00:00",
+    "remote_device_writes": 0
+  },
+  "excluded": [
+    "proprietary Theme Hospital data",
+    "private save payloads",
+    "personal config and hotkeys",
+    "device addresses in capture metadata",
+    "credentials",
+    "compiled binary and toolchain bundles",
+    "local working directories and caches"
   ],
-  "game_data_exclusion": {
-    "status": "PASS",
-    "scope": "published_snapshot",
-    "excluded_categories": [
-      "Theme Hospital DATA",
-      "LEVELS",
-      "QDATA",
-      "SOUND",
-      "ANIMS",
-      "MUSIC",
-      "INTRO",
-      "HOSPITAL.EXE",
-      "HOSP95.EXE",
-      "VSPR and SOUND archives"
-    ]
+  "historical_snapshot": "docs/archive/publication-20260903/PUBLICATION_MANIFEST.json",
+  "acceptance": {
+    "device_identity_readback": "PASS",
+    "gpu_startup_self_test": "FAIL",
+    "gpu_active": "FAIL",
+    "normal_30fps": "FAIL",
+    "first_run_two_sample_protocol": "PASS",
+    "headless_emergency_hud_pan": "FAIL_REPRODUCED",
+    "exact_device_emergency_event_correlation": "NOT_PROVEN",
+    "save_commit_log_and_latest_readback": "PASS",
+    "complete_save_reload": "NOT_PROVEN",
+    "busy_hospital_capacity": "NOT_PROVEN",
+    "music_and_chinese": "NOT_PROVEN"
   },
-  "acceptance_boundaries": {
-    "evidence_protocol": "FAIL",
-    "runtime_product": "FAIL",
-    "real_resource_integration": "FAIL",
-    "cross_build_compile_link": "PASS",
-    "old_3ds_runtime": "NOT_PROVEN",
-    "old_3ds_memory_peak": "NOT_PROVEN"
-  }
+  "acceptance_note": "Compilation, publication, file consistency, defect reproduction and product/device acceptance are separate. A successful reproduction command confirms a defect, not a product PASS."
 }

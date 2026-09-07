@@ -38,10 +38,16 @@ ARM_FLAGS=(
 )
 
 count=0
-for source in "${CTH3DS_ROOT}"/src/common/*.cpp "${CTH3DS_ROOT}/src/3ds/runtime_3ds.cpp"; do
+PLATFORM_SOURCES="$(python3 "${CTH3DS_ROOT}/tools/integration/platform_sources.py" "${CTH3DS_ROOT}/src/3ds")"
+for source in "${CTH3DS_ROOT}"/src/common/*.cpp; do
   "${ARM_CXX}" "${ARM_FLAGS[@]}" -c "${source}" -o "${OUT}/$(basename "${source}").o"
   count=$((count + 1))
 done
+while IFS= read -r relative; do
+  object="${relative//\//__}"
+  "${ARM_CXX}" "${ARM_FLAGS[@]}" -c "${CTH3DS_ROOT}/src/3ds/${relative}" -o "${OUT}/${object}.o"
+  count=$((count + 1))
+done <<< "${PLATFORM_SOURCES}"
 log "cross-compiled ${count} sources for armv6k with warnings as errors"
 
 # The SDL2 framebuffer patch lives outside this tree, so compile it here in the

@@ -49,6 +49,8 @@ class FetchLogTests(unittest.TestCase):
 
     def test_default_set_includes_the_boot_log_and_version_stamp(self) -> None:
         self.assertIn("/3ds/corsixth/boot.log", fetch_log.DEFAULT_REMOTE_FILES)
+        self.assertIn("/3ds/corsixth/boot.previous.log", fetch_log.DEFAULT_REMOTE_FILES)
+        self.assertIn("/3ds/corsixth/boot.older.log", fetch_log.DEFAULT_REMOTE_FILES)
         self.assertIn(
             "/3ds/corsixth/cth3ds-overlay-version.txt", fetch_log.DEFAULT_REMOTE_FILES
         )

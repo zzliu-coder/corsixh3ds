@@ -39,6 +39,7 @@ class LifecycleController {
                                          std::uint64_t now_us) noexcept;
   [[nodiscard]] LifecycleDecision tick(std::uint64_t now_us) noexcept;
   void reset(std::uint64_t now_us) noexcept;
+  void set_autosave_enabled(bool enabled) noexcept { autosave_enabled_=enabled; }
   void begin_critical_io() noexcept { ++critical_io_depth_; }
   void end_critical_io() noexcept;
 
@@ -50,6 +51,7 @@ class LifecycleController {
   std::uint64_t periodic_autosave_us_{60000000};
   std::uint64_t next_autosave_us_{0};
   int critical_io_depth_{0};
+  bool autosave_enabled_{true};
   bool deferred_suspend_save_{false};
   bool deferred_exit_{false};
 };

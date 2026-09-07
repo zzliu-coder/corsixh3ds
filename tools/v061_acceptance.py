@@ -208,7 +208,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     package_report: dict[str, Any] | None = None
     package_error: str | None = None
     try:
-        package_report = validate_sd_tree(args.package, require_mode="th3ds")
+        package_report = validate_sd_tree(args.package, require_mode="loose")
     except (OSError, ValidationError) as exc:
         package_error = str(exc)
 

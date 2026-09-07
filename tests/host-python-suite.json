@@ -4,6 +4,9 @@
     "case-insensitive filesystem cannot create collision fixture",
     "current devkitARM final-ELF proof was not supplied"
   ],
+  "allowed_test_skips": {
+    "test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds": "official tex3ds tool unavailable; required in 3DS device lane"
+  },
   "baseline": {
     "count": 143,
     "sorted_ids_sha256": "b525c8905c59ec4193581f16781045ebc7382a35800dff9e8db28eefec1a0d2b",
@@ -155,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 217,
-  "selected_sorted_ids_sha256": "fc317aa5b5183836ed7894aa4c0954e5aca34478ec38e7204c6f65635a8432d9",
+  "selected_count": 219,
+  "selected_sorted_ids_sha256": "bd14dc843f195cbfa20b0b1baadd338d53581655e9f33686b24f9e8683c06b3b",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
@@ -188,6 +191,7 @@
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_current_cross_build_proof_when_supplied",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_production_runtime_constructs_and_owns_the_session",
     "test_gpu_renderer.GpuRendererTests.test_production_backend_delayed_queue",
+    "test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds",
     "test_handheld_controls.HandheldControlsTests.test_camera_sign_and_placement_cancel_vs_rotate",
     "test_handheld_controls.HandheldControlsTests.test_named_speed_cycle_pause_and_rejected_change",
     "test_handheld_controls.HandheldControlsTests.test_runtime_pointer_authority_view_modes_and_real_pixels",
@@ -264,6 +268,7 @@
     "test_playable_path.U3GeneratedClockTests.test_actual_memory_entrypoints_and_checked_bottom_present",
     "test_preview.PreviewTests.test_dual_screen_preview_is_valid_png",
     "test_preview.PreviewTests.test_wrong_screen_size_is_rejected",
+    "test_r54_ci_policy.CiPolicyTests.test_exact_tex3ds_skip_and_required_lane",
     "test_release.ReleaseArchiveTests.test_archives_are_reproducible_and_never_future_dated",
     "test_render_flip_pixels.RenderFlipPixelsTests.test_real_sdl_preflipped_pixels_match_general_flip",
     "test_runtime_observation_flush.RuntimeObservationFlushTests.test_production_short_run_and_terminal_open_span_are_retained",

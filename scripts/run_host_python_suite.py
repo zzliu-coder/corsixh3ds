@@ -123,7 +123,24 @@ def load_manifest(path: pathlib.Path) -> Mapping[str, Any]:
     allowed = value.get("allowed_skip_reason_prefixes", [])
     if not isinstance(allowed, list) or not all(isinstance(item, str) for item in allowed):
         raise RuntimeError("manifest skip policy malformed")
+    exact_skips = value.get("allowed_test_skips", {})
+    expected = {"test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds":
+                "official tex3ds tool unavailable; required in 3DS device lane"}
+    if exact_skips not in ({}, expected) or not set(exact_skips).issubset(selected):
+        raise RuntimeError("manifest test-specific skip policy malformed")
     return value
+
+
+def is_allowed_skip(manifest: Mapping[str, Any], row: Mapping[str, Any]) -> bool:
+    # R54: this one missing external tool has a test-ID-bound exception.
+    # Required lanes always fail; all existing skip prefixes are unchanged.
+    official = "test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds"
+    if row.get("id") == official:
+        return (os.environ.get("CTH3DS_REQUIRE_TEX3DS") != "1"
+                and manifest.get("allowed_test_skips", {}).get(official) == row.get("detail")
+                and row.get("detail") == "official tex3ds tool unavailable; required in 3DS device lane")
+    return any(row.get("detail", "").startswith(prefix)
+               for prefix in manifest.get("allowed_skip_reason_prefixes", []))
 
 
 def fixture_prefix(test_id: str) -> Optional[str]:
@@ -228,11 +245,10 @@ def execute(repo: pathlib.Path, manifest_path: pathlib.Path) -> Dict[str, Any]:
     }
     totals["selected"] = len(selected_ids)
     totals["accounted"] = sum(totals[name] for name in ("passed", "failed", "errors", "skipped"))
-    allowed = tuple(manifest.get("allowed_skip_reason_prefixes", []))
     unexpected_skips = [
         row for row in rows
         if row["outcome"] == "skipped"
-        and not any(row.get("detail", "").startswith(prefix) for prefix in allowed)
+        and not is_allowed_skip(manifest, row)
     ]
     failures = bool(
         missing or extra or duplicate or unstarted or synthetic_events

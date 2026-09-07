@@ -12,7 +12,10 @@ ROOT=Path(__file__).resolve().parents[1]
 class GpuRendererTests(unittest.TestCase):
     def test_upload_matches_official_tex3ds(self):
         tool=shutil.which('tex3ds')
-        if not tool:self.skipTest('official tex3ds tool unavailable; required in 3DS device lane')
+        if not tool:
+            if os.environ.get('CTH3DS_REQUIRE_TEX3DS') == '1':
+                self.fail('mandatory official tex3ds tool missing')
+            self.skipTest('official tex3ds tool unavailable; required in 3DS device lane')
         with tempfile.TemporaryDirectory(prefix='cth-tex3ds-') as directory:
             directory=Path(directory)
             width=height=64

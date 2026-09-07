@@ -151,11 +151,20 @@ jobs:
           execution = receipt.get("execution", {})
           require(execution.get("count") == n and execution.get("sorted_ids_sha256") == digest,
                   "execution count/ID digest")
-          require(execution.get("outcomes") == [{"id": item, "outcome": "passed"} for item in selected],
-                  "each selected ID must have exactly one passed outcome")
+          # Host lanes may lack the fixed converter supplied by old3ds-cross-build.
+          # Every other ID still has to pass; this is not a general skip allowance.
+          official = "test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds"
+          reason = "official tex3ds tool unavailable; required in 3DS device lane"
+          outcomes = execution.get("outcomes", [])
+          expected_passes = [{"id": item, "outcome": "passed"} for item in selected]
+          expected_missing_tool = [{"id": item, "outcome": "skipped", "detail": reason}
+              if item == official else {"id": item, "outcome": "passed"} for item in selected]
+          require(outcomes in (expected_passes, expected_missing_tool),
+                  "only the exact tex3ds tool-missing ID/reason may skip in this host lane")
+          skipped = int(outcomes == expected_missing_tool)
           require(execution.get("totals") == {
-              "selected": n, "accounted": n, "passed": n, "failed": 0, "errors": 0, "skipped": 0,
-          }, "complete zero-error/zero-failure/zero-skip totals")
+              "selected": n, "accounted": n, "passed": n-skipped, "failed": 0, "errors": 0, "skipped": skipped,
+          }, "complete ID-bound outcomes and exact totals")
           require(receipt.get("mismatches") == {name: [] for name in (
               "missing_ids", "extra_ids", "duplicate_ids", "unstarted_ids",
               "synthetic_events", "unexpected_skips")}, "runner mismatch records")
@@ -166,7 +175,7 @@ jobs:
               "implementation_sha256": runner.sha256_file(implementation), "version": sys.version,
               "implementation": sys.implementation.name, "cache_tag": sys.implementation.cache_tag,
           }, "actual executing interpreter")
-          print(f"{n} passed, 0 failed, 0 errors, 0 skipped; IDs {digest}")
+          print(f"{n-skipped} passed, 0 failed, 0 errors, {skipped} exact tool skip; IDs {digest}")
           PY
       - name: Upload host Python receipt
         if: always()
@@ -389,7 +398,7 @@ jobs:
           ./scripts/run_ci_command.sh old3ds-host-tools
           artifacts/ci/old3ds-host-tools --
           bash -c 'apt-get update && apt-get install -y --no-install-recommends
-          git cmake ninja-build python3 curl ca-certificates tar'
+          git cmake ninja-build g++ python3 curl ca-certificates tar'
       - name: Install frozen Nintendo 3DS package set
         run: >-
           ./scripts/run_ci_command.sh old3ds-packages
@@ -406,6 +415,26 @@ jobs:
             arm-none-eabi-gcc --version
             sha256sum "$DEVKITARM/bin/arm-none-eabi-gcc"
           } > artifacts/ci/environment-lock-old3ds.txt
+      - name: Require official tex3ds upload comparison
+        env:
+          CTH3DS_REQUIRE_TEX3DS: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          export PATH="$DEVKITPRO/tools/bin:$PATH"
+          tool="$(command -v tex3ds)"
+          test -n "$tool"
+          test "$tool" = "$DEVKITPRO/tools/bin/tex3ds"
+          # The immutable job image supplies the converter. No rolling upgrade.
+          {
+            echo "container=$CTH3DS_OLD3DS_CONTAINER"
+            dkp-pacman -Q tex3ds
+            sha256sum "$tool"
+            g++ --version
+          } > artifacts/ci/tex3ds-identity.txt
+          ./scripts/run_ci_command.sh official-tex3ds \
+            artifacts/ci/official-tex3ds -- \
+            env PYTHONPATH=tests CTH3DS_REQUIRE_TEX3DS=1 \
+            python3 -m unittest -v test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds
       - name: Build CorsixTH for Nintendo 3DS
         env:
           CTH3DS_JOBS: "2"

@@ -99,12 +99,37 @@ local function world_identity(world)
   end, tostring(world)))
 end
 
+-- R54: the input window owns focus and joystick context, independently of
+-- whether a HUD has clickable controls. This does not remove windows from the
+-- upstream hit-test/event list and does not change World pause semantics.
+local function input_focused(owner)
+  for _, box in ipairs(owner and owner.textboxes or {}) do
+    if box.enabled and box.active and box.visible ~= false then return true end
+  end
+  return false
+end
+
+local function input_hud(ui, window)
+  -- Even a normally passive window becomes an input owner for text entry.
+  if input_focused(window) then return false end
+  if window == ui.bottom_panel or window == ui.adviser or window == ui.subtitles then
+    return true
+  end
+  -- UIWatch is the pinned engine's shared opening/emergency/epidemic HUD.
+  -- Its modal_class groups windows; its own buttons still receive pen events.
+  -- Unknown windows, modified modal behaviour, and missing class information
+  -- remain blocking. Never infer pass-through from a string or size alone.
+  local types, watch = rawget(_G, "class"), rawget(_G, "UIWatch")
+  return type(types) == "table" and type(types.is) == "function" and watch and
+    types.is(window, watch) and window.modal_class == "open_countdown" and
+    window.esc_closes == false or false
+end
+
 local function top_window(ui)
   if not ui or type(ui.windows) ~= "table" then return nil end
   for index = 1, #ui.windows do
     local window = ui.windows[index]
-    if window and window.visible ~= false and window ~= ui.bottom_panel and
-       window ~= ui.adviser and window ~= ui.subtitles then
+    if window and window.visible ~= false and not input_hud(ui, window) then
       return window
     end
   end
@@ -301,6 +326,8 @@ function Platform:inputState()
     owners.ui, owners.window, owners.world = ui, window, self.app.world
     self.pointer_context = context
     self.input_epoch = (self.input_epoch or 0) + 1
+    native_checkpoint(self.native, "input_policy", "transition",
+      context .. ":" .. tostring(window and window.modal_class or "world"))
   end
   return {cursor_x = ui.cursor_x, cursor_y = ui.cursor_y,
           input_context = context, input_epoch = self.input_epoch or 0}
@@ -416,13 +443,7 @@ function Platform:inputContext()
   local app, ui = self.app, self.app.ui
   if not ui then error("input UI unavailable") end
   local window = top_window(ui)
-  local function focused(owner)
-    for _, box in ipairs(owner and owner.textboxes or {}) do
-      if box.enabled and box.active then return true end
-    end
-    return false
-  end
-  if focused(ui) or focused(window) then return "text_input" end
+  if input_focused(ui) or input_focused(window) then return "text_input" end
   if window and window == ui.menu_bar then return "menu" end
   -- Window order is front-to-back. A dialog above a blueprint wins.
   if window then
@@ -431,7 +452,7 @@ function Platform:inputContext()
     if phase == "door" or phase == "windows" or phase == "objects" or
        phase == "clear_area" then return "place_object" end
     local types, place = rawget(_G, "class"), rawget(_G, "UIPlaceObjects")
-    if types and place and types.is(window, place) then return "place_object" end
+    if type(types) == "table" and type(types.is) == "function" and place and types.is(window, place) then return "place_object" end
     if app.world then return "dialog" end
   end
   if not app.world then return "menu" end

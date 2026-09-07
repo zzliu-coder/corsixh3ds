@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 220,
-  "selected_sorted_ids_sha256": "de5effe00f961cfa5838206486a4bf72e730513d155bb0386c83134e439915c6",
+  "selected_count": 221,
+  "selected_sorted_ids_sha256": "1402a6c85b5bb4a993b0a616ef811f3ab87ac4085e98e00873b1e94240f15dda",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
@@ -270,6 +270,7 @@
     "test_preview.PreviewTests.test_dual_screen_preview_is_valid_png",
     "test_preview.PreviewTests.test_wrong_screen_size_is_rejected",
     "test_r54_ci_policy.CiPolicyTests.test_exact_tex3ds_skip_and_required_lane",
+    "test_r54_input_policy.InputPolicyTests.test_full_adapter_with_pinned_watch",
     "test_release.ReleaseArchiveTests.test_archives_are_reproducible_and_never_future_dated",
     "test_render_flip_pixels.RenderFlipPixelsTests.test_real_sdl_preflipped_pixels_match_general_flip",
     "test_runtime_observation_flush.RuntimeObservationFlushTests.test_production_short_run_and_terminal_open_span_are_retained",

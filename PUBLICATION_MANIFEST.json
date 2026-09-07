@@ -3,7 +3,7 @@
   "updated_at": "2026-09-07",
   "repository": "https://github.com/zzliu-coder/corsixh3ds",
   "publication": {
-    "mode": "fast_forward_existing_public_history",
+    "mode": "pull_request_merge_preserving_existing_history",
     "branch": "main",
     "previous_main": "844121cd86e5905c8a53c4574fab399d11ea0849",
     "source_before_handoff": "707b271436b1accd3b015a5a8ff1d396537fdc64",

@@ -2529,11 +2529,21 @@ void register_lua_module(lua_State* state) {
   g_observation_state=state;g_timing.clear();g_timing.reset_window(now_us());
   g_memory_observations.clear();g_observation_flush_us=now_us();g_observation_flush_requested=false;
   boot_log_open();
+  // R54 diagnostic switches are sampled only at native startup.
+  // Reference mode retains the full weighted thermal arithmetic for A/B runs.
+  if (auto* marker = std::fopen("sdmc:/3ds/corsixth/thermal-profile.txt", "rb")) {
+    std::fclose(marker); cpu_work.thermal_phase_profile = true;
+  }
+  if (auto* marker = std::fopen("sdmc:/3ds/corsixth/thermal-reference.txt", "rb")) {
+    std::fclose(marker); cpu_work.thermal_uniform_fast = false;
+  }
+  boot_log("thermal-mode: uniform_fast=%u phase_profile=%u authoritative_full_scan=1 step_frequency=unchanged",
+    cpu_work.thermal_uniform_fast ? 1U : 0U, cpu_work.thermal_phase_profile ? 1U : 0U);
   initialize_heap_watermarks();
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R53 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
+  boot_log("diagnostics: revision=R54 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(

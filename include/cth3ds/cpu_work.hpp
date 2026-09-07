@@ -4,21 +4,25 @@
 #include <cstdint>
 
 namespace cth3ds {
-enum class CpuWork : std::uint8_t { Temperature, Pathfind, InputState, InputAction, World, UI, Count };
-inline constexpr std::array<const char*,6> kCpuWorkNames{{"temperature","pathfind","input_state","input_action","world","ui"}};
+enum class CpuWork : std::uint8_t { Temperature, Pathfind, InputState, InputAction, World, UI, ThermalStructure, ThermalSnapshot, ThermalArithmetic, Count };
+inline constexpr std::array<const char*,static_cast<std::size_t>(CpuWork::Count)> kCpuWorkNames{{"temperature","pathfind","input_state","input_action","world","ui","thermal_structure","thermal_snapshot","thermal_arithmetic"}};
 struct CpuCounter { std::uint64_t calls{}, total_us{}, max_us{}, units{}; };
 struct CpuWorkCounters {
-  std::array<CpuCounter,6> rows{};
+  std::array<CpuCounter,static_cast<std::size_t>(CpuWork::Count)> rows{};
   std::uint64_t (*clock_us)() noexcept = nullptr;
   bool enabled{true};
+  // R54 diagnostic split is opt-in: the normal scan still copies its snapshot
+  // in the same pass. Subphase totals are included in Temperature and World.
+  bool thermal_phase_profile{false};
+  bool thermal_uniform_fast{true};
 };
 inline CpuWorkCounters cpu_work;
 // Main-thread inclusive timers. Overlapping categories must not be summed as
 // CPU load. No timer/SD write per tile, path node, pixel or input producer.
 class CpuWorkScope {
  public:
-  explicit CpuWorkScope(CpuWork kind, std::uint64_t units=1) noexcept
-      : row_(cpu_work.enabled && cpu_work.clock_us ? &cpu_work.rows[static_cast<std::size_t>(kind)] : nullptr),
+  explicit CpuWorkScope(CpuWork kind, std::uint64_t units=1, bool selected=true) noexcept
+      : row_(selected && cpu_work.enabled && cpu_work.clock_us ? &cpu_work.rows[static_cast<std::size_t>(kind)] : nullptr),
         began_(row_ ? cpu_work.clock_us() : 0), units_(units) {}
   ~CpuWorkScope() { if(row_) {
     const auto now=cpu_work.clock_us(); const auto elapsed=now>=began_?now-began_:0;

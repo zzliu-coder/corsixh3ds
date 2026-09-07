@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include "cth3ds/cpu_work.hpp"
 
 namespace cth3ds {
 // Exact division for the neighbour sum (<= 16*65535), no ARM software divide.
@@ -33,7 +34,8 @@ class ThermalGrid {
     radiator=std::max(air,radiator);
     // Observe authoritative flags and object membership once. This covers all
     // setters, construction/undo and depersist without fragile invalidation hooks.
-    for(int i=0;i<count;++i){
+    const bool profile=cpu_work.thermal_phase_profile;
+    const auto observe=[&](int i) {
       const auto& f=tiles[i].flags;
       unsigned flags=(f.can_travel_n?1U:0U)|(f.can_travel_s?2U:0U)|
         (f.can_travel_e?4U:0U)|(f.can_travel_w?8U:0U)|(f.hospital?16U:0U)|(f.room?32U:0U);
@@ -45,8 +47,23 @@ class ThermalGrid {
         for(const int neighbour:{i-width,i+width,i+1,i-1})
           if(neighbour>=0 && neighbour<count)stencil_[neighbour].dirty=true;
       }
-      old_[i]=tiles[i].aiTemperature[previous];
+    };
+    if(profile) {
+      // Profiling mode isolates the three costs, with no clock calls per tile.
+      // It intentionally makes an extra map pass; compare normal/profile runs
+      // separately and do not treat this diagnostic mode as the speed baseline.
+      {
+        CpuWorkScope scope(CpuWork::ThermalStructure,static_cast<std::uint64_t>(count));
+        for(int i=0;i<count;++i)observe(i);
+      }
+      {
+        CpuWorkScope scope(CpuWork::ThermalSnapshot,static_cast<std::uint64_t>(count));
+        for(int i=0;i<count;++i)old_[i]=tiles[i].aiTemperature[previous];
+      }
+    } else {
+      for(int i=0;i<count;++i){observe(i);old_[i]=tiles[i].aiTemperature[previous];}
     }
+    CpuWorkScope arithmetic(CpuWork::ThermalArithmetic,static_cast<std::uint64_t>(count),profile);
     // Preserve the pinned engine's linear-array neighbour bounds, including
     // east/west boundary behaviour. Changing that would change game rules.
     for(int i=0;i<count;++i){
@@ -60,13 +77,22 @@ class ThermalGrid {
           cell.weight[side]=static_cast<std::uint8_t>(weight);cell.sum+=weight;
         }cell.dirty=false;
       }
-      std::uint32_t sum=0;
-      if(cell.weight[0])sum+=old_[i-width]*cell.weight[0];
-      if(cell.weight[1])sum+=old_[i+width]*cell.weight[1];
-      if(cell.weight[2])sum+=old_[i+1]*cell.weight[2];
-      if(cell.weight[3])sum+=old_[i-1]*cell.weight[3];
       std::uint32_t value=old_[i];
-      if(cell.sum)value=(value*3U+thermal_average(sum,cell.sum))/4U;
+      if(cpu_work.thermal_uniform_fast && cell.sum==16) {
+        // Four weights of four imply four valid neighbours. Cancelling the
+        // common factor is exact, including both original integer truncations.
+        // No approximate reciprocal, changed edge rule, or delayed publication.
+        const std::uint32_t neighbours=static_cast<std::uint32_t>(old_[i-width])+
+          old_[i+width]+old_[i+1]+old_[i-1];
+        value=(value*3U+(neighbours>>2U))>>2U;
+      } else {
+        std::uint32_t sum=0;
+        if(cell.weight[0])sum+=old_[i-width]*cell.weight[0];
+        if(cell.weight[1])sum+=old_[i+width]*cell.weight[1];
+        if(cell.weight[2])sum+=old_[i+1]*cell.weight[2];
+        if(cell.weight[3])sum+=old_[i-1]*cell.weight[3];
+        if(cell.sum)value=(value*3U+thermal_average(sum,cell.sum))/4U;
+      }
       if(!(cell.flags&16U))value=(value*99U+air)/100U;
       else if(cell.flags&64U)value=(value+radiator)/2U;
       else value=value*999U/1000U;

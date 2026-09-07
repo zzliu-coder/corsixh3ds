@@ -62,4 +62,18 @@ assert(a:onTick()==true and u==4) -- tooltip timer still requests painting
 a.moviePlayer.playing=true;assert(a:onTick()==true and u==4)
 ''')
 
+    def test_r54_semantics_and_phase_modes(self):
+        # Supplements, and does not replace, the assembled upstream 200-map test.
+        with tempfile.TemporaryDirectory(prefix='cth-r54-thermal-') as d:
+            for optimization in ('-Oz','-O2'):
+                binary=Path(d)/optimization[1:]
+                subprocess.run([shutil.which('clang++') or shutil.which('g++'),'-std=c++17',optimization,
+                    '-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-omit-frame-pointer',
+                    '-I'+str(ROOT/'include'),str(ROOT/'tests/runtime_support/r54_thermal_probe.cpp'),
+                    '-o',str(binary)],check=True)
+                result=subprocess.run([str(binary)],capture_output=True,text=True,
+                    env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertIn('PASS thermal upstream-method comparison',result.stdout)
+
 if __name__=='__main__':unittest.main()

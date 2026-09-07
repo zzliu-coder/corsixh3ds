@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 221,
-  "selected_sorted_ids_sha256": "1402a6c85b5bb4a993b0a616ef811f3ab87ac4085e98e00873b1e94240f15dda",
+  "selected_count": 222,
+  "selected_sorted_ids_sha256": "705418a6699b240da6f19c62037c2ae9992fb154e65c03b3f3883c72b3c477d0",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
@@ -177,6 +177,7 @@
     "test_ci_diagnostics.CiDiagnosticsTests.test_fail_closed_preflight_keeps_summary",
     "test_ci_diagnostics.CiDiagnosticsTests.test_failure_injection_preserves_diagnostics_and_exit_code",
     "test_ci_diagnostics.CiDiagnosticsTests.test_success_path_writes_machine_readable_pass",
+    "test_cpu_hotspots.CpuHotspotTests.test_r54_semantics_and_phase_modes",
     "test_cpu_hotspots.CpuHotspotTests.test_real_temperature_and_input_cache_contract",
     "test_dual_screen_canvas.DualScreenCanvasTests.test_generated_renderer_real_sdl_pixels_and_lifetime",
     "test_dual_screen_canvas.DualScreenCanvasTests.test_real_level_identity_uses_map_and_header_is_required",

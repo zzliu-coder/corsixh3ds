@@ -25,6 +25,8 @@ using namespace cth3ds;
 struct lua_State {};
 static uint64_t clock_us=0;
 static std::string output;
+static unsigned flush_count=0;
+void boot_log_flush() noexcept { ++flush_count; }
 void boot_log(const char* format,...) {
   char b[4096];va_list args;va_start(args,format);
   vsnprintf(b,sizeof(b),format,args);va_end(args);output+=b;output+='\n';
@@ -43,6 +45,8 @@ int main() {
   g_timing.present_complete(1,PresentResult::Success);
   g_timing.present_complete(10001,PresentResult::Success);
   clock_us=10000000;runtime_flush_observations(false);
+  CHECK(flush_count==1);
+  CHECK(output.find("log-buffer: capacity=4096")!=std::string::npos);
   CHECK(output.find("perf:")!=std::string::npos);
   CHECK(output.find("name=temperature calls=2 total_us=3000 max_us=1800 units=32768")!=std::string::npos);
   CHECK(output.find("simulation-budget: steps=1 debt_us=18000 dropped_us=0")!=std::string::npos);
@@ -52,11 +56,14 @@ int main() {
   clock_us=11000000;
   const auto save=g_timing.begin_span(TimingStage::Save,clock_us);CHECK(save!=0);
   clock_us=60000000;runtime_flush_observations(false);
+  CHECK(flush_count==2);
   CHECK(output.find("frames:")==std::string::npos);
   const auto bounded=output.size();
   clock_us=60000001;runtime_flush_observations(false);
+  CHECK(flush_count==2);
   CHECK(output.size()==bounded); // no repeated log burst while a span is open
   clock_us=70000000;g_terminal_observation=true;runtime_flush_observations(true);
+  CHECK(flush_count==3);
   CHECK(output.find("observation: terminal=1 active_spans=1 reset_allowed=0")!=std::string::npos);
   CHECK(output.find("stable_eligible=0")!=std::string::npos);
   CHECK(output.find("span: stage=save count=0")!=std::string::npos);

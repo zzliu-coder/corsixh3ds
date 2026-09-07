@@ -28,9 +28,11 @@ std::vector<C3D_RenderTarget*> drawn_targets;
 void transfer_lcd(int screen,C3D_RenderTarget* t);
 
 void finish(){for(auto& call:pending)call();pending.clear();++waits;}
-u32& raw(C3D_Tex* tex,int x,int y){return static_cast<u32*>(tex->data)[cth3ds::gpu_tile_offset(x,tex->height-1-y,tex->width)];}
+// R54 device raster/atlas readback found logical row y in memory row y.
+// Keep this hardware-observed convention independent of production readback.
+u32& raw(C3D_Tex* tex,int x,int y){return static_cast<u32*>(tex->data)[cth3ds::gpu_tile_offset(x,y,tex->width)];}
 u32 pixel(C3D_Tex* tex,int x,int y){return cth3ds::gpu_pixel(raw(tex,x,y));}
-// PICA sampling and framebuffer rasterization use opposite Y origins.
+// Texture V is bottom-origin; the C2D logical canvas and memory rows are not.
 // Independent tex3ds RGBA8 output stores source row zero in memory row zero.
 // Never call the framebuffer accessor from this texture sampler.
 u32 texture_pixel(C3D_Tex* tex,int x,int y){
@@ -124,6 +126,7 @@ bool C2D_DrawLine(float,float,u32,float,float,u32,float,float){assert(false&&"li
 namespace cth3ds{void runtime_diagnostic_line(const char* line) noexcept {diagnostic_lines.emplace_back(line);std::puts(line);}}
 
 int main(){
+  std::setvbuf(stdout,nullptr,_IONBF,0);
   using namespace cth3ds;assert(SDL_Init(0)==0);
   auto* out=SDL_CreateRGBSurfaceWithFormat(0,640,480,32,SDL_PIXELFORMAT_ABGR8888);
   auto* renderer=SDL_CreateSoftwareRenderer(out);assert(renderer);
@@ -177,9 +180,8 @@ int main(){
   assert(gpu_top({100,80,400,240}));assert(gpu_bottom({100,80,400,240},nullptr,0));
   auto* top=outputs[GFX_TOP];auto* bottom=outputs[GFX_BOTTOM];gpu_quiesce();
   for(int y=0;y<240;++y)for(int x=0;x<400;++x)assert(pixel(top->tex,x,y)==colours[(y+80)*640+x+100]);
-  // At exact half-scale texel boundaries, decreasing V selects the lower
-  // source-row neighbour; both neighbours are equidistant under nearest.
-  for(int y=5;y<30;++y)for(int x=5;x<30;++x)assert(pixel(bottom->tex,x,y)==colours[(2*y)*640+2*x+1]);
+  // Sample pixel centres with the same increasing source-row direction as top.
+  for(int y=5;y<30;++y)for(int x=5;x<30;++x)assert(pixel(bottom->tex,x,y)==colours[(2*y+1)*640+2*x+1]);
   // Wide crop uses the same framebuffer-to-texture conversion. An asymmetric
   // CPU overlay independently exercises the short non-square texture upload.
   std::vector<u32> overlay(320*12);

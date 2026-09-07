@@ -17,6 +17,7 @@ class BoundedLog {
  public:
   static constexpr std::size_t kLimit = 1024U * 1024U;
   static constexpr std::size_t kReserve = 16U * 1024U;
+  static constexpr std::size_t kBufferSize = 4096U;
   ~BoundedLog() { close(); }
   bool open(const char* current, const char* previous, const char* oldest) noexcept {
     close();
@@ -24,12 +25,21 @@ class BoundedLog {
         !rename_optional(current, previous)) return false;
     file_ = std::fopen(current, "wb");
     if (!file_) return false;
-    std::setvbuf(file_, nullptr, _IONBF, 0);
+    if (std::setvbuf(file_, buffer_.data(), _IOFBF, buffer_.size()) != 0) {
+      std::fclose(file_); file_ = nullptr; return false;
+    }
     bytes_.store(0); truncated_.store(false); failed_.store(false);
-    emergency_.store(false);
+    emergency_.store(false); flushes_.store(0);
     return true;
   }
-  void emergency() noexcept { emergency_.store(true); }
+  // Keep fatal evidence visible immediately, including the preceding context.
+  void emergency() noexcept { emergency_.store(true); flush(); }
+  bool flush() noexcept {
+    if (!available()) return false;
+    flushes_.fetch_add(1);
+    if (std::fflush(file_) != 0) failed_.store(true);
+    return !failed_.load();
+  }
   void write(const char* data, std::size_t length) noexcept {
     if (!file_ || failed_.load()) return;
     const auto limit = emergency_.load() ? kLimit : kLimit - kReserve;
@@ -62,11 +72,17 @@ class BoundedLog {
     write(line.data(), length);
   }
   void close() noexcept {
-    if (file_) { std::fclose(file_); file_ = nullptr; }
+    if (file_) {
+      flush();
+      if (std::fclose(file_) != 0) failed_.store(true);
+      file_ = nullptr;
+    }
   }
   bool available() const noexcept { return file_ && !failed_.load(); }
   bool truncated() const noexcept { return truncated_.load(); }
   std::size_t bytes() const noexcept { return bytes_.load(); }
+  std::size_t flushes() const noexcept { return flushes_.load(); }
+  bool failed() const noexcept { return failed_.load(); }
  private:
   static bool remove_optional(const char* path) noexcept {
     return std::remove(path) == 0 || errno == ENOENT;
@@ -76,8 +92,12 @@ class BoundedLog {
   }
   void write_bytes(const char* data, std::size_t size) noexcept {
     if (std::fwrite(data, 1U, size, file_) != size) failed_.store(true);
+    if (emergency_.load()) flush();
   }
   std::FILE* file_{nullptr};
+  // Owned for the entire FILE lifetime; no dynamic allocation or writer thread.
+  std::array<char, kBufferSize> buffer_{};
+  std::atomic<std::size_t> flushes_{0};
   std::atomic<std::size_t> bytes_{0};
   std::atomic<bool> truncated_{false}, failed_{false}, emergency_{false};
 };

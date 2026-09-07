@@ -151,19 +151,19 @@ bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height) no
   if(!in_frame)return false;
   C2D_SceneBegin(target); C2D_ViewReset(); C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);
   C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
-  // Framebuffer raster Y runs upward; texture storage row zero is UV top.
-  // Select the framebuffer's corresponding memory rows, then flip V using
-  // DrawParams. Keep top >= bottom: Tex3DS uses top < bottom for atlas rotation.
+  // With C2D's offscreen projection, logical row y is memory row y (R54
+  // device readback). Convert memory rows to bottom-origin texture V once.
+  // Keep top >= bottom: Tex3DS uses top < bottom for atlas rotation.
   Tex3DS_SubTexture sub{static_cast<u16>(source.w),static_cast<u16>(source.h),
-    source.x/1024.0f,(source.y+source.h)/512.0f,(source.x+source.w)/1024.0f,source.y/512.0f};
+    source.x/1024.0f,1-source.y/512.0f,(source.x+source.w)/1024.0f,1-(source.y+source.h)/512.0f};
   // Reserve screen objects before switching target: room_for_draw must never
   // split after top is submitted and accidentally resume on the canvas.
   C2D_ImageTint tint;C2D_PlainImageTint(&tint,0xffffffffU,1.0f);
-  C2D_DrawParams params{};params.pos={0,0,static_cast<float>(width),-static_cast<float>(height)};
+  C2D_DrawParams params{};params.pos={0,0,static_cast<float>(width),static_cast<float>(height)};
   return C2D_DrawImage({&canvas,&sub},&params,&tint);
 }
-// R54 keeps the R53 upload and canvas readback formulae unchanged. The stages
-// isolate their contracts; no inferred orientation is used to "repair" a test.
+// Independent stages verify clear, raster/clip, atlas/flips, and both LCDs.
+// Alternate-row evidence never substitutes for the expected primary pixel.
 struct PixelCheck {
   const char* stage;
   unsigned samples{},mismatches{};
@@ -184,9 +184,9 @@ struct PixelCheck {
 };
 void diagnostic_canvas_pixel(PixelCheck& test,unsigned x,unsigned y,u32 expected) noexcept {
   const auto* data=static_cast<const u32*>(canvas.data);
-  const auto raw_value=data[gpu_tile_offset(x,511U-y,1024)];
+  const auto raw_value=data[gpu_tile_offset(x,y,1024)];
   // Alternate interpretation is EVIDENCE ONLY. It never changes the verdict.
-  const auto alternate=data[gpu_tile_offset(x,y,1024)];
+  const auto alternate=data[gpu_tile_offset(x,511U-y,1024)];
   test.check(x,y,expected,gpu_pixel(raw_value),raw_value,alternate);
 }
 bool diagnostic_complete() noexcept {
@@ -229,7 +229,7 @@ bool diagnostic_lcd(const LcdCapture& capture,const char* name,bool submitted,bo
 }
 bool startup_self_test() noexcept {
   clip={0,0,640,480};empty_clip=false;
-  boot_log("gpu-diagnostic: revision=R54 canvas=1024x512 logical=640x480 atlas=512x512 format=RGBA8 upload_formula=R53_unchanged canvas_read_formula=R53_unchanged full_linear_flush=retained lcd_visual=NOT_PROVEN");
+  boot_log("gpu-diagnostic: revision=R55 canvas=1024x512 logical=640x480 atlas=512x512 format=RGBA8 upload_formula=tex3ds_row_y canvas_read_formula=row_y screen_v=1_minus_y full_linear_flush=retained lcd_visual=NOT_PROVEN");
   bool all=true;
   // A: no texture or coordinate-dependent content. Distinguish clear/colour
   // storage from upload/sampling, while reporting non-symmetric raw channels.
@@ -473,7 +473,7 @@ bool gpu_read_pixels(SDL_Surface* surface) noexcept {
   gpu_quiesce();
   const auto* data=static_cast<const std::uint32_t*>(canvas.data);
   for(int y=0;y<480;++y)for(int x=0;x<640;++x){
-    const auto colour=gpu_pixel(data[gpu_tile_offset(x,511-y,1024)]);
+    const auto colour=gpu_pixel(data[gpu_tile_offset(x,y,1024)]);
     const auto mapped=SDL_MapRGBA(surface->format,colour&255U,(colour>>8U)&255U,(colour>>16U)&255U,colour>>24U);
     auto* dest=static_cast<std::uint8_t*>(surface->pixels)+y*surface->pitch+x*surface->format->BytesPerPixel;
     std::memcpy(dest,&mapped,surface->format->BytesPerPixel);

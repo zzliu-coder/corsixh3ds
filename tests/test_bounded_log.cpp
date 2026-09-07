@@ -53,3 +53,35 @@ TEST(bounded_log_rotation_failure_keeps_current_and_disables_writer) {
   f.log.write("wrong",5);
   EXPECT_EQ(LogFixture::read(f.current),std::string("keep"));
 }
+
+TEST(bounded_log_flush_and_fatal_are_visible_before_close) {
+  LogFixture f; EXPECT_TRUE(f.open());
+  f.log.write("normal\n",7);
+  EXPECT_EQ(f.log.flushes(),0U);
+  EXPECT_TRUE(f.log.flush());
+  EXPECT_EQ(f.log.flushes(),1U);
+  EXPECT_EQ(LogFixture::read(f.current),std::string("normal\n"));
+  f.log.write("context\n",8);
+  f.log.emergency();
+  EXPECT_EQ(LogFixture::read(f.current),std::string("normal\ncontext\n"));
+  f.log.write("FATAL\n",6);
+  EXPECT_EQ(LogFixture::read(f.current),std::string("normal\ncontext\nFATAL\n"));
+  EXPECT_FALSE(f.log.failed());
+  f.log.close();
+  EXPECT_FALSE(f.log.flush());
+}
+
+TEST(bounded_log_buffer_bounds_and_close_drain_tail) {
+  LogFixture f; EXPECT_TRUE(f.open());
+  const std::string row(100,'z');
+  for(unsigned i=0;i<100;++i) f.log.write(row.data(),row.size());
+  const auto on_disk=LogFixture::read(f.current).size();
+  EXPECT_TRUE(on_disk<=10000U && 10000U-on_disk<=cth3ds::BoundedLog::kBufferSize);
+  EXPECT_EQ(f.log.flushes(),0U);
+  f.log.close();
+  EXPECT_EQ(LogFixture::read(f.current),std::string(10000,'z'));
+  EXPECT_TRUE(f.open()); EXPECT_EQ(f.log.bytes(),0U); EXPECT_EQ(f.log.flushes(),0U);
+  f.log.write("next",4); f.log.close();
+  EXPECT_EQ(LogFixture::read(f.current),std::string("next"));
+  EXPECT_EQ(LogFixture::read(f.previous),std::string(10000,'z'));
+}

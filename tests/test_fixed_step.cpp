@@ -45,6 +45,22 @@ TEST(simulation_clock_bounds_debt_steps_and_callback_time) {
   EXPECT_FALSE(clock.take_step(1100000));
 }
 
+TEST(simulation_clock_preserves_cadence_across_render_rates) {
+  // Cheap callbacks at 20/30/60/120 presentation Hz all deliver the same
+  // original 18 ms clock. This is scheduling correctness, not hardware FPS.
+  for(unsigned hz : {20U,30U,60U,120U}) {
+    cth3ds::SimulationClock clock; clock.begin(0);
+    for(unsigned frame=1;frame<=hz*18;++frame) {
+      const auto now=static_cast<std::uint64_t>(frame)*1000000U/hz;
+      clock.begin(now);
+      while(clock.take_step(now)) {}
+    }
+    EXPECT_EQ(clock.statistics().steps,1000U);
+    EXPECT_EQ(clock.statistics().dropped_us,0U);
+    EXPECT_EQ(clock.statistics().debt_us,0U);
+  }
+}
+
 TEST(simulation_clock_rebases_load_sleep_failure_and_backwards_time) {
   cth3ds::SimulationClock clock;clock.begin(0);clock.begin(72000);
   EXPECT_TRUE(clock.take_step(72000));

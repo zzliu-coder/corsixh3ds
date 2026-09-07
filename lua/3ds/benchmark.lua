@@ -8,7 +8,7 @@ local speeds={"Normal","And then some more"}
 
 function Benchmark.new(app,native)
   local self=setmetatable({app=app,native=native,phase="pending",index=1,
-    original_dir=app.savegame_dir,original_autosave=app.config.autosave},Benchmark)
+    original_dir=app.savegame_dir,original_autosave_frequency=app.config.autosave_frequency},Benchmark)
   native.benchmark_state(true)
   native.set_notice("AUTO BENCHMARK - B CANCEL",false)
   return self
@@ -24,7 +24,7 @@ end
 
 function Benchmark:restore()
   self.app.savegame_dir=self.original_dir
-  self.app.config.autosave=self.original_autosave
+  self.app.config.autosave_frequency=self.original_autosave_frequency
   if self.app.world then self.app.world:setSpeed("Normal") end
   self.native.benchmark_state(false)
 end
@@ -38,10 +38,14 @@ end
 
 function Benchmark:load()
   self.app.savegame_dir=root.."Saves/"
-  self.app.config.autosave=false
+  self.app.config.autosave_frequency=0
   local ok,detail=self.app:load(root.."input.sav")
   assert(ok==true,"benchmark copy load failed: "..tostring(detail))
   assert(self.app.world,"benchmark copy has no world")
+  -- World:onEndDay reads autosave_frequency. A saved pending request also
+  -- needs clearing in this private benchmark world, before the first tick.
+  self.app.config.autosave_frequency=0
+  self.app.world.autosave_next_tick=false
   self.app.world:setSpeed(speeds[self.index])
   assert(self.app.world:getCurrentSpeed()==speeds[self.index],
     "benchmark blocked by a mandatory pause window")

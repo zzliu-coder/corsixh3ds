@@ -1,0 +1,205 @@
+{
+  "source_commit": "ceeda5e913b2003502293c78ee18ec8fa24732f1",
+  "log_sha256": "6f06459cb42c2a9fa52eaae1ee2d46d97a8f6485476f6145236fcb9da1138ea2",
+  "scope": "Recorded R54 self-test mismatch samples only; no user game assets",
+  "samples": [
+    {
+      "stage": "raster-and-clip",
+      "x": "20",
+      "y": "28",
+      "expected": "ff0000ff",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "ff0000ff"
+    },
+    {
+      "stage": "raster-and-clip",
+      "x": "590",
+      "y": "430",
+      "expected": "ff00ff00",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "00ff00ff"
+    },
+    {
+      "stage": "raster-and-clip",
+      "x": "310",
+      "y": "208",
+      "expected": "ffff0000",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "0000ffff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "12",
+      "y": "20",
+      "expected": "ff250000",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "000025ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "13",
+      "y": "20",
+      "expected": "ff24000d",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "0d0024ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "14",
+      "y": "20",
+      "expected": "ff27001a",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "1a0027ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "15",
+      "y": "20",
+      "expected": "ff260027",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "270026ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "16",
+      "y": "20",
+      "expected": "ff210034",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "340021ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "17",
+      "y": "20",
+      "expected": "ff200041",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "410020ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "18",
+      "y": "20",
+      "expected": "ff23004e",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "4e0023ff"
+    },
+    {
+      "stage": "atlas-crop-four-flips",
+      "x": "19",
+      "y": "20",
+      "expected": "ff22005b",
+      "actual": "ff000000",
+      "raw": "000000ff",
+      "alternate_y_raw": "5b0022ff"
+    },
+    {
+      "stage": "canvas-to-top-buffer",
+      "x": "15",
+      "y": "15",
+      "expected": "000000ff",
+      "actual": "00ff0000",
+      "raw": "00ff0000",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-top-buffer",
+      "x": "280",
+      "y": "15",
+      "expected": "0000ff00",
+      "actual": "0000ffff",
+      "raw": "0000ffff",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-top-buffer",
+      "x": "15",
+      "y": "210",
+      "expected": "00ff0000",
+      "actual": "000000ff",
+      "raw": "000000ff",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-top-buffer",
+      "x": "280",
+      "y": "210",
+      "expected": "0000ffff",
+      "actual": "0000ff00",
+      "raw": "0000ff00",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-top-buffer",
+      "x": "85",
+      "y": "110",
+      "expected": "000000ff",
+      "actual": "00ff0000",
+      "raw": "00ff0000",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-bottom-buffer",
+      "x": "15",
+      "y": "15",
+      "expected": "000000ff",
+      "actual": "00000000",
+      "raw": "00000000",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-bottom-buffer",
+      "x": "280",
+      "y": "15",
+      "expected": "0000ff00",
+      "actual": "00000000",
+      "raw": "00000000",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-bottom-buffer",
+      "x": "15",
+      "y": "210",
+      "expected": "00ff0000",
+      "actual": "000000ff",
+      "raw": "000000ff",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-bottom-buffer",
+      "x": "280",
+      "y": "210",
+      "expected": "0000ffff",
+      "actual": "0000ff00",
+      "raw": "0000ff00",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-bottom-buffer",
+      "x": "85",
+      "y": "110",
+      "expected": "000000ff",
+      "actual": "00ff0000",
+      "raw": "00ff0000",
+      "alternate_y_raw": "00000000"
+    },
+    {
+      "stage": "canvas-to-bottom-buffer",
+      "x": "220",
+      "y": "150",
+      "expected": "0000ffff",
+      "actual": "0000ff00",
+      "raw": "0000ff00",
+      "alternate_y_raw": "00000000"
+    }
+  ]
+}

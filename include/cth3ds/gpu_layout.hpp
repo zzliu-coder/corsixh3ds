@@ -32,7 +32,8 @@ inline void gpu_upload_rgba(std::uint32_t* output,unsigned texture_width,
                            unsigned x,unsigned y,const std::uint32_t* source,
                            unsigned stride,unsigned width,unsigned height) noexcept {
   // tex3ds/PICA texture storage: source top row is memory row zero; UV top=1.
-  // Render targets have a separate, bottom-origin raster convention.
+  // The C2D offscreen canvas also maps logical row y to memory row y.
+  // GPU scissor and LCD column storage have separate coordinate conventions.
   for(unsigned row=0;row<height;++row)for(unsigned col=0;col<width;++col)
     output[gpu_tile_offset(x+col,y+row,texture_width)]=gpu_pixel(source[row*stride+col]);
 }

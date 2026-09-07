@@ -1,5 +1,7 @@
 """Host model checks production draw/ownership code; hardware remains separate."""
 import os
+import json
+import math
 from pathlib import Path
 import shlex
 import shutil
@@ -10,6 +12,26 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class GpuRendererTests(unittest.TestCase):
+    def test_retained_device_samples_explain_row_contract(self):
+        evidence=json.loads((ROOT/'tests/fixtures/r54_gpu_device_samples.json').read_text())
+        self.assertEqual(evidence['source_commit'],'ceeda5e913b2003502293c78ee18ec8fa24732f1')
+        self.assertEqual(len(evidence['samples']),22)
+        for row in evidence['samples']:
+            if row['stage'] in ('raster-and-clip','atlas-crop-four-flips'):
+                raw=int(row['alternate_y_raw'],16)
+                direct=int.from_bytes(raw.to_bytes(4,'little'),'big')
+                self.assertEqual(direct,int(row['expected'],16))
+                self.assertNotEqual(int(row['actual'],16),direct)
+            else:
+                # Retained LCD colours match the OLD 512-y UV mapping. This
+                # fixture supports the host model; it never makes R55 hardware PASS.
+                x,y=int(row['x']),int(row['y'])
+                sx,sy,sh=(x+120,96,240) if row['stage']=='canvas-to-top-buffer' else (2*x,0,480)
+                y=math.floor(512-sy-(y+0.5)*sh/240)
+                value=0 if y<0 or y>=480 else ((0x0000ff if y<240 else 0xff0000) if sx<320
+                                             else (0x00ff00 if y<240 else 0x00ffff))
+                self.assertEqual(value,int(row['actual'],16))
+
     def test_upload_matches_official_tex3ds(self):
         tool=shutil.which('tex3ds')
         if not tool:

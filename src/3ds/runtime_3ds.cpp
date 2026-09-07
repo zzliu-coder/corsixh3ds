@@ -294,6 +294,12 @@ void boot_log(const char* format, ...) {
   g_log_time_us += now_us() - started;
 }
 
+void boot_log_flush() noexcept {
+  const auto started = now_us();
+  g_log.flush();
+  g_log_time_us += now_us() - started;
+}
+
 void boot_log_close() {
 #if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
   if (g_stderr_sink) {
@@ -373,6 +379,7 @@ void boot_log_checkpoint(const char* checkpoint, const char* phase,
       identity != nullptr ? identity : "-", static_cast<unsigned long long>(bytes),
       static_cast<unsigned long long>(requested_bytes), known ? "yes" : "no");
   boot_log_memory(g_current_stage);
+  boot_log_flush();
 }
 
 void* regular_probe_allocate(std::size_t bytes, void*) noexcept {
@@ -1338,6 +1345,7 @@ class Runtime {
     boot_log("stage[%s] +%llums: %s", startup_code_.c_str(),
              static_cast<unsigned long long>(elapsed), startup_label_.c_str());
     boot_log_memory(startup_code_.c_str());
+    boot_log_flush();
     if (bottom_window_ != nullptr && !initialized_) {
       render_boot_page(false);
     }
@@ -1820,7 +1828,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R54 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R55 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1914,7 +1922,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R54 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R55 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2234,10 +2242,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R54\n",4)){
+    if(length==4&&!std::memcmp(magic,"R55\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r54.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r55.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
@@ -2529,7 +2537,7 @@ void register_lua_module(lua_State* state) {
   g_observation_state=state;g_timing.clear();g_timing.reset_window(now_us());
   g_memory_observations.clear();g_observation_flush_us=now_us();g_observation_flush_requested=false;
   boot_log_open();
-  // R54 diagnostic switches are sampled only at native startup.
+  // R55 diagnostic switches are sampled only at native startup.
   // Reference mode retains the full weighted thermal arithmetic for A/B runs.
   if (auto* marker = std::fopen("sdmc:/3ds/corsixth/thermal-profile.txt", "rb")) {
     std::fclose(marker); cpu_work.thermal_phase_profile = true;
@@ -2543,7 +2551,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R54 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
+  boot_log("diagnostics: revision=R55 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2623,7 +2631,12 @@ std::shared_ptr<ResourceBudgetGate> make_runtime_resource_budget_gate() {
 void runtime_set_game_window(SDL_Window* window) noexcept {
   runtime().set_game_window(window);
 }
-void runtime_diagnostic_line(const char* line) noexcept {boot_log("%s",line?line:"");}
+void runtime_diagnostic_line(const char* line) noexcept {
+  boot_log("%s",line?line:"");
+  // Startup self-test/fallback must survive a subsequent initialization failure.
+  // Periodic gpu-work statistics share the summary's single flush.
+  if (line && std::strncmp(line,"gpu-work:",9)!=0) boot_log_flush();
+}
 
 void runtime_set_game_canvas(SDL_Surface* surface) noexcept {
   runtime().set_game_canvas(surface);
@@ -2712,7 +2725,8 @@ void runtime_flush_observations(bool force) noexcept {
   const bool full = g_observation_flush_requested || now - g_observation_flush_us >= 60000000U;
   if (!full && now - g_compact_flush_us < 10000000U) return;
   const auto p = g_timing.snapshot(now);
-  if (force || g_terminal_observation || now - g_compact_flush_us >= 10000000U) {
+  const bool compact = force || g_terminal_observation || now - g_compact_flush_us >= 10000000U;
+  if (compact) {
     update_lua_memory(g_observation_state);
     const auto m = heap_snapshot();
     boot_log("perf: at_us=%llu scene=%s elapsed_us=%llu successful=%llu failed=%llu intervals=%llu mean_us=%.0f p95_us=%llu max_us=%llu gap_us=%llu heap_free=%llu heap_low=%llu lua=%llu linear_free=%llu log_us=%llu workload_us=%llu terminal=%d truncated=%d",
@@ -2743,12 +2757,17 @@ void runtime_flush_observations(bool force) noexcept {
       (unsigned long long)clock.dropped_us,(unsigned long long)clock.rebases,
       (unsigned long long)clock.budget_exits);
     g_compact_flush_us = now;
+    boot_log("log-buffer: capacity=4096 flushes=%llu failed=%d bytes_accepted=%llu flush_time_in_log_us=1",
+      (unsigned long long)g_log.flushes(),g_log.failed(),(unsigned long long)g_log.bytes());
   }
-  if (!full) return;
+  if (!full) { boot_log_flush(); return; }
   // A save/load may span the scheduled flush time; retain it until quiescent.
   bool open = false;
   for (const auto& stage : p.stages) if (stage.open != 0) open = true;
-  if (open && !g_terminal_observation) return;
+  if (open && !g_terminal_observation) {
+    if (compact) boot_log_flush();
+    return;
+  }
   boot_log("observation: terminal=%d active_spans=%d reset_allowed=%d",g_terminal_observation,open,!open);
   runtime().log_display_stats();
   const auto& d = p.intervals;
@@ -2796,6 +2815,7 @@ void runtime_flush_observations(bool force) noexcept {
       (unsigned long long)s.maximum_requested_bytes, (unsigned long long)s.maximum_known_held_bytes,
       (unsigned long long)s.allocation_failures, (unsigned long long)s.unknown_temporary_samples, o.identity_truncated);
   }
+  boot_log_flush();
   if (g_terminal_observation) { g_terminal_observation_saved = true; return; }
   g_timing.reset_window(now); g_memory_observations.clear(); g_observation_flush_us = now;
   g_observation_flush_requested = false;

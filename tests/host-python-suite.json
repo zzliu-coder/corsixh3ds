@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 222,
-  "selected_sorted_ids_sha256": "705418a6699b240da6f19c62037c2ae9992fb154e65c03b3f3883c72b3c477d0",
+  "selected_count": 223,
+  "selected_sorted_ids_sha256": "abb7ade43e95791c0e8b6e8c8f3eb3cdb3d552657cfc1ecacc8631c1f25fa828",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
@@ -193,6 +193,7 @@
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_production_runtime_constructs_and_owns_the_session",
     "test_gpu_renderer.GpuRendererTests.test_lcd_readback_bounds",
     "test_gpu_renderer.GpuRendererTests.test_production_backend_delayed_queue",
+    "test_gpu_renderer.GpuRendererTests.test_retained_device_samples_explain_row_contract",
     "test_gpu_renderer.GpuRendererTests.test_upload_matches_official_tex3ds",
     "test_handheld_controls.HandheldControlsTests.test_camera_sign_and_placement_cancel_vs_rotate",
     "test_handheld_controls.HandheldControlsTests.test_named_speed_cycle_pause_and_rejected_change",

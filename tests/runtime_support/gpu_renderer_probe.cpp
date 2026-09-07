@@ -54,7 +54,7 @@ C3D_RenderTarget* C3D_RenderTargetCreate(int w,int h,int,int depth){
   ++live;return new C3D_RenderTarget{tex,true,h,w};
 }
 void C3D_RenderTargetDelete(C3D_RenderTarget* t){if(t->owner){C3D_TexDelete(t->tex);delete t->tex;}delete t;--live;}
-void C3D_RenderTargetSetOutput(C3D_RenderTarget* t,int screen,int,u32 flags){assert(flags==u32(gfxGetScreenFormat(screen)<<12));if(!in_frame)finish();outputs[screen]=t;}
+void C3D_RenderTargetSetOutput(C3D_RenderTarget* t,int screen,int eye,u32 flags){assert(eye==GFX_LEFT);assert(flags==u32(gfxGetScreenFormat(screen)<<12));if(!in_frame)finish();outputs[screen]=t;}
 bool C3D_FrameBegin(u8){assert(ready&&!in_frame);finish();in_frame=true;offset=objects=0;return true;}
 void C3D_FrameEnd(u8){assert(in_frame&&pending.empty());pending=std::move(commands);commands.clear();in_frame=false;}
 float C3D_GetDrawingTime(){return 1;}

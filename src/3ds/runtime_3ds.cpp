@@ -1249,6 +1249,12 @@ class Runtime {
       RuntimeTimingScope bottom(TimingStage::Bottom);
       const bool bottom_ok=mirror_game_to_bottom();
       bottom.finish(bottom_ok);
+      if(top_ok&&bottom_ok&&trace_next_present_){
+        boot_log("view-present: source=%dx%d origin=%d,%d cursor=%d,%d submitted=1 renderer=gpu",
+          view_.bounds().w,view_.bounds().h,view_.bounds().x,view_.bounds().y,
+          g_input_cursor_x,g_input_cursor_y);
+        trace_next_present_=false;
+      }
       return top_ok&&bottom_ok;
     }
 #endif
@@ -2737,7 +2743,7 @@ void runtime_flush_observations(bool force) noexcept {
   runtime().log_display_stats();
   const auto& d = p.intervals;
   boot_log("frame-interval-sum: overflowed=%d",d.total_overflowed);
-  boot_log("segment: scene=%s stable_eligible=%d software_submission_only=1 operation_rows=%lu overflow=%llu",
+  boot_log("segment: scene=%s stable_eligible=%d presentation_api_timing=1 operation_rows=%lu overflow=%llu",
     g_scene_identity.data(),!g_terminal_observation && !g_window_has_operation && !g_window_scene_changed && g_scene_identity[0] && p.intervals.count>0 && p.failed_presents==0 && p.invalid_events==0,(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
   for(std::size_t i=0;i<g_operation_sample_count;++i){
     const auto& row=g_operation_samples[i];const auto& o=row.observation;const auto& m=o.sample;

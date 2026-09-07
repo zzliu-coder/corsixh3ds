@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,7 +11,6 @@ class NoStereoscopicRenderingTests(unittest.TestCase):
     def test_runtime_has_no_stereoscopic_path(self) -> None:
         forbidden = (
             "gfxSet3D(",
-            "GFX_LEFT",
             "GFX_RIGHT",
             "stereoscopic",
             "slider3d",
@@ -28,6 +28,19 @@ class NoStereoscopicRenderingTests(unittest.TestCase):
             for token in forbidden:
                 self.assertNotIn(token.lower(), text, f"{token} found in {path.relative_to(ROOT)}")
         self.assertGreater(checked, 20)
+        # libctru uses the left framebuffer selector for ordinary mono output.
+        # Require both LCD outputs to use that selector; no alternate eye path.
+        renderer = (ROOT / "src/3ds/runtime/gpu_renderer.cpp").read_text()
+        outputs = re.findall(
+            r"C3D_RenderTargetSetOutput\(enable\?(top_target|bottom_target):nullptr,"
+            r"(GFX_TOP|GFX_BOTTOM),(GFX_LEFT),", renderer
+        )
+        self.assertEqual(outputs, [
+            ("top_target", "GFX_TOP", "GFX_LEFT"),
+            ("bottom_target", "GFX_BOTTOM", "GFX_LEFT"),
+        ])
+        self.assertEqual(renderer.count("C3D_RenderTargetSetOutput("), 2)
+        self.assertEqual(renderer.count("GFX_LEFT"), 2)
 
 
 if __name__ == "__main__":

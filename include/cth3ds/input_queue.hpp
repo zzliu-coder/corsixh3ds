@@ -57,7 +57,8 @@ class InputQueue {
     head_ = (head_ + 1U) % capacity; --size_; ++stats_.popped;
     const auto age=now>=out.timestamp_us?now-out.timestamp_us:0;
     stats_.max_age_us=std::max(stats_.max_age_us,age);
-    ++stats_.age_histogram[std::min<std::uint64_t>(31,age/10000U)];
+    const auto bucket=static_cast<std::size_t>(std::min<std::uint64_t>(31,age/10000U));
+    ++stats_.age_histogram[bucket];
     return true;
   }
   void discard() noexcept {

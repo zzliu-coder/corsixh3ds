@@ -1,4 +1,4 @@
-"""Observe delivered upstream timer events without changing game speed."""
+"""Bound elapsed-time catch-up while retaining the upstream speed/tick rules."""
 
 from __future__ import annotations
 
@@ -18,6 +18,13 @@ SIMULATION_CLOCK_SITES = (
     ('      u3_logic.finish(res == LUA_OK);\n#endif',
      '      u3_logic.finish(res == LUA_OK);\n'
      '      cth3ds::runtime_note_logic_callback(res == LUA_OK);\n#endif'),
+    ('    if (do_timer) {\n#ifdef CORSIXTH_3DS\n',
+     '    // CORSIXTH_3DS_SIMULATION_BUDGET_R51\n'
+     '#ifdef CORSIXTH_3DS\n'
+     '    (void)do_timer; // wakeups are observations, elapsed time owns simulation\n'
+     '    cth3ds::runtime_simulation_begin();\n'
+     '    while (cth3ds::runtime_simulation_step())\n'
+     '#else\n    if (do_timer)\n#endif\n    {\n#ifdef CORSIXTH_3DS\n'),
 )
 
 

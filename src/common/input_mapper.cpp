@@ -111,11 +111,11 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
   const Vec2f circle = normalized_circle(sample);
   const bool circle_active = std::abs(circle.x) > 0.0001F || std::abs(circle.y) > 0.0001F;
   blocked_circle_ = blocked_circle_ && circle_active;
-  if (circle_active && !blocked_circle_ && std::isfinite(delta_seconds) &&
+  if (circle_active && !blocked_circle_ && !(config_.overview_controls && sample.touching) && std::isfinite(delta_seconds) &&
       delta_seconds > 0.0F) {
     Action pan;
-    const bool cursor = context == InputContext::Menu || context == InputContext::Dialog ||
-                        context == InputContext::TextInput;
+    const bool cursor = !config_.overview_controls && (context == InputContext::Menu ||
+                        context == InputContext::Dialog || context == InputContext::TextInput);
     pan.type = cursor ? ActionType::CursorStep :
                config_.overview_controls ? ActionType::MoveViewport : ActionType::PanCamera;
     const float distance = config_.camera_pixels_per_second *
@@ -126,20 +126,9 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
   std::vector<Action> actions;
   actions.reserve(4);
   const bool precise = has_button(sample.held, Button::R);
-  const bool map_context = context == InputContext::World || context == InputContext::BuildRoom ||
-                           context == InputContext::PlaceObject;
-  if (config_.overview_controls && map_context && !precise) {
-    const float x = (has_button(sample.held, Button::DRight) ? 1.0F : 0.0F) -
-                    (has_button(sample.held, Button::DLeft) ? 1.0F : 0.0F);
-    const float y = (has_button(sample.held, Button::DDown) ? 1.0F : 0.0F) -
-                    (has_button(sample.held, Button::DUp) ? 1.0F : 0.0F);
-    if ((x != 0 || y != 0) && std::isfinite(delta_seconds) && delta_seconds > 0) {
-      Action action = make_simple(ActionType::PanCamera);
-      const float distance = config_.camera_pixels_per_second * std::min(delta_seconds, 0.1F) *
-                             (x != 0 && y != 0 ? 0.70710678F : 1.0F);
-      action.vector = {x * distance, y * distance};
-      if (!dispatch(action)) return false;
-    }
+  if (config_.overview_controls) {
+    // R51: one viewing control, one pointing control. D-pad (including R)
+    // cannot silently move the last pen target. Legacy panel mapping remains.
     repeat_states_ = {};
   } else append_dpad_actions(actions, sample);
   for (Action action : actions) {

@@ -155,8 +155,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 212,
-  "selected_sorted_ids_sha256": "9bff4f5bca5b810e5cfafb713bf4a559488f65b95bec63f72677ed9994296ecf",
+  "selected_count": 215,
+  "selected_sorted_ids_sha256": "471931f2f72b1cce4db4c1e649ce5cbe34fcb55bfaea415d5b4f4c4ad7529582",
   "test_ids": [
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
     "test_build_scripts.BuildScriptTests.test_all_shell_scripts_parse_and_have_no_placeholders",
@@ -173,6 +173,7 @@
     "test_ci_diagnostics.CiDiagnosticsTests.test_fail_closed_preflight_keeps_summary",
     "test_ci_diagnostics.CiDiagnosticsTests.test_failure_injection_preserves_diagnostics_and_exit_code",
     "test_ci_diagnostics.CiDiagnosticsTests.test_success_path_writes_machine_readable_pass",
+    "test_cpu_hotspots.CpuHotspotTests.test_real_temperature_and_input_cache_contract",
     "test_dual_screen_canvas.DualScreenCanvasTests.test_generated_renderer_real_sdl_pixels_and_lifetime",
     "test_dual_screen_canvas.DualScreenCanvasTests.test_real_level_identity_uses_map_and_header_is_required",
     "test_embedded_adapter.EmbeddedAdapterTests.test_generated_header_is_current",
@@ -279,6 +280,8 @@
     "test_sdl2_patcher.Sdl2PatcherTests.test_rejects_unknown_source",
     "test_sdl2_patcher.Sdl2PatcherTests.test_writer_uses_python39_exact_lf_atomic_publish",
     "test_simulator.SimulatorTests.test_simulator_output_is_deterministic_when_binary_is_supplied",
+    "test_software_blitter.SoftwareBlitterTests.test_generated_engine_calls_the_fast_path",
+    "test_software_blitter.SoftwareBlitterTests.test_real_sdl_pixels_and_ownership",
     "test_sound_lifetime.LoadRecoveryTests.test_alternate_target",
     "test_sound_lifetime.LoadRecoveryTests.test_backup_target",
     "test_sound_lifetime.LoadRecoveryTests.test_failed_publication_recovery",

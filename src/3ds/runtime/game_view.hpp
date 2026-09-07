@@ -12,10 +12,12 @@ class GameView {
  public:
   void reset_canvas(int width, int height) noexcept;
   void focus(int x, int y) noexcept;
+  void inspect(int x, int y, Vec2i pointer) noexcept;
   // Return whether changing context/size needs a redraw.
   bool set_context(InputContext context) noexcept;
   bool toggle() noexcept;
-  void move(Vec2f delta, Vec2i pointer) noexcept;
+  // Return only displacement left after clamping; menus never pan the map.
+  Vec2f move(Vec2f delta, Vec2i pointer) noexcept;
   void follow(Vec2i pointer) noexcept;
   [[nodiscard]] bool activation_needs_focus(ActionType action, Vec2i pointer) const noexcept;
   [[nodiscard]] RectI bounds() const noexcept { return bounds_; }

@@ -83,6 +83,26 @@ int main() {
   for(int i=0;i<20;++i)v.move({.25F,.25F},pointer);
   assert(v.bounds().x==5 && v.bounds().y==5);present();assert(v.bounds().x==5);
   v.move({-1000,-1000},pointer);present();assert(v.bounds().x==0 && v.bounds().y==0);
+  // Only displacement beyond the visible-canvas border pans the world.
+  for(auto context:{InputContext::World,InputContext::BuildRoom,InputContext::PlaceObject}) {
+    v=GameView{};
+    v.set_context(context);v.inspect(320,240,pointer);
+    auto remaining=v.move({130,150},pointer);
+    if(v.bounds().x!=240 || v.bounds().y!=240 || remaining.x!=10 || remaining.y!=30)
+      std::fprintf(stderr,"context %u bounds %d,%d %dx%d remainder %.3f,%.3f\n",
+        unsigned(context),v.bounds().x,v.bounds().y,v.bounds().w,v.bounds().h,remaining.x,remaining.y);
+    assert(v.bounds().x==240 && v.bounds().y==240 && remaining.x==10 && remaining.y==30);
+    remaining=v.move({-5,-7},pointer);assert(remaining.x==0 && remaining.y==0);
+    remaining=v.move({-245,-250},pointer);
+    assert(v.bounds().x==0 && v.bounds().y==0 && remaining.x==-10 && remaining.y==-17);
+    remaining=v.move({-2,9},pointer);assert(remaining.x==-2 && remaining.y==0);
+  }
+  for(auto context:{InputContext::Menu,InputContext::Dialog,InputContext::TextInput}) {
+    v.set_context(context);v.inspect(600,400,pointer);v.follow(pointer);
+    assert(v.bounds().x==240 && v.bounds().y==240); // focus never moves the pen
+    const auto remaining=v.move({1000,1000},pointer);
+    assert(remaining.x==0 && remaining.y==0);
+  }
   assert(!GameView::valid_output(nullptr,top,400,240));
   assert(!GameView::valid_output(source,nullptr,400,240));
   const auto pitch=source->pitch;source->pitch=2559;

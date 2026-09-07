@@ -53,6 +53,8 @@ void runtime_top_present_complete(bool success) noexcept;
 void runtime_frame_skipped() noexcept;
 //! Normal-thread counters, aggregated with frame/workload observations.
 void runtime_note_timer_event() noexcept;
+void runtime_simulation_begin() noexcept;
+bool runtime_simulation_step() noexcept;
 void runtime_note_logic_callback(bool success) noexcept;
 void runtime_flush_observations(bool force = false) noexcept;
 void runtime_observe_memory(const char* checkpoint, const char* phase,

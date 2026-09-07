@@ -62,12 +62,11 @@ TEST(overview_controls_have_independent_map_view_cursor_and_shortcuts) {
     return result;
   };
   auto a=actions(InputContext::World,button_mask(Button::DRight),0);
-  EXPECT_EQ(a.size(),1U);EXPECT_EQ(a[0].type,ActionType::PanCamera);
+  EXPECT_TRUE(a.empty());
   a=actions(InputContext::World,0,156);EXPECT_EQ(a[0].type,ActionType::MoveViewport);
-  a=actions(InputContext::Menu,0,156);EXPECT_EQ(a[0].type,ActionType::CursorStep);
+  a=actions(InputContext::Menu,0,156);EXPECT_EQ(a[0].type,ActionType::MoveViewport);
   a=actions(InputContext::World,button_mask(Button::R)|button_mask(Button::DRight),0);
-  EXPECT_EQ(a.size(),1U);EXPECT_EQ(a[0].type,ActionType::CursorStep);
-  EXPECT_NEAR(a[0].vector.x,1.0/16.0,0.0001); // bridge multiplies legacy units by 16
+  EXPECT_TRUE(a.empty());
   a=actions(InputContext::World,button_mask(Button::R)|button_mask(Button::Start),0);
   EXPECT_EQ(a.size(),1U);EXPECT_EQ(a[0].type,ActionType::OpenSaveSlots);
   a=actions(InputContext::World,button_mask(Button::R)|button_mask(Button::Select),0);
@@ -89,6 +88,30 @@ TEST(wide_view_has_exact_nearest_pixels_with_padding_and_edges) {
     EXPECT_EQ(dest[y*404+400],0xdeadbeefU);
   }
   EXPECT_FALSE(scale_rgba_view(source.data(),640,480,644,{161,192,480,288},dest.data(),400,240,404));
+}
+
+TEST(stylus_owns_cursor_and_drag_suspends_circle_view_in_all_contexts) {
+  for(auto context:{InputContext::World,InputContext::BuildRoom,InputContext::PlaceObject,
+                    InputContext::Menu,InputContext::Dialog,InputContext::TextInput}) {
+    InputMapperConfig c;c.overview_controls=true;InputMapper mapper(c);
+    RawInputSnapshot s;s.timestamp_us=8000;s.circle_x=156;s.circle_y=156;
+    s.touching=true;s.touch={100,80};
+    int moved=0,downs=0,ups=0;
+    auto consume=[&](const Action& a) {
+      EXPECT_FALSE(a.type==ActionType::CursorStep || a.type==ActionType::PanCamera);
+      if(a.type==ActionType::MoveViewport)++moved;
+      if(a.type==ActionType::PointerDown)++downs;
+      if(a.type==ActionType::PointerUp)++ups;
+      return true;
+    };
+    EXPECT_TRUE(mapper.dispatch_mixed(s,.008F,[&]{return context;},consume));
+    s.timestamp_us+=8000;s.touch={120,80};
+    EXPECT_TRUE(mapper.dispatch_mixed(s,.008F,[&]{return context;},consume));
+    EXPECT_EQ(moved,0);EXPECT_EQ(downs,1);
+    s.timestamp_us+=8000;s.touching=false;
+    EXPECT_TRUE(mapper.dispatch_mixed(s,.008F,[&]{return context;},consume));
+    EXPECT_EQ(ups,1);EXPECT_EQ(moved,1);
+  }
 }
 
 TEST(flip_in_place_matches_coordinate_reference_all_orientations) {

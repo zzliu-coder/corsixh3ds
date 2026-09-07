@@ -155,6 +155,21 @@ set(CTH3DS_LUA_INTEGER_LIMITS
   ULLONG_MAX=ULONG_LONG_MAX)
 target_compile_definitions(CorsixTH_lib PUBLIC CORSIXTH_3DS=1 ${CTH3DS_LUA_INTEGER_LIMITS})
 target_compile_definitions(CorsixTH PRIVATE CORSIXTH_3DS=1 ${CTH3DS_LUA_INTEGER_LIMITS})
+# R51: retain size optimisation globally, favour speed at measured CPU sites.
+# OFF provides the same-source -Oz comparison; never enable fast-math.
+option(CORSIXTH_3DS_HOTSPOT_O2 "Optimise measured drawing/map hot paths for speed" ON)
+if(CORSIXTH_3DS_HOTSPOT_O2)
+  if(CMAKE_VERSION VERSION_LESS 3.18)
+    message(FATAL_ERROR "3DS hotspot source scope requires CMake 3.18 or newer")
+  endif()
+  set_source_files_properties(
+    "${CTH3DS_PLATFORM_ROOT}/../th_gfx_sdl.cpp"
+    "${CTH3DS_PLATFORM_ROOT}/../th_map.cpp"
+    "${CTH3DS_PLATFORM_ROOT}/../th_pathfind.cpp"
+    "${CTH3DS_PLATFORM_ROOT}/common/framebuffer_scaler.cpp"
+    TARGET_DIRECTORY CorsixTH_lib
+    PROPERTIES COMPILE_OPTIONS "-O2")
+endif()
 target_link_options(CorsixTH PRIVATE
   "-Wl,-Map,${CMAKE_CURRENT_BINARY_DIR}/CorsixTH-3DS.map")
 

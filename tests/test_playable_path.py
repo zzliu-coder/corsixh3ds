@@ -205,6 +205,8 @@ class U3GeneratedClockTests(unittest.TestCase):
         present = function_body(runtime, 'bool runtime_present_game(int cursor_x, int cursor_y) noexcept')
         code = HARNESS.replace('// INSERT_TOP', top).replace('// INSERT_BOTTOM', bottom).replace('// INSERT_LOOP', loop).replace('// INSERT_PRESENT', present)
         code = code.replace('// INSERT_CLOCK_COUNTERS',
+            function_body(runtime, 'void runtime_simulation_begin() noexcept') + '\n' +
+            function_body(runtime, 'bool runtime_simulation_step() noexcept') + '\n' +
             function_body(runtime, 'void runtime_note_timer_event() noexcept') + '\n' +
             function_body(runtime, 'void runtime_note_logic_callback(bool success) noexcept'))
         source = directory/'loop.cpp'
@@ -226,20 +228,28 @@ class U3GeneratedClockTests(unittest.TestCase):
 
     def test_actual_loop_logic_top_bottom_save_delays(self):
         baseline = self.run_case(-1)
-        self.assertEqual(baseline['success'], 301)
-        self.assertEqual(baseline['count'], 300)
+        self.assertGreater(baseline['success'], 0)
+        self.assertEqual(baseline['count'], baseline['success']-1)
         self.assertEqual(baseline['timers'], 301)
-        self.assertEqual(baseline['callbacks'], 301)
+        self.assertEqual(baseline['callbacks'], baseline['steps'])
         coalesced = self.run_case(-1, extra_timers=2)
         self.assertEqual(coalesced['timers'], 903)
-        self.assertEqual(coalesced['callbacks'], 301)
+        self.assertLess(coalesced['callbacks'], coalesced['timers'])
+        self.assertEqual(coalesced['callbacks'], coalesced['steps'])
+        self.assertEqual(coalesced['dropped'], 0)
         for delayed in (2, 3, 4, 5, 7):
             with self.subTest(delayed=delayed):
                 value = self.run_case(delayed)
-                self.assertEqual(value['sum']-baseline['sum'], 300*7000)
+                self.assertEqual(value['count'], value['success']-1)
+                self.assertEqual(value['callbacks'], value['steps'])
+                self.assertLessEqual(value['callbacks'], 301*4)
+                # Actual clock changes callback/frame counts under load. Check
+                # each exclusive stage against its instrumented work count,
+                # including the SDL flush charged to render, not presentation.
                 for stage in (0, 1, 2, 3, 4, 5, 6, 7):
-                    self.assertEqual(value['exclusive'][stage]-baseline['exclusive'][stage],
-                                     301*7000 if stage == delayed else 0)
+                    expected=value['work'][stage]*(8000 if stage==delayed else 1000)
+                    if stage==3: expected+=value['flushes']*500
+                    self.assertEqual(value['exclusive'][stage], expected)
 
     def test_actual_loop_top_draw_and_bottom_failures_are_not_successes(self):
         for failure in (1, 2, 3, 5):
@@ -247,12 +257,16 @@ class U3GeneratedClockTests(unittest.TestCase):
                 value = self.run_case(-1, failure)
                 self.assertEqual(value['success'], 0)
                 self.assertEqual(value['count'], 0)
-                self.assertEqual(value['failed'], 301)
+                self.assertGreater(value['failed'], 0)
+                self.assertEqual(value['failed'], value['work'][3])
 
     def test_actual_loop_missing_top_is_skipped(self):
         value = self.run_case(-1, 4)
         self.assertEqual(value['success'], 0)
+        self.assertGreater(value['skipped'], 0)
+        # Includes iterations with no due simulation/frame and missing-top draws.
         self.assertEqual(value['skipped'], 301)
+        self.assertLess(value['work'][3], value['skipped'])
 
     def test_actual_memory_entrypoints_and_checked_bottom_present(self):
         runtime = (ROOT/'src/3ds/runtime_3ds.cpp').read_text()
@@ -309,6 +323,7 @@ local ok, err=App:load(); assert(ok==false and err=='incompatible' and ended[#en
 
 HARNESS = r'''
 #include "cth3ds/telemetry.hpp"
+#include "cth3ds/simulation_clock.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -350,9 +365,12 @@ void cth3ds_clear_sound_callbacks(){}
 int delayed=-1,failure=0,iterations=0,infinite_loop_counter=0;
 bool g_top_present_seen=false,g_top_present_ok=false;
 std::string_view dispatch;
-void spend(int stage,std::uint64_t base=1000) {clock_us+=base+(stage==delayed?7000:0);}
+std::uint64_t work[10]{},flushes=0;
+void spend(int stage,std::uint64_t base=1000) {++work[stage];clock_us+=base+(stage==delayed?7000:0);}
 namespace cth3ds {
 std::uint64_t g_timer_events=0,g_logic_callbacks=0,g_logic_failures=0;
+SimulationClock g_simulation_clock;
+std::uint64_t now_us();
 struct RuntimeTimingScope {
  std::uint64_t token;
  explicit RuntimeTimingScope(TimingStage stage):token(g_timing.begin_span(stage,clock_us)){}
@@ -391,7 +409,7 @@ void SDL_ClearError(){}
 const char* SDL_GetError(){return failure==1?"present-failed":"";}
 // Real pixel/ownership operations run in test_dual_screen_canvas. Here the
 // flush belongs to the generated game's render span; LCD submission is Top.
-int SDL_RenderFlush(void*){clock_us+=500;return failure==5?-1:0;}
+int SDL_RenderFlush(void*){++flushes;clock_us+=500;return failure==5?-1:0;}
 void SDL_SetRenderDrawBlendMode(void*,int){}
 void SDL_SetRenderDrawColor(void*,int,int,int,int){}
 void SDL_RenderFillRect(void*,void*){}
@@ -452,6 +470,9 @@ int main(int argc,char** argv){
  <<",\"skipped\":"<<s.skipped_presents<<",\"count\":"<<s.intervals.count
  <<",\"sum\":"<<s.intervals.total_us<<",\"exclusive\":[";
  for(std::size_t i=0;i<10;++i){if(i)std::cout<<",";std::cout<<s.stages[i].exclusive_us;}
- std::cout<<"],\"timers\":"<<cth3ds::g_timer_events<<",\"callbacks\":"<<cth3ds::g_logic_callbacks<<"}";
+ const auto clock=cth3ds::g_simulation_clock.statistics();
+ std::cout<<"],\"timers\":"<<cth3ds::g_timer_events<<",\"callbacks\":"<<cth3ds::g_logic_callbacks
+ <<",\"steps\":"<<clock.steps<<",\"dropped\":"<<clock.dropped_us<<",\"flushes\":"<<flushes<<",\"work\":[";
+ for(int i=0;i<10;++i){if(i)std::cout<<",";std::cout<<work[i];}std::cout<<"]}";
 }
 '''

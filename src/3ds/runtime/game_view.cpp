@@ -1,6 +1,7 @@
 #include "game_view.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include "cth3ds/framebuffer_scaler.hpp"
 
 namespace cth3ds {
@@ -17,6 +18,12 @@ void GameView::focus(int x, int y) noexcept {
   bounds_.x = std::clamp(x - bounds_.w / 2, 0, 640 - bounds_.w);
   bounds_.y = std::clamp(y - bounds_.h / 2, 0, 480 - bounds_.h);
   initialized_ = false;
+}
+
+void GameView::inspect(int x, int y, Vec2i pointer) noexcept {
+  focus(x, y);
+  previous_pointer_ = pointer;
+  initialized_ = true;
 }
 
 bool GameView::set_context(InputContext context) noexcept {
@@ -43,16 +50,22 @@ bool GameView::toggle() noexcept {
   return set_context(context_);
 }
 
-void GameView::move(Vec2f delta, Vec2i pointer) noexcept {
+Vec2f GameView::move(Vec2f delta, Vec2i pointer) noexcept {
+  if (!std::isfinite(delta.x) || !std::isfinite(delta.y)) return {};
+  delta.x = std::clamp(delta.x, -10000.0F, 10000.0F);
+  delta.y = std::clamp(delta.y, -10000.0F, 10000.0F);
   remainder_.x += delta.x;
   remainder_.y += delta.y;
   const int x = static_cast<int>(remainder_.x), y = static_cast<int>(remainder_.y);
   remainder_.x -= static_cast<float>(x);
   remainder_.y -= static_cast<float>(y);
-  bounds_.x = std::clamp(bounds_.x + x, 0, 640 - bounds_.w);
-  bounds_.y = std::clamp(bounds_.y + y, 0, 480 - bounds_.h);
+  const int old_x = bounds_.x, old_y = bounds_.y;
+  bounds_.x = std::clamp(old_x + x, 0, 640 - bounds_.w);
+  bounds_.y = std::clamp(old_y + y, 0, 480 - bounds_.h);
   previous_pointer_ = pointer;
   initialized_ = true;
+  return map_context_ ? Vec2f{static_cast<float>(x - (bounds_.x - old_x)),
+                              static_cast<float>(y - (bounds_.y - old_y))} : Vec2f{};
 }
 
 void GameView::follow(Vec2i pointer) noexcept {

@@ -311,8 +311,8 @@ function Platform:resetCursorResidual()
 end
 
 -- Called before a new HID sample, never between touch-down and touch-up.
--- Keep existing UI geometry and direct-touch semantics; move focus only when
--- a new menu/dialog appears. Native output observes the same UI cursor.
+-- Keep existing geometry and pen coordinates. A new dialog may move the
+-- viewing rectangle, never the authoritative mouse position.
 function Platform:prepareInput()
   local state = self:inputState()
   local ui, owners = self.app.ui, self.focus_owners
@@ -337,10 +337,8 @@ function Platform:prepareInput()
       x, y = left + width / 2, top + math.min(height / 2, 40)
     end
   end
-  local ok, err = self:handlePointer{kind = "motion", x = x, y = y}
-  if not ok then return false, err end
   if type(self.native.focus_view) == "function" then
-    self.native.focus_view(ui.cursor_x, ui.cursor_y)
+    self.native.focus_view(x, y)
   end
   return true
 end
@@ -357,10 +355,6 @@ function Platform:closeMenuBar()
   menu.visible, menu.disappear_counter, menu.menu_disappear_counter = false, nil, nil
   if menu.on_top then ui:sendToBottom(menu); menu.on_top = false end
   self:resetCursorResidual()
-  if ui.cursor_y < 24 then
-    local ok, err = self:handlePointer{kind = "motion", x = ui.cursor_x, y = 32}
-    if not ok then error(err, 0) end
-  end
   self.native.request_redraw()
   return true
 end
@@ -695,9 +689,13 @@ function Platform:handleAction(action)
     if action.value == 1 then return self:cancelPointer() end
     return self:handlePointer{kind = "up"}
   elseif kind == "pan_camera" then
-    if ui and type(ui.scrollMap) == "function" then
+    if (context == "world" or context == "build_room" or context == "place_object") and
+       ui and type(ui.scrollMap) == "function" and (ui.down_count or 0) == 0 then
       -- Same screen-offset convention as upstream's arrow-key handlers.
       ui:scrollMap(action.dx or 0, action.dy or 0)
+      if type(ui.onCursorWorldPositionChange) == "function" then
+        ui:onCursorWorldPositionChange()
+      end
     end
   elseif kind == "cursor_step" then
     local ok, err = self:moveCursor(action.dx or 0, action.dy or 0, action.value == 1)
@@ -777,9 +775,9 @@ function Platform:handleAction(action)
     native_notice(self.native, "START OR LOAD A HOSPITAL TO SAVE", false)
   elseif kind == "show_help" then
     ui:addWindow(UIInformation(ui, {
-      "D-PAD: MOVE HOSPITAL", "CIRCLE: MOVE TOP VIEW (MENU: CURSOR)",
+      "CIRCLE: VIEW / EDGE: SCROLL MAP", "PEN: POINT / CLICK / DRAG",
       "PEN: CLICK / DRAG    A: CONFIRM", "B: BACK    X: MENU / ROTATE",
-      "Y: WALLS    L: CLEAR / WIDE", "R + D-PAD: PRECISE CURSOR",
+      "Y: WALLS    L: CLEAR / WIDE", "D-PAD: UNUSED; PEN OWNS CURSOR",
       "START: PAUSE    SELECT: SPEED", "R + START: SAVE SLOTS",
       "TEXT FIELD + A: KEYBOARD", "R + SELECT: THIS HELP",
     }))

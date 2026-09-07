@@ -121,8 +121,9 @@ function GameUI:showMenuBar() self.menu_bar:appear() end
 do
  local p,app,ui=fresh()
  local focused,selected,saved_config=0,0,0
+ local focus_x,focus_y
  app.saveConfig=function()saved_config=saved_config+1 end
- p.native.focus_view=function(x,y) focused=focused+1;assert(x==ui.cursor_x and y==ui.cursor_y) end
+ p.native.focus_view=function(x,y) focused=focused+1;focus_x,focus_y=x,y end
  ui.sendToTop=function()end;ui.sendToBottom=function()end;ui.playSound=function()end
  local root={x=0,width=64,level=1,items={{handler=function()selected=selected+1 end}}}
  root.hitTest=function(_,x,y) if y<16 then return false end;if y<48 then return 1 end;return false end
@@ -133,11 +134,13 @@ do
  app.eventHandlers.buttondown=function(self,b,x,y) return menu:onMouseDown(b==1 and 'left' or 'right',x,y) end
  app.eventHandlers.buttonup=function(self,b,x,y) return menu:onMouseUp(b==1 and 'left' or 'right',x,y) end
  assert(p:handleAction{type='open_quick_menu'})
- assert(menu.visible and ui.cursor_x==32 and ui.cursor_y==8 and focused==1)
+ assert(menu.visible and ui.cursor_x==200 and ui.cursor_y==200 and focused==1)
+ assert(focus_x==32 and focus_y==8)
  assert(p:inputState().input_context=='menu')
  local action=probe.action_for_sample(156,0,0.016,p:inputState().input_context)
  assert(action.type=='cursor_step')
  assert(p:prepareInput());assert(focused==1)
+ assert(p:handlePointer{kind='motion',x=32,y=8})
  assert(p:handleAction{type='confirm'});assert(menu.active_menu==root)
  assert(p:handlePointer{kind='motion',x=32,y=32})
  assert(p:handleAction{type='confirm'});assert(selected==1 and not menu.visible)
@@ -147,14 +150,14 @@ do
  assert(not menu.visible and ui.cursor_y>=24 and selected==1 and saved_config==2)
  local dialog={visible=true,x=450,y=350,width=120,height=100}
  ui.windows={dialog};assert(p:prepareInput())
- assert(ui.cursor_x==510 and ui.cursor_y==390)
+ assert(focus_x==510 and focus_y==390 and ui.cursor_x==32 and ui.cursor_y==32)
  ui.windows={}
  app.eventHandlers.buttondown=App.onMouseDown;app.eventHandlers.buttonup=App.onMouseUp
  assert(p:handlePointer{kind='down',x=300,y=300})
  ui.windows={{visible=true,x=0,y=0,width=100,height=100,onMouseUp=function()return false end}}
  assert(p:prepareInput());assert(ui.cursor_x==300 and ui.cursor_y==300)
  assert(p:handlePointer{kind='up'});assert(p:prepareInput())
- assert(ui.cursor_x==50 and ui.cursor_y==40)
+ assert(focus_x==50 and focus_y==40 and ui.cursor_x==300 and ui.cursor_y==300)
 end
 do
  local p,app,ui=fresh();local samples=0

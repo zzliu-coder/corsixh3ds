@@ -38,6 +38,8 @@
 #include "cth3ds/crc32.hpp"
 #include "cth3ds/events.hpp"
 #include "cth3ds/fixed_step.hpp"
+#include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/cpu_work.hpp"
 #include "cth3ds/framebuffer_scaler.hpp"
 #include "cth3ds/input_mapper.hpp"
 #include "cth3ds/input_collector_3ds.hpp"
@@ -150,6 +152,7 @@ bool g_terminal_observation = false, g_terminal_observation_saved = false;
 // The upstream renderer cursor fields are legacy zeros on the 3DS path.
 int g_input_cursor_x = 0, g_input_cursor_y = 0;
 std::uint64_t g_timer_events = 0, g_logic_callbacks = 0, g_logic_failures = 0;
+SimulationClock g_simulation_clock;
 std::uint64_t g_input_owner_epoch = 0;
 std::uint64_t now_us() noexcept;
 bool g_log_attempted = false;
@@ -720,6 +723,7 @@ int l_protected_adapter_call(lua_State* state) {
 bool call_platform_method(lua_State* state, const char* method,
                           const Action* action = nullptr,
                           std::string* error = nullptr, InputContext* context = nullptr) {
+  CpuWorkScope profile(context ? CpuWork::InputState : CpuWork::InputAction);
   const int base = lua_gettop(state);
   AdapterCall request{method, action, context};
   lua_pushcfunction(state, l_protected_adapter_call);
@@ -965,6 +969,13 @@ class Runtime {
       try {
         if (input_collector_.take_cancellation()) cancel_input(state);
         if (!call_platform_method(state,"prepareInput",nullptr,&error)) throw std::runtime_error(error);
+        InputRefreshGate input_state;
+        auto refresh_input = [&] {
+          input_state.refresh([&] {
+            if(!call_platform_method(state,"inputState",nullptr,&error,&last_context))throw std::runtime_error(error);
+            set_view_context(last_context);
+          });
+        };
         for (unsigned drained = 0; drained < 64 && input_collector_.pop(snapshot, now_us()); ++drained) {
         if (input_collector_.take_cancellation()) {
           input_collector_.discard(); cancel_input(state); break;
@@ -973,7 +984,7 @@ class Runtime {
           input_collector_.discard(); cancel_input(state);
           set_notice("INPUT QUEUE RESET AFTER LONG STALL", false); break;
         }
-        if (!call_platform_method(state,"inputState",nullptr,&error,&last_context)) throw std::runtime_error(error);
+        refresh_input();
         const auto owner_epoch = g_input_owner_epoch;
         set_view_context(last_context);
         const auto edges = snapshot.held ^ traced_held_;
@@ -988,13 +999,17 @@ class Runtime {
           static_cast<float>(snapshot.timestamp_us - last_input_us_) / 1000000.0F : 0.008F;
         last_input_us_ = snapshot.timestamp_us;
         const bool accepted=input_mapper_.dispatch_mixed(snapshot,std::min(sample_delta,0.1F),
-          [&] { InputContext context = last_context;
-            if(!call_platform_method(state,"inputState",nullptr,&error,&context))throw std::runtime_error(error);
-            last_context = context; set_view_context(context); return context;
-          },
+          [&] { refresh_input(); return last_context; },
           [&](const Action& action){
             bool ok = true;
-            if (action.type == ActionType::MoveViewport) move_view(action.vector);
+            if (action.type == ActionType::MoveViewport) {
+              const auto residual = move_view(action.vector);
+              if (residual.x != 0 || residual.y != 0) {
+                Action pan; pan.type = ActionType::PanCamera; pan.vector = residual;
+                input_state.invalidate();
+                ok = call_platform_method(state,"handleAction",&pan,&error);
+              }
+            }
             else if (action.type == ActionType::ToggleView) {
               toggle_view();
               boot_log("view-toggle: context=%u source=%dx%d origin=%d,%d cursor=%d,%d",
@@ -1005,7 +1020,10 @@ class Runtime {
             else if (activation_needs_focus(action)) {
               focus_view(g_input_cursor_x, g_input_cursor_y);
               set_notice("TARGET REVEALED - PRESS AGAIN", false);
-            } else ok = call_platform_method(state,"handleAction",&action,&error);
+            } else {
+              input_state.invalidate();
+              ok = call_platform_method(state,"handleAction",&action,&error);
+            }
             if (!ok) {
               g_log.emergency();
               const auto name = action_name(action.type);
@@ -1017,7 +1035,7 @@ class Runtime {
             return ok;
           });
         if(!accepted)throw std::runtime_error(error.empty()?"input batch rejected":error);
-        if (!call_platform_method(state,"inputState",nullptr,&error,&last_context)) throw std::runtime_error(error);
+        refresh_input();
         set_view_context(last_context);
         if (input_collector_.take_cancellation() || owner_epoch != g_input_owner_epoch) {
           input_collector_.discard(); (void)input_collector_.take_cancellation();
@@ -1136,6 +1154,10 @@ class Runtime {
     if (surface) {
       std::FILE* reference = std::fopen("sdmc:/3ds/corsixth/render-reference.txt", "rb");
       render_work.fast_flip_enabled = reference == nullptr;
+      std::FILE* blit_reference = std::fopen("sdmc:/3ds/corsixth/blit-reference.txt", "rb");
+      blit_counters.enabled = blit_reference == nullptr;
+      blit_counters.reference_forced = blit_reference != nullptr;
+      if (blit_reference) std::fclose(blit_reference);
       if (reference) std::fclose(reference);
       boot_log("canvas: owned %dx%d format=%lu pitch=%d top=400x240 native bottom=320x240 half",
                surface->w, surface->h, static_cast<unsigned long>(surface->format->format), surface->pitch);
@@ -1143,7 +1165,7 @@ class Runtime {
   }
 
   void focus_view(int x, int y) noexcept {
-    view_.focus(x, y);
+    view_.inspect(x, y, {g_input_cursor_x, g_input_cursor_y});
     request_redraw();
   }
 
@@ -1163,8 +1185,10 @@ class Runtime {
     if (view_.toggle()) request_redraw();
     set_notice(view_.bounds().w == 480 ? "WIDE 480x288 - L: CLEAR" : "CLEAR 400x240 - L: WIDE", false);
   }
-  void move_view(Vec2f delta) noexcept {
-    view_.move(delta, {g_input_cursor_x, g_input_cursor_y});
+  Vec2f move_view(Vec2f delta) noexcept {
+    const auto residual = view_.move(delta, {g_input_cursor_x, g_input_cursor_y});
+    request_redraw();
+    return residual;
   }
   bool activation_needs_focus(const Action& action) const noexcept {
     return view_.activation_needs_focus(action.type, {g_input_cursor_x, g_input_cursor_y});
@@ -1238,6 +1262,17 @@ class Runtime {
       (unsigned long long)render_work.flip_hits,(unsigned long long)render_work.flip_misses,(unsigned long long)render_work.flip_pixels_saved,
       (unsigned long long)render_work.cache_evictions,(unsigned long long)render_work.cache_bytes,(unsigned long long)render_work.cache_peak_bytes);
     render_work.reset_counts();
+    boot_log("blit-work: enabled=%d direct=%llu opaque=%llu fallback=%llu promotions=%llu clipped=%llu pixels=%llu live_bytes=%llu peak_bytes=%llu images=%llu",
+      blit_counters.enabled,(unsigned long long)blit_counters.direct,(unsigned long long)blit_counters.opaque,
+      (unsigned long long)blit_counters.fallback,(unsigned long long)blit_counters.promoted,
+      (unsigned long long)blit_counters.clipped,(unsigned long long)blit_counters.pixels,
+      (unsigned long long)blit_counters.live_bytes,(unsigned long long)blit_counters.peak_bytes,
+      (unsigned long long)blit_counters.live_images);
+    boot_log("blit-probe: ran=%d checksum_match=%d reference_forced=%d opaque_reference_us=%llu opaque_fast_us=%llu sparse_reference_us=%llu sparse_fast_us=%llu selected=%s span_bytes=%llu span_budget=262144",
+      blit_counters.probe_ran,blit_counters.probe_pixels,blit_counters.reference_forced,
+      (unsigned long long)blit_counters.probe_reference_us[0],(unsigned long long)blit_counters.probe_fast_us[0],
+      (unsigned long long)blit_counters.probe_reference_us[1],(unsigned long long)blit_counters.probe_fast_us[1],
+      blit_counters.enabled?"binary-span":"sdl-reference",(unsigned long long)blit_counters.span_bytes);
   }
 
   void stage(const char* code, const char* label) {
@@ -1458,6 +1493,7 @@ class Runtime {
   }
 
   void cancel_input(lua_State* state) {
+    g_simulation_clock.interrupt();
     std::string error;
     const bool released=input_mapper_.cancel_mixed([&](const Action& action){return call_platform_method(state,"handleAction",&action,&error);});
     const bool cleared=call_platform_method(state,"cancelPointer",nullptr,&error);
@@ -1710,7 +1746,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R50 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R51 " + state.build_tag;
     if (text.empty()) {
       return;
     }
@@ -1797,7 +1833,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R50 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R51 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2353,6 +2389,8 @@ int luaopen_th3ds(lua_State* state) {
 
 void register_lua_module(lua_State* state) {
   g_compact_flush_us=now_us();g_log_time_us=g_workload_time_us=0;
+  g_simulation_clock.reset();
+  cpu_work = {}; cpu_work.clock_us = now_us;
   g_timer_events=g_logic_callbacks=g_logic_failures=0;
   g_terminal_observation=g_terminal_observation_saved=false;
   g_operation_sample_count=0;g_operation_overflow=0;g_scene_identity.fill(0);g_window_has_operation=false;
@@ -2364,7 +2402,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R50 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
+  boot_log("diagnostics: revision=R51 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2460,7 +2498,10 @@ bool runtime_present_game(int cursor_x, int cursor_y) noexcept {
 }
 
 std::uint64_t runtime_span_begin(TimingStage stage) noexcept {
-  if(stage==TimingStage::Save||stage==TimingStage::Load||stage==TimingStage::Restore)g_window_has_operation=true;
+  if(stage==TimingStage::Save||stage==TimingStage::Load||stage==TimingStage::Restore) {
+    g_window_has_operation=true;
+    g_simulation_clock.interrupt();
+  }
   return g_timing.begin_span(stage, now_us());
 }
 bool runtime_span_end(std::uint64_t token, bool success) noexcept {
@@ -2493,7 +2534,10 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
       }else ++g_operation_overflow;
     }
     if(!std::strcmp(phase,"after") && (!std::strncmp(resource,"level:",6)||!std::strcmp(resource,"menu"))) {
-      if (std::strcmp(g_scene_identity.data(), resource)) g_window_scene_changed=true;
+      if (std::strcmp(g_scene_identity.data(), resource)) {
+        g_window_scene_changed=true;
+        g_simulation_clock.interrupt();
+      }
       std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"%s",resource);
     }
   }
@@ -2505,9 +2549,11 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
   }
 }
 void runtime_note_timer_event() noexcept { ++g_timer_events; }
+void runtime_simulation_begin() noexcept { g_simulation_clock.begin(now_us()); }
+bool runtime_simulation_step() noexcept { return g_simulation_clock.take_step(now_us()); }
 void runtime_note_logic_callback(bool success) noexcept {
   ++g_logic_callbacks;
-  if (!success) ++g_logic_failures;
+  if (!success) { ++g_logic_failures; g_simulation_clock.interrupt(); }
 }
 void runtime_flush_observations(bool force) noexcept {
   if (g_terminal_observation_saved) return;
@@ -2528,12 +2574,24 @@ void runtime_flush_observations(bool force) noexcept {
       static_cast<unsigned long long>(m.heap_available_low_water),static_cast<unsigned long long>(m.lua_bytes),
       static_cast<unsigned long long>(m.linear_free),static_cast<unsigned long long>(g_log_time_us),
       static_cast<unsigned long long>(g_workload_time_us),g_terminal_observation,g_log.truncated());
-    // Actual delivered timer events and dispatched App:onTick callbacks.
-    // Their difference measures coalescing, not a simulated CPU/GPU load.
+    // Delivered SDL events remain an observation; SimulationClock now decides
+    // callback dispatch. Read debt/dropped time below to judge lost progress.
     boot_log("simulation-clock: at_us=%llu elapsed_us=%llu timer_events=%llu callbacks=%llu failures=%llu nominal_timer_us=18000",
       (unsigned long long)now,(unsigned long long)(now-g_compact_flush_us),
       (unsigned long long)g_timer_events,(unsigned long long)g_logic_callbacks,(unsigned long long)g_logic_failures);
     g_timer_events=g_logic_callbacks=g_logic_failures=0;
+    const auto clock = g_simulation_clock.statistics();
+    for(std::size_t i=0;i<cpu_work.rows.size();++i) {
+      const auto& row=cpu_work.rows[i];
+      boot_log("cpu-work: at_us=%llu name=%s calls=%llu total_us=%llu max_us=%llu units=%llu enabled=%d inclusive=1",
+        (unsigned long long)now,kCpuWorkNames[i],(unsigned long long)row.calls,
+        (unsigned long long)row.total_us,(unsigned long long)row.max_us,(unsigned long long)row.units,cpu_work.enabled);
+    }
+    cpu_work.rows = {};
+    boot_log("simulation-budget: steps=%llu debt_us=%llu dropped_us=%llu rebases=%llu budget_exits=%llu step_us=18000 max_steps=4 budget_us=24000",
+      (unsigned long long)clock.steps,(unsigned long long)clock.debt_us,
+      (unsigned long long)clock.dropped_us,(unsigned long long)clock.rebases,
+      (unsigned long long)clock.budget_exits);
     g_compact_flush_us = now;
   }
   if (!full) return;

@@ -4,6 +4,15 @@
 #include <cstdint>
 
 namespace cth3ds {
+struct BlitCounters {
+  std::uint64_t direct{}, opaque{}, fallback{}, promoted{}, clipped{}, pixels{};
+  std::uint64_t live_bytes{}, peak_bytes{}, live_images{};
+  bool enabled{true};
+  std::uint64_t probe_reference_us[2]{}, probe_fast_us[2]{};
+  bool probe_ran{}, probe_pixels{}, reference_forced{};
+  std::uint64_t span_bytes{};
+};
+inline BlitCounters blit_counters;
 // Main-thread counters only. Pixel payloads stay in the existing 6 MiB cache.
 struct RenderWork {
   std::uint64_t draws{}, flipped_fallback{}, texture_creates{}, decoded_pixels{};

@@ -1,4 +1,6 @@
 {
+  "CorsixTH/Src/th_lua_map.cpp": "2630268a6391effa511cbdcfeb858e41d401c9fd3cec8f6ad006646a71ce17f5",
+  "CorsixTH/Lua/world.lua": "bbd640fa9b58b0953b950a3532d0ef78c9124f765b6131f3b78a677cd6edb91a",
   "CMakeLists.txt": "eb86ade939fac2f20297a6c2c63d317752c1314df4facc0c42e0721138ca9fe0",
   "CorsixTH/CMakeLists.txt": "f7c86c3684aa4177da32e0c1b966956631721b928a4509fc3d62b2d6e0bc40cf",
   "CorsixTH/Lua/app.lua": "bdbb6e2518f60f1929e615608606329207281238e3884ae9e21979c2f44472b9",

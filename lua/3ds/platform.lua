@@ -341,6 +341,11 @@ function Platform:prepareInput()
   self:resetCursorResidual()
   if (ui.down_count or 0) ~= 0 then return true end
   owners.ui, owners.window = ui, window
+  if self.native.window_identity then
+    local types = rawget(_G, "class")
+    self.native.window_identity(window and types and types.type and types.type(window) or
+      (self.app.world and "world" or "menu"))
+  end
   if not window or state.input_context == "build_room" or
      state.input_context == "place_object" then return true end
   local x, y = state.cursor_x, state.cursor_y

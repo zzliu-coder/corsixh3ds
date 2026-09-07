@@ -37,6 +37,7 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
   const auto p = timing.snapshot(now);
   const bool compact = force || terminal || now - compact_us >= 10000000U;
   if (compact) {
+    slow.drain(output.line);
     const auto& m = inputs;
     output.line("perf: at_us=%llu scene=%s elapsed_us=%llu successful=%llu failed=%llu intervals=%llu mean_us=%.0f p95_us=%llu max_us=%llu gap_us=%llu heap_free=%llu heap_low=%llu lua=%llu linear_free=%llu log_us=%llu workload_us=%llu terminal=%d truncated=%d",
       static_cast<unsigned long long>(now),scene.data(),static_cast<unsigned long long>(p.elapsed_us),
@@ -61,6 +62,10 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
         (unsigned long long)row.total_us,(unsigned long long)row.max_us,(unsigned long long)row.units,cpu_work.enabled);
     }
     cpu_work.rows = {};
+    output.line("thermal-cache: updates=%llu scans=%llu rebuilt_cells=%llu scratch_bytes=%llu structure_fast=%u",
+      (unsigned long long)cpu_work.thermal_updates,(unsigned long long)cpu_work.thermal_scans,
+      (unsigned long long)cpu_work.thermal_rebuilds,(unsigned long long)cpu_work.thermal_bytes,
+      cpu_work.thermal_structure_fast?1U:0U);
     output.line("simulation-budget: steps=%llu debt_us=%llu dropped_us=%llu rebases=%llu budget_exits=%llu step_us=18000 max_steps=4 budget_us=24000",
       (unsigned long long)clock.steps,(unsigned long long)clock.debt_us,
       (unsigned long long)clock.dropped_us,(unsigned long long)clock.rebases,

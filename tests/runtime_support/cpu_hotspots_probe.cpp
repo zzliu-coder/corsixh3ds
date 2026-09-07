@@ -48,6 +48,9 @@ int main() {
     a[index].flags.hospital=b[index].flags.hospital=step%5==0;
     a[index].flags.can_travel_e=b[index].flags.can_travel_e=step%4==0;
     const auto air=static_cast<std::uint16_t>(step*315U),heat=static_cast<std::uint16_t>(65535-step*200);
+    // This standalone fixture writes tile fields directly. Production writes
+    // go through the ten separately verified mutation owners.
+    fast.thermal_cache.invalidate_structure();
     ref.update_temperatures(air,heat);fast.update_temperatures(air,heat);
     assert(ref.current_temperature_index==fast.current_temperature_index);
     for(std::size_t i=0;i<a.size();++i)for(int slot=0;slot<2;++slot)

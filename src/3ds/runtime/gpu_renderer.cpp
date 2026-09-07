@@ -12,6 +12,8 @@
 #include <new>
 #include <vector>
 #include "cth3ds/gpu_layout.hpp"
+#include "cth3ds/gpu_pixels.hpp"
+#include "cth3ds/cpu_work.hpp"
 #include "cth3ds/gpu_diagnostics.hpp"
 #include "runtime_3ds.hpp"
 
@@ -22,7 +24,11 @@ constexpr u32 transfer=GX_TRANSFER_FLIP_VERT(0)|GX_TRANSFER_OUT_TILED(0)|
   GX_TRANSFER_RAW_COPY(0)|GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8)|
   GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
 struct Page { C3D_Tex texture{}; GpuShelf shelf{}; std::uint64_t generation{1},used{}; };
-struct Piece { int sx{},sy{},w{},h{},x{},y{},page{-1}; std::uint64_t generation{}; };
+struct Piece {
+  int sx{},sy{},w{},h{},x{},y{},page{-1};
+  std::uint64_t generation{};
+  std::size_t offset{};
+};
 struct Image {
   SDL_Texture* handle{}; SDL_Renderer* renderer{};
   int width{},height{}; std::unique_ptr<std::uint32_t[]> pixels;
@@ -132,8 +138,10 @@ bool place(Image& image,Piece& piece) noexcept {
   auto* output=static_cast<std::uint32_t*>(page.texture.data);
   // Each page is immutable while the GPU reads it. Appends touch disjoint
   // tiles; eviction is allowed only after a completed queue boundary.
-  gpu_upload_rgba(output,512,x,y,image.pixels.get()+piece.sy*image.width+piece.sx,
-    image.width,piece.w,piece.h);
+  {
+    CpuWorkScope upload(CpuWork::GpuUpload,static_cast<std::uint64_t>(piece.w)*piece.h*4U);
+    gpu_upload_prepared(output,512,x,y,image.pixels.get()+piece.offset,piece.w,piece.h);
+  }
   piece.page=selected;piece.generation=page.generation;piece.x=x;piece.y=y;
   page.used=epoch;++stats.uploads;stats.upload_bytes+=piece.w*piece.h*4U;
   return true;
@@ -229,7 +237,7 @@ bool diagnostic_lcd(const LcdCapture& capture,const char* name,bool submitted,bo
 }
 bool startup_self_test() noexcept {
   clip={0,0,640,480};empty_clip=false;
-  boot_log("gpu-diagnostic: revision=R55 canvas=1024x512 logical=640x480 atlas=512x512 format=RGBA8 upload_formula=tex3ds_row_y canvas_read_formula=row_y screen_v=1_minus_y full_linear_flush=retained lcd_visual=NOT_PROVEN");
+  boot_log("gpu-diagnostic: revision=R56 canvas=1024x512 logical=640x480 atlas=512x512 format=RGBA8 upload_formula=tex3ds_row_y canvas_read_formula=row_y screen_v=1_minus_y full_linear_flush=retained lcd_visual=NOT_PROVEN prepared_tiles=1 source_padding_bytes=0");
   bool all=true;
   // A: no texture or coordinate-dependent content. Distinguish clear/colour
   // storage from upload/sampling, while reporting non-symmetric raw channels.
@@ -398,9 +406,15 @@ SDL_Texture* gpu_image_create(SDL_Renderer* renderer,int width,int height,const 
     auto image=std::make_unique<Image>();image->renderer=renderer;image->width=width;image->height=height;
     const std::size_t count=static_cast<std::size_t>(width)*height;
     image->pixels=std::make_unique<std::uint32_t[]>(count);
-    std::memcpy(image->pixels.get(),pixels,count*4U);
-    for(int y=0;y<height;y+=512)for(int x=0;x<width;x+=512)
-      image->pieces.push_back({x,y,std::min(512,width-x),std::min(512,height-y)});
+    CpuWorkScope prepare(CpuWork::GpuPrepare,count*4U);
+    std::size_t offset=0;
+    for(int y=0;y<height;y+=512)for(int x=0;x<width;x+=512) {
+      Piece piece{x,y,std::min(512,width-x),std::min(512,height-y)};
+      piece.offset=offset;
+      gpu_prepare_pixels(image->pixels.get()+offset,pixels+y*width+x,width,piece.w,piece.h);
+      offset+=static_cast<std::size_t>(piece.w)*piece.h;
+      image->pieces.push_back(piece);
+    }
     image->handle=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ABGR8888,SDL_TEXTUREACCESS_STATIC,1,1);
     if(!image->handle)return nullptr;
     if(SDL_SetTextureUserData(image->handle,image.get())!=0){SDL_DestroyTexture(image->handle);return nullptr;}

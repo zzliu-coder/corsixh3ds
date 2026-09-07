@@ -75,6 +75,9 @@ int main(int argc,char** argv) {
   lua_pushcfunction(L,action_for_sample);lua_setfield(L,-2,"action_for_sample");
   lua_pushcfunction(L,l_focus_view);lua_setfield(L,-2,"focus_view");
   lua_pushcfunction(L,l_cpu_profile);lua_setfield(L,-2,"profile");
+  lua_pushcfunction(L,l_cpu_phase);lua_setfield(L,-2,"phase");
+  lua_pushcfunction(L,l_trace_call);lua_setfield(L,-2,"trace");
+  lua_pushcfunction(L,l_window_identity);lua_setfield(L,-2,"window_identity");
   lua_pushcfunction(L,l_scene);lua_setfield(L,-2,"scene");
   lua_setglobal(L,"probe");
   cpu_work.clock_us=now_us;
@@ -90,6 +93,16 @@ int main(int argc,char** argv) {
 """
 EXTRA = r"""
 do
+ local a,b,c=probe.trace('read','Data/test',function(x)return nil,x,false end,29)
+ assert(a==nil and b==29 and c==false)
+ local ok,err=pcall(probe.trace,'read','bad',function()error('trace failure retained')end)
+ assert(not ok and tostring(err):find('trace failure retained'))
+ assert(not pcall(probe.trace,'read','bad',42))
+ probe.window_identity('UIStaffRise')
+ local start=probe.phase()
+ assert(probe.phase('world_calendar',start)>start)
+ assert(not pcall(probe.phase,'invalid',start))
+ assert(not pcall(probe.phase,'world_ui',-1))
  local a,b,c=probe.profile('world',function(x)return nil,x,false end,27)
  assert(a==nil and b==27 and c==false)
  assert(not pcall(probe.profile,'world',function()error('profile failure retained')end))
@@ -234,6 +247,9 @@ class InputNativeBoundaryTests(unittest.TestCase):
         push=re.search(r'(?ms)^void push_action\(.*?^\}',runtime).group()
         focus=re.search(r'(?ms)^int l_focus_view\(.*?^\}',runtime).group()
         functions='\n'.join(re.search(pattern,runtime).group() for pattern in (
+            r'(?ms)^std::uint64_t checked_non_negative_integer\(.*?^\}',
+            r'(?ms)^int l_cpu_phase\(.*?^\}',r'(?ms)^int l_trace_call\(.*?^\}',
+            r'(?ms)^int l_window_identity\(.*?^\}',
             r'(?ms)^int l_cpu_profile\(.*?^\}',r'(?ms)^int l_scene\(.*?^\}',
             r'(?ms)^std::uint64_t runtime_span_begin\(.*?^\}',r'(?ms)^bool runtime_span_end\(.*?^\}'))
         pkg=next((x for x in ('lua5.4','lua-5.4','lua') if subprocess.run(['pkg-config','--exists',x]).returncode==0),None)

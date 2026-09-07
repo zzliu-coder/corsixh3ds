@@ -4,8 +4,8 @@
 #include <cstdint>
 
 namespace cth3ds {
-enum class CpuWork : std::uint8_t { Temperature, Pathfind, InputState, InputAction, World, UI, ThermalStructure, ThermalSnapshot, ThermalArithmetic, Count };
-inline constexpr std::array<const char*,static_cast<std::size_t>(CpuWork::Count)> kCpuWorkNames{{"temperature","pathfind","input_state","input_action","world","ui","thermal_structure","thermal_snapshot","thermal_arithmetic"}};
+enum class CpuWork : std::uint8_t { Temperature, Pathfind, InputState, InputAction, World, UI, ThermalStructure, ThermalSnapshot, ThermalArithmetic, GpuUpload, GpuPrepare, WorldCalendar, WorldAnimations, WorldHospitals, WorldEntities, WorldMap, WorldUI, WorldDispatch, Count };
+inline constexpr std::array<const char*,static_cast<std::size_t>(CpuWork::Count)> kCpuWorkNames{{"temperature","pathfind","input_state","input_action","world","ui","thermal_structure","thermal_snapshot","thermal_arithmetic","gpu_upload","gpu_prepare","world_calendar","world_animations","world_hospitals","world_entities","world_map","world_ui","world_dispatch"}};
 struct CpuCounter { std::uint64_t calls{}, total_us{}, max_us{}, units{}; };
 struct CpuWorkCounters {
   std::array<CpuCounter,static_cast<std::size_t>(CpuWork::Count)> rows{};
@@ -15,6 +15,8 @@ struct CpuWorkCounters {
   // in the same pass. Subphase totals are included in Temperature and World.
   bool thermal_phase_profile{false};
   bool thermal_uniform_fast{true};
+  bool thermal_structure_fast{true};
+  std::uint64_t thermal_updates{},thermal_scans{},thermal_rebuilds{},thermal_bytes{};
 };
 inline CpuWorkCounters cpu_work;
 // Main-thread inclusive timers. Overlapping categories must not be summed as

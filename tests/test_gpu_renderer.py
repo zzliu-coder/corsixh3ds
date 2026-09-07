@@ -12,6 +12,19 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class GpuRendererTests(unittest.TestCase):
+    def test_prepared_pixels_exact_storage_and_upload(self):
+        with tempfile.TemporaryDirectory(prefix='cth-gpu-pixels-') as directory:
+            binary=Path(directory)/'pixels'
+            subprocess.run([shutil.which('clang++') or shutil.which('g++'),'-std=c++17','-O2',
+                '-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-omit-frame-pointer',
+                '-I'+str(ROOT/'include'),str(ROOT/'tests/runtime_support/gpu_pixels_probe.cpp'),
+                '-o',str(binary)],check=True)
+            result=subprocess.run([str(binary)],capture_output=True,text=True,
+                env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn('PASS prepared GPU pixels',result.stdout)
+            print(result.stdout,end='')
+
     def test_retained_device_samples_explain_row_contract(self):
         evidence=json.loads((ROOT/'tests/fixtures/r54_gpu_device_samples.json').read_text())
         self.assertEqual(evidence['source_commit'],'ceeda5e913b2003502293c78ee18ec8fa24732f1')

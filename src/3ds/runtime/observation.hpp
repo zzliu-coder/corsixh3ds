@@ -5,6 +5,7 @@
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/memory_telemetry.hpp"
 #include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/slow_events.hpp"
 
 namespace cth3ds {
 // Main-thread observation owns only records. No SDL/Lua/allocator access,
@@ -25,6 +26,7 @@ class RuntimeObservations {
  public:
   Telemetry timing;
   MemoryTelemetry memory;
+  SlowEvents slow;
   std::array<char,96> scene{};
   bool window_has_operation{}, window_scene_changed{};
   bool terminal{}, terminal_saved{}, flush_requested{};

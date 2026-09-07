@@ -26,6 +26,24 @@ void runtime_flush_observations(bool force) {
 
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n%s",__LINE__,#x,output.c_str());return 1;}}while(0)
 int main() {
+  SlowEvents slow;
+  slow.owner(1,"UIStaffRise");
+  slow.record(2,3,"read","quick");
+  slow.record(3,50003,"read","Data/Face01V");
+  slow.record(5,6,"read","bad\npath",false);
+  slow.drain(log_line);
+  CHECK(output.find("rows=3 dropped=0")!=std::string::npos);
+  CHECK(output.find("quick")==std::string::npos);
+  CHECK(output.find("owner=\"UIStaffRise\"")!=std::string::npos);
+  CHECK(output.find("identity=\"bad_path\"")!=std::string::npos);
+  output.clear();
+  slow.owner(7,"UIStaffRise");slow.drain(log_line);CHECK(output.empty());
+  for(unsigned i=0;i<40;++i) slow.record(i,i+50000,"read","bounded");
+  slow.drain(log_line);
+  CHECK(output.find("rows=32 dropped=8")!=std::string::npos);
+  CHECK(output.find("begin_us=8 elapsed_us=50000")!=std::string::npos);
+  CHECK(output.find("begin_us=7 elapsed_us=50000")==std::string::npos);
+  output.clear();slow.drain(log_line);CHECK(output.empty());
   cpu_work.rows[static_cast<size_t>(CpuWork::Temperature)]={2,3000,1800,32768};
   g_simulation_clock.begin(1);g_simulation_clock.begin(36001);
   CHECK(g_simulation_clock.take_step(36001));

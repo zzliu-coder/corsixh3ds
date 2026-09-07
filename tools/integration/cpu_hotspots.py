@@ -1,6 +1,9 @@
 """Small, pinned real-call-site CPU changes; desktop equations unchanged."""
 from pathlib import Path
 from sound_lifetime import replace_exact, SoundPatchError
+from .thermal_cache import transforms as thermal_transforms
+from .world_profile import transforms as world_transforms
+from .latency import transforms as latency_transforms
 
 def transforms(root):
     path='CorsixTH/Src/th_map.cpp'
@@ -29,7 +32,8 @@ def transforms(root):
   // R52: one authoritative snapshot, cached stencil, exact bounded arithmetic.
   // Toggle only after all scratch allocations succeed.
   thermal_cache.update(cells,width,height,current_temperature_index,
-    current_temperature_index ^ 1,iAirTemperature,iRadiatorTemperature,object_type::radiator);
+    current_temperature_index ^ 1,iAirTemperature,iRadiatorTemperature,object_type::radiator,
+    !cth3ds::cpu_work.thermal_structure_fast);
   current_temperature_index ^= 1;
   return;
 #endif'''
@@ -90,6 +94,10 @@ class level_map {
     new=old+'#ifdef CORSIXTH_3DS\n  cth3ds::CpuWorkScope cpu_scope(cth3ds::CpuWork::Pathfind);\n#endif\n'
     if new not in text:text=replace_exact(text,old,new,'CPU basic path timing')
     yield path,text
+
+    yield from thermal_transforms(root)
+    yield from world_transforms(root)
+    yield from latency_transforms(root)
 
 def patch_cpu_hotspots(root: Path, dry_run=False):
     changes=[]

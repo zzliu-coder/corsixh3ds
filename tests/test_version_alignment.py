@@ -16,6 +16,19 @@ class VersionAlignmentTests(unittest.TestCase):
         self.assertRegex(cmake, rf"project\(corsixth_3ds_port VERSION {re.escape(version)}\b")
         self.assertIn(f'OVERLAY_VERSION = "{version}"', integrator)
         self.assertIn(f'lua_pushstring(state, "{version}");', runtime)
+        # The displayed candidate and one-shot benchmark must identify this
+        # revision too; a matching semantic version alone cannot distinguish
+        # consecutive hardware candidates.
+        self.assertIn('"R54 " + state.build_tag', runtime)
+        self.assertIn('"CORSIXTH R54 "', runtime)
+        self.assertIn('revision=R54', runtime)
+        self.assertTrue(r'memcmp(magic,"R54\n",4)' in runtime,
+                        'one-shot marker must match R54 exactly')
+        self.assertTrue('sdmc:/3ds/corsixth/benchmark-used-r54.txt' in runtime,
+                        'consumed benchmark marker must identify R54')
+        self.assertNotIn('"CORSIXTH R53 "', runtime)
+        self.assertTrue('benchmark-used-r53.txt' not in runtime,
+                        'old benchmark marker must remain untouched')
 
 
 if __name__ == "__main__":

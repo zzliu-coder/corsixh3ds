@@ -1820,7 +1820,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R53 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R54 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1914,7 +1914,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R53 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R54 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2234,10 +2234,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R53\n",4)){
+    if(length==4&&!std::memcmp(magic,"R54\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r53.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r54.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);

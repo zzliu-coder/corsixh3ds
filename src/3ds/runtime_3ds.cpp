@@ -988,7 +988,7 @@ class Runtime {
           static_cast<float>(snapshot.timestamp_us - last_input_us_) / 1000000.0F : 0.008F;
         last_input_us_ = snapshot.timestamp_us;
         const bool accepted=input_mapper_.dispatch_mixed(snapshot,std::min(sample_delta,0.1F),
-          [&] { InputContext context;
+          [&] { InputContext context = last_context;
             if(!call_platform_method(state,"inputState",nullptr,&error,&context))throw std::runtime_error(error);
             last_context = context; set_view_context(context); return context;
           },

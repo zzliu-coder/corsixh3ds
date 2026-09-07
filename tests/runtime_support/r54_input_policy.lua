@@ -39,7 +39,7 @@ function app:dispatch(event,...)
  if event=="motion" then ui.cursor_x,ui.cursor_y=... end
 end
 local native={focus_view=function()focuses=focuses+1 end}
-for _,n in ipairs({"span_begin","span_end","observe_memory","flush_observations","atomic_commit",
+for _,n in ipairs({"span_begin","span_end","observe_memory","flush_observations","operation_boundary","atomic_commit",
  "begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"})do native[n]=noop end
 local adapter=dofile(repo.."/lua/3ds/platform.lua").attach(app,native,{resource_events=false,epoch=1})
 local total=0

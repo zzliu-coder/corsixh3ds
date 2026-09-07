@@ -30,7 +30,8 @@ local function setup(requested, failure, menu)
     if failure == "load" then return false, "injected load failure" end
     return true
   end
-  local native = {open_spans={},next_span=0}
+  local native = {open_spans={},next_span=0,boundaries=0}
+  function native.operation_boundary() native.boundaries=native.boundaries+1 end
   function native.span_begin()
     native.next_span=native.next_span+1; native.open_spans[native.next_span]=true
     return native.next_span
@@ -61,6 +62,7 @@ local function check(path, expected_save)
   assert(read(expected_save)=="CURRENT-HOSPITAL")
   assert(app._3ds_preload_recovery == expected_save)
   assert(next(app.native.open_spans)==nil,"unclosed operation span")
+  assert(app.native.boundaries>0,"save/load must declare operation boundaries")
 end
 local cases = {
   ["primary-target"] = function() check(primary,alternate) end,

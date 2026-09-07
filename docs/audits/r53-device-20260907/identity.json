@@ -1,0 +1,127 @@
+{
+  "schema": "corsixh3ds.r53-device-review/v1",
+  "captured_at": "2026-09-07T12:00:41.378360+00:00",
+  "product_commit": "367a887e1d851879fd94bcc755874d00c08f97d5",
+  "product_tree": "9ebb14005287ff565d415147a9aaa741a5609954",
+  "source_before_handoff": "707b271436b1accd3b015a5a8ff1d396537fdc64",
+  "upstream_commit": "56bd5d00f76331c7f76d7b696726a7926303ca0c",
+  "artifact": {
+    "bytes": 2750948,
+    "sha256": "d14b47248b990665c5f679e3d8378be2531422bbf48427b5c0c7b7db7ce8391c"
+  },
+  "device_identity_readback": "PASS",
+  "remote_writes": 0,
+  "immutable_runtime_mismatches": [],
+  "capture_inventories_stable": true,
+  "source_files_sha256": {
+    "lua/3ds/platform.lua": "7ded4e5dba5bfd7beb202c7cb60a17a8db79f2787167e6b288cb782443cd904d",
+    "src/3ds/runtime/game_view.cpp": "d25a746fd47727e77fc6001d7eb48906b95115f6a874908fe5173f58a1569981",
+    "src/3ds/runtime/gpu_renderer.cpp": "b5c65d6a75f7d790faa35ee77bc96b4db58d3d68de70358e31fccf3a35208824",
+    "src/3ds/runtime_3ds.cpp": "30c8fe36b982ab03c23fb7d622a188e4678822d3bbd2de158f2f7668792edaa2",
+    "include/cth3ds/events.hpp": "5e501462bfd595a1feda6ae81aed23579f750e44f48b6e4ce01bd514f699b60f",
+    "lua/3ds/benchmark.lua": "4623a3fac133e75663bf3592135a54dd16fa73018cdfc2c754375fca2cf500cd"
+  },
+  "upstream_probe_inputs_sha256": {
+    "CorsixTH/Lua/dialogs/fullscreen/fax.lua": "09fbab7fe112c69894209020a1432dc23e4a15a4af76956e431a086657c51d17",
+    "CorsixTH/Lua/dialogs/watch.lua": "3c877095c743d4abfef6bef0b741ad423d38510245d0036ff065b3b5c330643f",
+    "CorsixTH/Lua/window.lua": "b8b944654e8ab552c9213248cae8f0b41160581cdf399ce0d7675652624c8a2e"
+  },
+  "private_save_metadata": {
+    "Saves/Slot1.sav": {
+      "bytes": 585966,
+      "sha256": "4e451a7d5658b94983f73181a094e02ca18eba16c105f8a1383e7c630d47e818",
+      "published": false
+    },
+    "Saves/Slot2.sav": {
+      "bytes": 555090,
+      "sha256": "a4dbd51758d3c55396cb8d6c23f6f79986f170e9c23a6ab13ad0c0604f8b1e75",
+      "published": false
+    },
+    "Saves/save-and-exit.sav": {
+      "bytes": 586022,
+      "sha256": "74f8f6999c9a13ac14ed227727b5b390bebbd6abf96875ab81b5dff119bb4c61",
+      "published": false
+    },
+    "Benchmark/input.sav": {
+      "bytes": 553272,
+      "sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+      "published": false
+    }
+  },
+  "logs": [
+    {
+      "file": "first-boot.log",
+      "device_relative_path": "boot.previous.log",
+      "original_bytes": 168907,
+      "original_sha256": "d1bb6f5503d685cbc7fcae00720dda4bdbcc12b500d6dbb970c0262a34a3714b",
+      "public_bytes": 168907,
+      "public_sha256": "d1bb6f5503d685cbc7fcae00720dda4bdbcc12b500d6dbb970c0262a34a3714b",
+      "lines": 923,
+      "redactions": {
+        "mac_home": 0,
+        "private_lan": 0
+      }
+    },
+    {
+      "file": "second-boot.log",
+      "device_relative_path": "boot.log",
+      "original_bytes": 289515,
+      "original_sha256": "c7a22d7e7039a0a1607d60d05ad7295c236e7c48f9e573fdd627c12e1814df86",
+      "public_bytes": 289515,
+      "public_sha256": "c7a22d7e7039a0a1607d60d05ad7295c236e7c48f9e573fdd627c12e1814df86",
+      "lines": 1717,
+      "redactions": {
+        "mac_home": 0,
+        "private_lan": 0
+      }
+    },
+    {
+      "file": "first-gamelog.txt",
+      "device_relative_path": "Logs/14-06-08--18-16-33--gamelog.txt",
+      "original_bytes": 216,
+      "original_sha256": "cf3dbbde1f1369dc13f852617e7d44a3ab805c6c999a302c518b5ea4b590213d",
+      "public_bytes": 216,
+      "public_sha256": "cf3dbbde1f1369dc13f852617e7d44a3ab805c6c999a302c518b5ea4b590213d",
+      "lines": 3,
+      "redactions": {
+        "mac_home": 0,
+        "private_lan": 0
+      }
+    },
+    {
+      "file": "second-gamelog.txt",
+      "device_relative_path": "Logs/14-06-08--19-46-37--gamelog.txt",
+      "original_bytes": 216,
+      "original_sha256": "cf3dbbde1f1369dc13f852617e7d44a3ab805c6c999a302c518b5ea4b590213d",
+      "public_bytes": 216,
+      "public_sha256": "cf3dbbde1f1369dc13f852617e7d44a3ab805c6c999a302c518b5ea4b590213d",
+      "lines": 3,
+      "redactions": {
+        "mac_home": 0,
+        "private_lan": 0
+      }
+    }
+  ],
+  "evidence_boundary": "Original private capture retained; public logs have line-preserving redaction only. Hashes prove consistency of files, not independent authenticity or product acceptance.",
+  "excluded": [
+    "original game data",
+    "save payloads",
+    "personal config/hotkeys",
+    "credentials",
+    "FTP address",
+    "workstation capture paths",
+    "binary and toolchain bundles"
+  ],
+  "device_clock_note": "Device file dates show 2014; host capture date is 2026-09-07. Use monotonic within-log times and rotation order, not device wall-clock dates.",
+  "acceptance": {
+    "gpu_startup_self_test": "FAIL",
+    "gpu_active_on_device": "FAIL",
+    "normal_30fps": "FAIL",
+    "two_sample_protocol": "PASS",
+    "headless_watch_camera_defect": "REPRODUCED",
+    "exact_emergency_event_device_correlation": "NOT_PROVEN",
+    "complete_save_reload": "NOT_PROVEN",
+    "busy_hospital_capacity": "NOT_PROVEN",
+    "music_and_chinese": "NOT_PROVEN"
+  }
+}

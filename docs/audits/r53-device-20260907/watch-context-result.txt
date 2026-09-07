@@ -1,0 +1,4 @@
+before_accept: context=world scroll_calls=1
+after_accept: real_UIWatch=emergency modal_class=open_countdown context=dialog scroll_calls=1
+after_watch_removed: context=world scroll_calls=2
+REPRODUCED: R53 timer HUD blocks camera pan; product verdict=FAIL; device event correlation=NOT_PROVEN

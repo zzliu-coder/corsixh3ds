@@ -1,0 +1,923 @@
+CorsixTH 3DS overlay 0.6.1, embedded adapter crc d9bc5dd1
+diagnostics: revision=R53 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1
+allocator: explicit linear heap = 8388608 bytes
+allocator caveat: heap_available_estimate=min(env_heap_total, max(env_heap_total-arena,0)+fordblks); it is not a largest-allocation guarantee
+memory[S10] +230ms: env_heap_total=55869440 arena=49104 uordblks=46672 fordblks=2432 heap_available_estimate=55822768 heap_used_estimate=46672 linear_total=8388608 linear_free=0 heap_available_low=55822768 linear_low=0 low_water_valid=yes linear_low_valid=no lua_current=0 lua_peak=0
+stage[S10] +251ms: NATIVE BOOTSTRAP
+memory[S10] +263ms: env_heap_total=55869440 arena=69584 uordblks=63536 fordblks=6048 heap_available_estimate=55805904 heap_used_estimate=63536 linear_total=8388608 linear_free=0 heap_available_low=55805904 linear_low=0 low_water_valid=yes linear_low_valid=no lua_current=0 lua_peak=0
+stage[S20] +8698ms: CONFIG AND GAME PATH READY
+memory[S20] +8710ms: env_heap_total=55869440 arena=880592 uordblks=844800 fordblks=35792 heap_available_estimate=55024640 heap_used_estimate=844800 linear_total=8388608 linear_free=0 heap_available_low=55024640 linear_low=0 low_water_valid=yes linear_low_valid=no lua_current=757997 lua_peak=757997
+gpu-self-test: result=FAIL pixels=1024 mismatches=1024 checks=atlas-crop-four-flips-canvas-readback lcd_visual=NOT_PROVEN
+gpu: selected=software reason=startup-pixel-contract-failed
+runtime: game window registered (id 1)
+runtime: lower screen mode = game mirror
+stage[S30] +8835ms: GAME WINDOW READY
+memory[S30] +8887ms: env_heap_total=55869440 arena=2510800 uordblks=2490800 fordblks=20000 heap_available_estimate=53378640 heap_used_estimate=2490800 linear_total=8388608 linear_free=6238208 heap_available_low=53378640 linear_low=6238208 low_water_valid=yes linear_low_valid=yes lua_current=757997 lua_peak=757997
+canvas: owned 640x480 format=376840196 pitch=2560 top=400x240 native bottom=320x240 half
+stage[S35] +9324ms: VIDEO READY
+memory[S35] +9337ms: env_heap_total=55869440 arena=2572240 uordblks=2492968 fordblks=79272 heap_available_estimate=53376472 heap_used_estimate=2492968 linear_total=8388608 linear_free=6238208 heap_available_low=53376472 linear_low=6238208 low_water_valid=yes linear_low_valid=yes lua_current=758221 lua_peak=758221
+stage[S90] +9373ms: STARTING RUNTIME
+memory[S90] +9387ms: env_heap_total=55869440 arena=2572240 uordblks=2492968 fordblks=79272 heap_available_estimate=53376472 heap_used_estimate=2492968 linear_total=8388608 linear_free=6238208 heap_available_low=53376472 linear_low=6238208 low_water_valid=yes linear_low_valid=yes lua_current=758221 lua_peak=758221
+runtime: lower screen ready (320x240)
+memory[S90] +9442ms: env_heap_total=55869440 arena=2572240 uordblks=2492968 fordblks=79272 heap_available_estimate=53376472 heap_used_estimate=2492968 linear_total=8388608 linear_free=6238208 heap_available_low=53376472 linear_low=6238208 low_water_valid=yes linear_low_valid=yes lua_current=758221 lua_peak=758221
+present: logical=640x480 top=400x240 native-crop bottom=320x240 half renderer=software gpu_utilization=unknown cpu_utilization=unknown
+runtime: dependencies initialized mode=loose epoch=1
+stage[S45] +20879ms: GRAPHICS READY
+memory[S45] +20894ms: env_heap_total=55869440 arena=3002320 uordblks=2410000 fordblks=592320 heap_available_estimate=53459440 heap_used_estimate=2410000 linear_total=8388608 linear_free=6238208 heap_available_low=53376472 linear_low=6238208 low_water_valid=yes linear_low_valid=yes lua_current=660561 lua_peak=758221
+stage[S40] +21264ms: LOADING IMAGE DRAWN
+memory[S40] +21277ms: env_heap_total=55869440 arena=6807504 uordblks=4916200 fordblks=1891304 heap_available_estimate=50953240 heap_used_estimate=4916200 linear_total=8388608 linear_free=6238208 heap_available_low=49787584 linear_low=6238208 low_water_valid=yes linear_low_valid=yes lua_current=1558158 lua_peak=1558158
+stage[S50] +21930ms: AUDIO READY
+memory[S50] +21946ms: env_heap_total=55869440 arena=6807504 uordblks=5222128 fordblks=1585376 heap_available_estimate=50647312 heap_used_estimate=5222128 linear_total=8388608 linear_free=6213632 heap_available_low=49787584 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=1675849 lua_peak=1675849
+stage[S60] +23279ms: LOADING LANGUAGE
+memory[S60] +23333ms: env_heap_total=55869440 arena=6807504 uordblks=5124312 fordblks=1683192 heap_available_estimate=50745128 heap_used_estimate=5124312 linear_total=8388608 linear_free=6213632 heap_available_low=49769208 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=1191818 lua_peak=2164589
+stage[S70] +24372ms: LOADING GAME DATA
+memory[S70] +24385ms: env_heap_total=55869440 arena=6807504 uordblks=5360416 fordblks=1447088 heap_available_estimate=50509024 heap_used_estimate=5360416 linear_total=8388608 linear_free=6213632 heap_available_low=49769208 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=1360761 lua_peak=2164589
+stage[S80] +43241ms: BUILDING UI
+memory[S80] +43255ms: env_heap_total=55869440 arena=18747344 uordblks=13185072 fordblks=5562272 heap_available_estimate=42684368 heap_used_estimate=13185072 linear_total=8388608 linear_free=6213632 heap_available_low=38230832 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=3348607 lua_peak=7995051
+checkpoint[adapter_attach] +48269ms: stage=S80 phase=begin identity=- bytes=0 requested=0 known=yes
+memory[S80] +48285ms: env_heap_total=55869440 arena=19980240 uordblks=16550152 fordblks=3430088 heap_available_estimate=39319288 heap_used_estimate=16550152 linear_total=8388608 linear_free=6213632 heap_available_low=37912176 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=5255007 lua_peak=7995051
+checkpoint[language_selected] +48491ms: stage=S80 phase=observed-at-adapter-attach identity=English bytes=0 requested=0 known=yes
+memory[S80] +48503ms: env_heap_total=55869440 arena=19980240 uordblks=16634664 fordblks=3345576 heap_available_estimate=39234776 heap_used_estimate=16634664 linear_total=8388608 linear_free=6213632 heap_available_low=37912176 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=5333313 lua_peak=7995051
+benchmark: one_shot=1 input=Benchmark/input.sav
+memory-gate[MAIN MENU]: PASS heap_total=55869440/54525952 linear_total=8388608/8388608 heap_used=16646968/37748736 heap_available=39222472/16777216 probe=8388608 reserve=4194304
+memory-probe-policy: gate=MenuStable required_probe=8388608 verified=8388608 attempted_limit=8388608 reserve=4194304 result=PASS
+heap-probe[MAIN MENU]: PASS minimum=8388608 verified=8388608 limit=8388608 attempts=8 reserve=4194304 capped=yes result=verified-lower-bound
+memory[MAIN MENU] +48719ms: env_heap_total=55869440 arena=19972048 uordblks=16646968 fordblks=3325080 heap_available_estimate=39222472 heap_used_estimate=16646968 linear_total=8388608 linear_free=6213632 heap_available_low=37912176 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=5333313 lua_peak=7995051
+checkpoint[adapter_attach] +48740ms: stage=S80 phase=ready identity=lua-owner bytes=0 requested=0 known=yes
+memory[S80] +48755ms: env_heap_total=55869440 arena=19972048 uordblks=16658792 fordblks=3313256 heap_available_estimate=39210648 heap_used_estimate=16658792 linear_total=8388608 linear_free=6213632 heap_available_low=37912176 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=5333313 lua_peak=7995051
+stage[S100] +48769ms: READY
+memory[S100] +48781ms: env_heap_total=55869440 arena=19972048 uordblks=16658792 fordblks=3313256 heap_available_estimate=39210648 heap_used_estimate=16658792 linear_total=8388608 linear_free=6213632 heap_available_low=37912176 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=5333313 lua_peak=7995051
+input: sampler=hid-shared-memory period_us=8000 capacity=256 controls=overview-r48
+checkpoint[save_load] +48920ms: stage=S100 phase=load-begin identity=sdmc:/3ds/corsixth/Benchmark/input.sav bytes=0 requested=0 known=yes
+memory[S100] +48940ms: env_heap_total=55869440 arena=19972048 uordblks=15326352 fordblks=4645696 heap_available_estimate=40543088 heap_used_estimate=15326352 linear_total=8388608 linear_free=6213632 heap_available_low=37912176 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=4034351 lua_peak=7995051
+checkpoint[save_load] +56623ms: stage=S100 phase=load-complete identity=sdmc:/3ds/corsixth/Benchmark/input.sav bytes=0 requested=0 known=yes
+memory[S100] +56639ms: env_heap_total=55869440 arena=25645008 uordblks=25583056 fordblks=61952 heap_available_estimate=30286384 heap_used_estimate=25583056 linear_total=8388608 linear_free=6213632 heap_available_low=30286384 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9377091 lua_peak=9377091
+benchmark: at_us=13941604175 event=WARMUP speed="Normal" date=1-04-01T00
+workload: at_us=13941618181 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T00 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=13943328555 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=58594465 successful=1 failed=0 intervals=0 mean_us=0 p95_us=0 max_us=0 gap_us=2337 heap_free=29516256 heap_low=29514808 lua=8739777 linear_free=6213632 log_us=1066372 workload_us=17642 terminal=0 truncated=0
+simulation-clock: at_us=13943328555 elapsed_us=58594555 timer_events=0 callbacks=0 failures=0 nominal_timer_us=18000
+cpu-work: at_us=13943328555 name=temperature calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13943328555 name=pathfind calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13943328555 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13943328555 name=input_action calls=2 total_us=8056524 max_us=8038895 units=2 enabled=1 inclusive=1
+cpu-work: at_us=13943328555 name=world calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13943328555 name=ui calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+simulation-budget: steps=0 debt_us=0 dropped_us=0 rebases=1 budget_exits=0 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=2 copy_us=9816 submit_us=27964 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=1 copy_us=7208 submit_us=18742
+input-queue: sampled=1254 popped=0 coalesced=1249 touch_down=0 touch_up=0 overflows=0 discarded=3 max_age_us=0 max_sample_gap_us=8125 peak=2 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=1003 fallback_flip=0 creates=187 decoded_pixels=928923 flip_hits=21 flip_misses=30 avoided_flip_pixels=54318 evictions=0 cache_bytes=1353836 cache_peak=1353836 cache_budget=6291456
+blit-work: enabled=1 direct=876 opaque=67 fallback=127 promotions=41 clipped=239 pixels=1410579 live_bytes=3772730 peak_bytes=3772730 images=189
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=57038 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=6 overflow=0
+operation-memory: site=release phase=before identity=menu timestamp=13930925854 heap_available=41384800 arena=18747344 lua=4530174 lua_known=1 linear_free=6213632
+operation-memory: site=release phase=after identity=menu timestamp=13933002486 heap_available=39319288 arena=19980240 lua=5255007 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=before identity=load timestamp=13933579581 heap_available=39210216 arena=19972048 lua=5344843 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=gc-before identity=load timestamp=13933653590 heap_available=40543360 arena=19972048 lua=4034185 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=committed identity=load timestamp=13941393264 heap_available=30286112 arena=25645008 lua=9377179 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=gc-after identity=load timestamp=13941603457 heap_available=30949696 arena=25645008 lua=8730250 lua_known=1 linear_free=6213632
+frames: begin=13884734090 end=13943328555 elapsed=58594465 success=1 failed=0 skipped=0 count=0 sum=0 p50_lo=0 p50_hi=0 p95_lo=0 p95_hi=0 p99_lo=0 p99_hi=0 max=0 coverage_begin=0 coverage_end=0 open_gap=2337 invalid=0
+span: stage=event count=13 failed=0 inclusive_us=555 exclusive_us=555 max=111 open=0
+span: stage=runtime count=1 failed=0 inclusive_us=8060459 exclusive_us=35797 max=8060459 open=0
+span: stage=logic count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=render count=1 failed=0 inclusive_us=1664084 exclusive_us=1645335 max=1664084 open=0
+span: stage=top count=2 failed=0 inclusive_us=38939 exclusive_us=38939 max=20190 open=0
+span: stage=bottom count=1 failed=0 inclusive_us=25975 exclusive_us=25975 max=25975 open=0
+span: stage=gc count=3 failed=0 inclusive_us=286483 exclusive_us=286483 max=210179 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=44 failed=0 inclusive_us=41190672 exclusive_us=24497274 max=12651558 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=language_discovery samples=6 first=13907405586 last=13908012718 stage=S50 phase=after resource=Strings:init gate=Operation env_heap_total=55869440 arena=6807504 uordblks=5124312 fordblks=1683192 heap_available_estimate=50745128 linear_total=8388608 linear_free=6213632 lua=1191818 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=49769208 max_heap_used=6100232 min_linear_free=6213632 max_lua=2164589 max_request=0 max_held=0 failures=0 opaque_unknown=6 truncated=0 sampled_lower_bound=1
+observed-memory: site=language_selected samples=2 first=13908085931 last=13908635444 stage=S60 phase=after resource=Strings:load gate=Operation env_heap_total=55869440 arena=6807504 uordblks=5771720 fordblks=1035784 heap_available_estimate=50097720 linear_total=8388608 linear_free=6213632 lua=1802351 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=50097720 max_heap_used=5771720 min_linear_free=6213632 max_lua=1802351 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_archive_copy samples=1 first=13908977472 last=13908977472 stage=S60 phase=file-backed resource=sdmc:/3ds/corsixth/game/SOUND/DATA/SOUND-0.DAT gate=Operation env_heap_total=55869440 arena=6807504 uordblks=5227408 fordblks=1580096 heap_available_estimate=50642032 linear_total=8388608 linear_free=6213632 lua=1245671 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=50642032 max_heap_used=5227408 min_linear_free=6213632 max_lua=1245671 max_request=0 max_held=0 failures=0 opaque_unknown=1 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=104 first=13906740433 last=13941273403 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=25509840 uordblks=25448840 fordblks=61000 heap_available_estimate=30420600 linear_total=8388608 linear_free=6213632 lua=9256197 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=30420600 max_heap_used=25448840 min_linear_free=6213632 max_lua=9256197 max_request=0 max_held=26382 failures=0 opaque_unknown=104 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_data samples=30 first=13906781781 last=13939335532 stage=S100 phase=read-after resource=Font16V gate=Operation env_heap_total=55869440 arena=22732752 uordblks=21148424 fordblks=1584328 heap_available_estimate=34721016 linear_total=8388608 linear_free=6213632 lua=6073376 lua_known=1 requested=0 request_known=0 held=11202 held_known=1 min_heap_available=34721016 max_heap_used=21148424 min_linear_free=6213632 max_lua=6709041 max_request=0 max_held=2228540 failures=0 opaque_unknown=30 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=19671 first=13906026674 last=13939844261 stage=S100 phase=converted-after resource=sprite-converted gate=Operation env_heap_total=55869440 arena=22732752 uordblks=21179872 fordblks=1552880 heap_available_estimate=34689568 linear_total=8388608 linear_free=6213632 lua=6073376 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=34689568 max_heap_used=21179872 min_linear_free=6213632 max_lua=7995051 max_request=175880 max_held=175880 failures=0 opaque_unknown=19671 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_index samples=5 first=13908675676 last=13908986986 stage=S60 phase=after resource=Audio:initSpeech gate=Operation env_heap_total=55869440 arena=6807504 uordblks=5240528 fordblks=1566976 heap_available_estimate=50628912 linear_total=8388608 linear_free=6213632 lua=1246379 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=50628912 max_heap_used=5240528 min_linear_free=6213632 max_lua=1246379 max_request=23904 max_held=33370 failures=0 opaque_unknown=5 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=34 first=13908980103 last=13908986328 stage=S60 phase=bank-after resource=bank gate=Operation env_heap_total=55869440 arena=6807504 uordblks=5240416 fordblks=1567088 heap_available_estimate=50629024 linear_total=8388608 linear_free=6213632 lua=1246291 lua_known=1 requested=0 request_known=1 held=33370 held_known=1 min_heap_available=50629024 max_heap_used=5240416 min_linear_free=6213632 max_lua=1246291 max_request=0 max_held=33370 failures=0 opaque_unknown=34 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=913 first=13905861462 last=13943281329 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=26546128 uordblks=26353184 fordblks=192944 heap_available_estimate=29516256 linear_total=8388608 linear_free=6213632 lua=8739777 lua_known=1 requested=1952 request_known=1 held=1353836 held_known=1 min_heap_available=29514808 max_heap_used=26354632 min_linear_free=6213632 max_lua=8739777 max_request=1228800 max_held=1353836 failures=0 opaque_unknown=913 truncated=0 sampled_lower_bound=1
+observed-memory: site=map samples=4 first=13937430416 last=13937449553 stage=S100 phase=after resource=original_cells gate=Operation env_heap_total=55869440 arena=22732752 uordblks=20534016 fordblks=2198736 heap_available_estimate=35335424 linear_total=8388608 linear_free=6213632 lua=5635919 lua_known=1 requested=1376256 request_known=1 held=1376256 held_known=1 min_heap_available=35335424 max_heap_used=20534016 min_linear_free=6213632 max_lua=5635919 max_request=1376256 max_held=1376256 failures=0 opaque_unknown=4 truncated=0 sampled_lower_bound=1
+observed-memory: site=reload samples=8 first=13933579581 last=13941603457 stage=S100 phase=gc-after resource=load gate=Operation env_heap_total=55869440 arena=25645008 uordblks=24919744 fordblks=725264 heap_available_estimate=30949696 linear_total=8388608 linear_free=6213632 lua=8730250 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=30286112 max_heap_used=25583328 min_linear_free=6213632 max_lua=9377179 max_request=0 max_held=0 failures=0 opaque_unknown=8 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=223 first=13905964613 last=13943280288 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=26546128 uordblks=26353184 fordblks=192944 heap_available_estimate=29516256 linear_total=8388608 linear_free=6213632 lua=8739777 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=29516256 max_heap_used=26353184 min_linear_free=6213632 max_lua=8739777 max_request=0 max_held=0 failures=0 opaque_unknown=223 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=2 first=13943327463 last=13943328523 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=26546128 uordblks=26353184 fordblks=192944 heap_available_estimate=29516256 linear_total=8388608 linear_free=6213632 lua=8739777 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=29516256 max_heap_used=26353184 min_linear_free=6213632 max_lua=8739777 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+workload: at_us=13944309414 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T00 camera_x=-454 camera_y=1634 language=English music_enabled=0
+checkpoint[save_load] +59820ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Benchmark/Saves/Autosaves/Autosave-04-01.sav bytes=0 requested=0 known=yes
+memory[S100] +59834ms: env_heap_total=55869440 arena=26546128 uordblks=24917016 fordblks=1629112 heap_available_estimate=30952424 heap_used_estimate=24917016 linear_total=8388608 linear_free=6213632 heap_available_low=29511928 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7343624 lua_peak=9377179
+checkpoint[save_load] +63272ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Benchmark/Saves/Autosaves/Autosave-04-01.sav bytes=0 requested=0 known=yes
+memory[S100] +63287ms: env_heap_total=55869440 arena=30396368 uordblks=28296160 fordblks=2100208 heap_available_estimate=27573280 heap_used_estimate=28296160 linear_total=8388608 linear_free=6213632 heap_available_low=27573280 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9712376 lua_peak=9712376
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=1 copy_us=5018 submit_us=14724 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=1 copy_us=7072 submit_us=18471
+input-queue: sampled=1484 popped=0 coalesced=1475 touch_down=0 touch_up=0 overflows=0 discarded=7 max_age_us=0 max_sample_gap_us=8125 peak=2 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=1002 fallback_flip=0 creates=11 decoded_pixels=14122 flip_hits=49 flip_misses=3 avoided_flip_pixels=56396 evictions=0 cache_bytes=1415956 cache_peak=1415956 cache_budget=6291456
+blit-work: enabled=1 direct=1751 opaque=134 fallback=254 promotions=43 clipped=478 pixels=2517271 live_bytes=3833088 peak_bytes=3833088 images=200
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=60908 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=4 overflow=0
+operation-memory: site=save phase=before identity=save timestamp=13944360016 heap_available=29511928 arena=26546128 lua=8740505 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=13944553748 heap_available=30952512 arena=26546128 lua=7343540 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=13948042251 heap_available=27573168 arena=30396368 lua=9712464 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=13948241850 heap_available=29116480 arena=29384656 lua=9152348 lua_known=1 linear_free=6213632
+frames: begin=13943328555 end=13948770416 elapsed=5441861 success=1 failed=0 skipped=0 count=1 sum=5442008 p50_lo=4194304 p50_hi=5442008 p95_lo=4194304 p95_hi=5442008 p99_lo=4194304 p99_hi=5442008 max=5442008 coverage_begin=13943326218 coverage_end=13948768226 open_gap=2190 invalid=0
+span: stage=event count=216 failed=0 inclusive_us=1142 exclusive_us=1142 max=38 open=0
+span: stage=runtime count=1 failed=0 inclusive_us=24237 exclusive_us=24237 max=24237 open=0
+span: stage=logic count=1 failed=0 inclusive_us=3979029 exclusive_us=96040 max=3979029 open=0
+span: stage=render count=1 failed=0 inclusive_us=431645 exclusive_us=411876 max=431645 open=0
+span: stage=top count=1 failed=0 inclusive_us=19769 exclusive_us=19769 max=19769 open=0
+span: stage=bottom count=1 failed=0 inclusive_us=25563 exclusive_us=25563 max=25563 open=0
+span: stage=gc count=3 failed=0 inclusive_us=395493 exclusive_us=395493 max=199597 open=0
+span: stage=save count=1 failed=0 inclusive_us=3882989 exclusive_us=3489671 max=3882989 open=0
+span: stage=load count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=textures samples=52 first=13948537585 last=13948669190 stage=S100 phase=create-after resource=SDL-texture gate=Operation env_heap_total=55869440 arena=29384656 uordblks=26982336 fordblks=2402320 heap_available_estimate=28887104 linear_total=8388608 linear_free=6213632 lua=9157400 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=28887104 max_heap_used=26982336 min_linear_free=6213632 max_lua=9157400 max_request=11004 max_held=1398260 failures=0 opaque_unknown=52 truncated=0 sampled_lower_bound=1
+observed-memory: site=save samples=11 first=13944360016 last=13948241850 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=29384656 uordblks=26752960 fordblks=2631696 heap_available_estimate=29116480 linear_total=8388608 linear_free=6213632 lua=9152348 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=27573168 max_heap_used=28296272 min_linear_free=6213632 max_lua=9712464 max_request=0 max_held=554050 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=11 first=13948542317 last=13948670232 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=29384656 uordblks=26973056 fordblks=2411600 heap_available_estimate=28896384 linear_total=8388608 linear_free=6213632 lua=9157400 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=28896384 max_heap_used=26973056 min_linear_free=6213632 max_lua=9157400 max_request=0 max_held=0 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=2 first=13948769354 last=13948770382 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=29384656 uordblks=26981136 fordblks=2403520 heap_available_estimate=28888304 linear_total=8388608 linear_free=6213632 lua=9163992 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=28888304 max_heap_used=26981136 min_linear_free=6213632 max_lua=9163992 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+perf: at_us=13953714403 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=4943987 successful=9 failed=0 intervals=9 mean_us=549335 p95_us=910296 max_us=910296 gap_us=2159 heap_free=28376384 heap_low=27573168 lua=9255437 linear_free=6213632 log_us=2635216 workload_us=37455 terminal=0 truncated=0
+simulation-clock: at_us=13953714403 elapsed_us=10385848 timer_events=291 callbacks=25 failures=0 nominal_timer_us=18000
+cpu-work: at_us=13953714403 name=temperature calls=9 total_us=221463 max_us=34416 units=147456 enabled=1 inclusive=1
+cpu-work: at_us=13953714403 name=pathfind calls=4 total_us=166 max_us=68 units=4 enabled=1 inclusive=1
+cpu-work: at_us=13953714403 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13953714403 name=input_action calls=14 total_us=24178 max_us=19800 units=14 enabled=1 inclusive=1
+cpu-work: at_us=13953714403 name=world calls=25 total_us=4443651 max_us=3977691 units=25 enabled=1 inclusive=1
+cpu-work: at_us=13953714403 name=ui calls=25 total_us=30197 max_us=1387 units=25 enabled=1 inclusive=1
+simulation-budget: steps=25 debt_us=90000 dropped_us=5976838 rebases=2 budget_exits=8 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=13954335305 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T10 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=13963748497 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=14978081 successful=31 failed=0 intervals=31 mean_us=483164 p95_us=910296 max_us=910296 gap_us=2190 heap_free=27880504 heap_low=27573168 lua=9477904 linear_free=6213632 log_us=2790191 workload_us=53654 terminal=0 truncated=0
+simulation-clock: at_us=13963748497 elapsed_us=10034094 timer_events=53 callbacks=66 failures=0 nominal_timer_us=18000
+cpu-work: at_us=13963748497 name=temperature calls=22 total_us=515645 max_us=23560 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=13963748497 name=pathfind calls=5 total_us=314 max_us=132 units=5 enabled=1 inclusive=1
+cpu-work: at_us=13963748497 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13963748497 name=input_action calls=23 total_us=23824 max_us=16188 units=23 enabled=1 inclusive=1
+cpu-work: at_us=13963748497 name=world calls=66 total_us=1273336 max_us=61819 units=66 enabled=1 inclusive=1
+cpu-work: at_us=13963748497 name=ui calls=66 total_us=78730 max_us=1372 units=66 enabled=1 inclusive=1
+simulation-budget: steps=91 debt_us=90000 dropped_us=14870916 rebases=2 budget_exits=30 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=13964340248 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T32 camera_x=-454 camera_y=1634 language=English music_enabled=0
+benchmark: at_us=13971930052 event=SAMPLE-BEGIN speed="Normal" date=1-04-01T49
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=50 copy_us=249273 submit_us=716951 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=50 copy_us=360210 submit_us=910802
+input-queue: sampled=4433 popped=0 coalesced=4272 touch_down=0 touch_up=0 overflows=0 discarded=159 max_age_us=0 max_sample_gap_us=8151 peak=15 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=49820 fallback_flip=0 creates=130 decoded_pixels=150948 flip_hits=2591 flip_misses=64 avoided_flip_pixels=2773166 evictions=0 cache_bytes=2086308 cache_peak=2086308 cache_budget=6291456
+blit-work: enabled=1 direct=45300 opaque=3475 fallback=6525 promotions=64 clipped=12360 pixels=57811269 live_bytes=4482222 peak_bytes=4482222 images=330
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=106250 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=1 presentation_api_timing=1 operation_rows=0 overflow=0
+frames: begin=13948770416 end=13972475432 elapsed=23705016 success=50 failed=0 skipped=3 count=50 sum=23705152 p50_lo=262144 p50_hi=524287 p95_lo=524288 p95_hi=910296 p99_lo=524288 p99_hi=910296 max=910296 coverage_begin=13948768226 coverage_end=13972473378 open_gap=2054 invalid=0
+span: stage=event count=176 failed=0 inclusive_us=1236 exclusive_us=1236 max=52 open=0
+span: stage=runtime count=53 failed=0 inclusive_us=90122 exclusive_us=90122 max=20708 open=0
+span: stage=logic count=147 failed=0 inclusive_us=3120487 exclusive_us=3120487 max=144353 open=0
+span: stage=render count=50 failed=0 inclusive_us=18282659 exclusive_us=17315029 max=505397 open=0
+span: stage=top count=50 failed=0 inclusive_us=967630 exclusive_us=967630 max=20170 open=0
+span: stage=bottom count=50 failed=0 inclusive_us=1272060 exclusive_us=1272060 max=26027 open=0
+span: stage=gc count=53 failed=0 inclusive_us=111243 exclusive_us=111243 max=2246 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=3 first=13951020181 last=13951070515 stage=S100 phase=owner-after resource=CCABSHRT.WAV gate=Operation env_heap_total=55869440 arena=29384656 uordblks=27177688 fordblks=2206968 heap_available_estimate=28691752 linear_total=8388608 linear_free=6213632 lua=9196225 lua_known=1 requested=0 request_known=1 held=90610 held_known=1 min_heap_available=28691752 max_heap_used=27177688 min_linear_free=6213632 max_lua=9196225 max_request=194290 max_held=90610 failures=0 opaque_unknown=3 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=24 first=13950997844 last=13951063574 stage=S100 phase=after resource=offset=433104 length=14496 cursor=44 gate=Operation env_heap_total=55869440 arena=29384656 uordblks=27164528 fordblks=2220128 heap_available_estimate=28704912 linear_total=8388608 linear_free=6213632 lua=9196225 lua_known=1 requested=14306 request_known=1 held=14306 held_known=1 min_heap_available=28704912 max_heap_used=27164528 min_linear_free=6213632 max_lua=9196225 max_request=14306 max_held=14306 failures=0 opaque_unknown=24 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=2 first=13951072329 last=13951073967 stage=S100 phase=pin-after resource=CCABSHRT.WAV gate=Operation env_heap_total=55869440 arena=29384656 uordblks=27177688 fordblks=2206968 heap_available_estimate=28691752 linear_total=8388608 linear_free=6213632 lua=9196225 lua_known=1 requested=0 request_known=1 held=57240 held_known=1 min_heap_available=28691752 max_heap_used=27177688 min_linear_free=6213632 max_lua=9196225 max_request=0 max_held=57240 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=586 first=13949957931 last=13972423077 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=29384656 uordblks=28357744 fordblks=1026912 heap_available_estimate=27511696 linear_total=8388608 linear_free=6213632 lua=9683853 lua_known=1 requested=1024 request_known=1 held=2086308 held_known=1 min_heap_available=27511176 max_heap_used=28358264 min_linear_free=6213632 max_lua=9683853 max_request=10492 max_held=2086308 failures=0 opaque_unknown=586 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=130 first=13949962632 last=13972422092 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=29384656 uordblks=28357744 fordblks=1026912 heap_available_estimate=27511696 linear_total=8388608 linear_free=6213632 lua=9683853 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=27511696 max_heap_used=28357744 min_linear_free=6213632 max_lua=9683853 max_request=0 max_held=0 failures=0 opaque_unknown=130 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=106 first=13949284984 last=13972475402 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=29384656 uordblks=28359616 fordblks=1025040 heap_available_estimate=27509824 linear_total=8388608 linear_free=6213632 lua=9685309 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=27509824 max_heap_used=28359616 min_linear_free=6213632 max_lua=9685309 max_request=0 max_held=0 failures=0 opaque_unknown=106 truncated=0 sampled_lower_bound=1
+perf: at_us=13973882325 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=1406893 successful=2 failed=0 intervals=2 mean_us=703476 p95_us=970887 max_us=970887 gap_us=1995 heap_free=27480384 heap_low=27480384 lua=9703888 linear_free=6213632 log_us=3490228 workload_us=68653 terminal=0 truncated=0
+simulation-clock: at_us=13973882325 elapsed_us=10133828 timer_events=80 callbacks=63 failures=0 nominal_timer_us=18000
+cpu-work: at_us=13973882325 name=temperature calls=21 total_us=492365 max_us=23575 units=344064 enabled=1 inclusive=1
+cpu-work: at_us=13973882325 name=pathfind calls=7 total_us=381 max_us=109 units=7 enabled=1 inclusive=1
+cpu-work: at_us=13973882325 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13973882325 name=input_action calls=22 total_us=35739 max_us=14991 units=22 enabled=1 inclusive=1
+cpu-work: at_us=13973882325 name=world calls=63 total_us=1299369 max_us=143033 units=63 enabled=1 inclusive=1
+cpu-work: at_us=13973882325 name=ui calls=63 total_us=74996 max_us=1415 units=63 enabled=1 inclusive=1
+simulation-budget: steps=154 debt_us=90000 dropped_us=23870773 rebases=2 budget_exits=51 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=13974486561 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-02T03 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=13984352283 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=11876851 successful=24 failed=0 intervals=24 mean_us=494871 p95_us=970887 max_us=970887 gap_us=1992 heap_free=26926288 heap_low=26926288 lua=9914137 linear_free=6213632 log_us=3638722 workload_us=82896 terminal=0 truncated=0
+simulation-clock: at_us=13984352283 elapsed_us=10469958 timer_events=64 callbacks=66 failures=0 nominal_timer_us=18000
+cpu-work: at_us=13984352283 name=temperature calls=22 total_us=515882 max_us=23549 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=13984352283 name=pathfind calls=6 total_us=272 max_us=130 units=6 enabled=1 inclusive=1
+cpu-work: at_us=13984352283 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13984352283 name=input_action calls=23 total_us=21843 max_us=14199 units=23 enabled=1 inclusive=1
+cpu-work: at_us=13984352283 name=world calls=66 total_us=1272758 max_us=62943 units=66 enabled=1 inclusive=1
+cpu-work: at_us=13984352283 name=ui calls=66 total_us=181932 max_us=99438 units=66 enabled=1 inclusive=1
+simulation-budget: steps=220 debt_us=90000 dropped_us=33065826 rebases=2 budget_exits=73 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=13984508591 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-02T24 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=13994628037 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=22152605 successful=47 failed=0 intervals=47 mean_us=471336 p95_us=970887 max_us=970887 gap_us=1884 heap_free=26664264 heap_low=26664264 lua=10124037 linear_free=6213632 log_us=3805147 workload_us=100230 terminal=0 truncated=0
+simulation-clock: at_us=13994628037 elapsed_us=10275754 timer_events=59 callbacks=69 failures=0 nominal_timer_us=18000
+cpu-work: at_us=13994628037 name=temperature calls=23 total_us=538986 max_us=23536 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=13994628037 name=pathfind calls=6 total_us=172 max_us=40 units=6 enabled=1 inclusive=1
+cpu-work: at_us=13994628037 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=13994628037 name=input_action calls=24 total_us=25439 max_us=17326 units=24 enabled=1 inclusive=1
+cpu-work: at_us=13994628037 name=world calls=69 total_us=1307435 max_us=60863 units=69 enabled=1 inclusive=1
+cpu-work: at_us=13994628037 name=ui calls=69 total_us=87875 max_us=1482 units=69 enabled=1 inclusive=1
+simulation-budget: steps=289 debt_us=90000 dropped_us=42188397 rebases=2 budget_exits=96 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=13994774526 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-02T47 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14005045919 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=32570487 successful=70 failed=0 intervals=70 mean_us=465297 p95_us=970887 max_us=970887 gap_us=1783 heap_free=26315752 heap_low=26315752 lua=10360533 linear_free=6213632 log_us=3960225 workload_us=114588 terminal=0 truncated=0
+simulation-clock: at_us=14005045919 elapsed_us=10417882 timer_events=55 callbacks=69 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14005045919 name=temperature calls=23 total_us=538625 max_us=23619 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14005045919 name=pathfind calls=9 total_us=589 max_us=164 units=9 enabled=1 inclusive=1
+cpu-work: at_us=14005045919 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14005045919 name=input_action calls=24 total_us=22361 max_us=14350 units=24 enabled=1 inclusive=1
+cpu-work: at_us=14005045919 name=world calls=69 total_us=1419231 max_us=145340 units=69 enabled=1 inclusive=1
+cpu-work: at_us=14005045919 name=ui calls=69 total_us=87879 max_us=1438 units=69 enabled=1 inclusive=1
+simulation-budget: steps=358 debt_us=90000 dropped_us=51358233 rebases=2 budget_exits=119 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14005187139 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-03T20 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14015135048 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=42659616 successful=92 failed=0 intervals=92 mean_us=463695 p95_us=970887 max_us=970887 gap_us=1738 heap_free=25923872 heap_low=25922096 lua=10577040 linear_free=6213632 log_us=4113438 workload_us=133126 terminal=0 truncated=0
+simulation-clock: at_us=14015135048 elapsed_us=10089129 timer_events=60 callbacks=66 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14015135048 name=temperature calls=22 total_us=515247 max_us=23538 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=14015135048 name=pathfind calls=6 total_us=272 max_us=92 units=6 enabled=1 inclusive=1
+cpu-work: at_us=14015135048 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14015135048 name=input_action calls=23 total_us=26047 max_us=18529 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14015135048 name=world calls=66 total_us=1262962 max_us=70784 units=66 enabled=1 inclusive=1
+cpu-work: at_us=14015135048 name=ui calls=66 total_us=84759 max_us=1478 units=66 enabled=1 inclusive=1
+simulation-budget: steps=424 debt_us=90000 dropped_us=60253465 rebases=2 budget_exits=141 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14015278930 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-03T42 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14025182008 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=52706576 successful=114 failed=0 intervals=114 mean_us=462340 p95_us=970887 max_us=970887 gap_us=1823 heap_free=25583672 heap_low=25583672 lua=10807283 linear_free=6213632 log_us=4272069 workload_us=153623 terminal=0 truncated=0
+simulation-clock: at_us=14025182008 elapsed_us=10046960 timer_events=57 callbacks=66 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14025182008 name=temperature calls=22 total_us=515707 max_us=23560 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=14025182008 name=pathfind calls=8 total_us=382 max_us=68 units=8 enabled=1 inclusive=1
+cpu-work: at_us=14025182008 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14025182008 name=input_action calls=23 total_us=27916 max_us=20488 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14025182008 name=world calls=66 total_us=1351961 max_us=148153 units=66 enabled=1 inclusive=1
+cpu-work: at_us=14025182008 name=ui calls=66 total_us=83386 max_us=5292 units=66 enabled=1 inclusive=1
+simulation-budget: steps=490 debt_us=90000 dropped_us=69129446 rebases=2 budget_exits=163 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14025324218 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-04T14 camera_x=-454 camera_y=1634 language=English music_enabled=0
+benchmark: at_us=14032339833 event=SAMPLE-END speed="Normal" date=1-04-04T30
+checkpoint[save_load] +148126ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Benchmark/Saves/recovery-before-load.sav bytes=0 requested=0 known=yes
+memory[S100] +148142ms: env_heap_total=55869440 arena=30572496 uordblks=26524024 fordblks=4048472 heap_available_estimate=29345416 heap_used_estimate=26524024 linear_total=8388608 linear_free=6213632 heap_available_low=25358344 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7348588 lua_peak=10958530
+checkpoint[save_load] +151478ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Benchmark/Saves/recovery-before-load.sav bytes=0 requested=0 known=yes
+memory[S100] +151494ms: env_heap_total=55869440 arena=33927120 uordblks=29903664 fordblks=4023456 heap_available_estimate=25965776 heap_used_estimate=29903664 linear_total=8388608 linear_free=6213632 heap_available_low=25358344 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9717520 lua_peak=10958530
+checkpoint[save_load] +151716ms: stage=S100 phase=load-begin identity=sdmc:/3ds/corsixth/Benchmark/input.sav bytes=0 requested=0 known=yes
+memory[S100] +151732ms: env_heap_total=55869440 arena=32927696 uordblks=28361592 fordblks=4566104 heap_available_estimate=27507848 heap_used_estimate=28361592 linear_total=8388608 linear_free=6213632 heap_available_low=25358344 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9158619 lua_peak=10958530
+checkpoint[save_load] +155396ms: stage=S100 phase=load-complete identity=sdmc:/3ds/corsixth/Benchmark/input.sav bytes=0 requested=0 known=yes
+memory[S100] +155414ms: env_heap_total=55869440 arena=37421008 uordblks=37341624 fordblks=79384 heap_available_estimate=18527816 heap_used_estimate=37341624 linear_total=8388608 linear_free=6213632 heap_available_low=18527816 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=14250469 lua_peak=14250469
+benchmark: at_us=14040590085 event=WARMUP speed="And then some more" date=1-04-01T00
+perf: at_us=14040606037 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=68130605 successful=130 failed=0 intervals=130 mean_us=460484 p95_us=970887 max_us=970887 gap_us=8269797 heap_free=27996400 heap_low=18527704 lua=8793427 linear_free=6213632 log_us=4584732 workload_us=170508 terminal=0 truncated=0
+simulation-clock: at_us=14040606037 elapsed_us=15424029 timer_events=42 callbacks=48 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14040606037 name=temperature calls=16 total_us=375040 max_us=23581 units=262144 enabled=1 inclusive=1
+cpu-work: at_us=14040606037 name=pathfind calls=4 total_us=104 max_us=28 units=4 enabled=1 inclusive=1
+cpu-work: at_us=14040606037 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14040606037 name=input_action calls=18 total_us=8285604 max_us=8263184 units=18 enabled=1 inclusive=1
+cpu-work: at_us=14040606037 name=world calls=48 total_us=912902 max_us=61098 units=48 enabled=1 inclusive=1
+cpu-work: at_us=14040606037 name=ui calls=48 total_us=56713 max_us=1386 units=48 enabled=1 inclusive=1
+simulation-budget: steps=538 debt_us=0 dropped_us=75408502 rebases=3 budget_exits=179 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=130 copy_us=645858 submit_us=1868134 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=130 copy_us=937382 submit_us=2377152
+input-queue: sampled=12512 popped=0 coalesced=12087 touch_down=0 touch_up=0 overflows=0 discarded=423 max_age_us=0 max_sample_gap_us=16080 peak=15 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=120859 fallback_flip=0 creates=93 decoded_pixels=91981 flip_hits=6928 flip_misses=23 avoided_flip_pixels=7048560 evictions=0 cache_bytes=2501848 cache_peak=2501848 cache_budget=6291456
+blit-work: enabled=1 direct=152769 opaque=11015 fallback=19915 promotions=83 clipped=43186 pixels=199210133 live_bytes=4875546 peak_bytes=4875546 images=423
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=131650 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=8 overflow=0
+operation-memory: site=reload phase=before identity=load timestamp=14032359273 heap_available=25358344 arena=30572496 lua=10958530 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=gc-before identity=load timestamp=14032675861 heap_available=29310984 arena=30572496 lua=7377580 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=before identity=save timestamp=14032677901 heap_available=29310792 arena=30572496 lua=7377746 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=14032857098 heap_available=29345544 arena=30572496 lua=7348472 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=14036246614 heap_available=25965664 arena=33927120 lua=9717608 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=14036447450 heap_available=27507848 arena=32927696 lua=9158619 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=committed identity=load timestamp=14040161824 heap_available=18527704 arena=37421008 lua=14250557 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=gc-after identity=load timestamp=14040589247 heap_available=27996704 arena=37421008 lua=8793171 lua_known=1 linear_free=6213632
+frames: begin=13972475432 end=14040606037 elapsed=68130605 success=130 failed=0 skipped=1 count=130 sum=59862862 p50_lo=262144 p50_hi=524287 p95_lo=524288 p95_hi=970887 p99_lo=524288 p99_hi=970887 max=970887 coverage_begin=13972473378 coverage_end=14032336240 open_gap=8269797 invalid=0
+span: stage=event count=370 failed=0 inclusive_us=2770 exclusive_us=2770 max=107 open=0
+span: stage=runtime count=131 failed=0 inclusive_us=8477854 exclusive_us=246904 max=8264481 open=0
+span: stage=logic count=390 failed=0 inclusive_us=8281204 exclusive_us=8273082 max=158010 open=0
+span: stage=render count=130 failed=0 inclusive_us=46386393 exclusive_us=43868846 max=452817 open=0
+span: stage=top count=130 failed=0 inclusive_us=2517547 exclusive_us=2517547 max=20282 open=0
+span: stage=bottom count=130 failed=0 inclusive_us=3317333 exclusive_us=3317333 max=26149 open=0
+span: stage=gc count=135 failed=0 inclusive_us=1371492 exclusive_us=1371492 max=427423 open=0
+span: stage=save count=1 failed=0 inclusive_us=3771279 exclusive_us=3391264 max=3771279 open=0
+span: stage=load count=17 failed=0 inclusive_us=8269158 exclusive_us=3723810 max=8230950 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=21 first=13974604054 last=14018844367 stage=S100 phase=owner-after resource=DOORCLO2.WAV gate=Operation env_heap_total=55869440 arena=30216144 uordblks=30108424 fordblks=107720 heap_available_estimate=25761016 linear_total=8388608 linear_free=6213632 lua=10661614 lua_known=1 requested=0 request_known=1 held=458882 held_known=1 min_heap_available=25761016 max_heap_used=30108424 min_linear_free=6213632 max_lua=10661614 max_request=380608 max_held=458882 failures=0 opaque_unknown=21 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=30 first=13974563647 last=14040051626 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=37322704 uordblks=37237776 fordblks=84928 heap_available_estimate=18631664 linear_total=8388608 linear_free=6213632 lua=14159630 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=18631664 max_heap_used=37237776 min_linear_free=6213632 max_lua=14159630 max_request=0 max_held=0 failures=0 opaque_unknown=30 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=2 first=14038672801 last=14038674066 stage=S100 phase=after resource=Graphics:loadAnimations gate=Operation env_heap_total=55869440 arena=35688400 uordblks=31861064 fordblks=3827336 heap_available_estimate=24008376 linear_total=8388608 linear_free=6213632 lua=9894229 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=24008376 max_heap_used=31861064 min_linear_free=6213632 max_lua=9894229 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=168 first=13974583407 last=14018837887 stage=S100 phase=after resource=offset=401888 length=15072 cursor=44 gate=Operation env_heap_total=55869440 arena=30154704 uordblks=30094656 fordblks=60048 heap_available_estimate=25774784 linear_total=8388608 linear_free=6213632 lua=10661614 lua_known=1 requested=14912 request_known=1 held=14912 held_known=1 min_heap_available=25774784 max_heap_used=30094656 min_linear_free=6213632 max_lua=10661614 max_request=35008 max_held=35008 failures=0 opaque_unknown=168 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=134 first=13974659224 last=14018847363 stage=S100 phase=pin-after resource=DOORCLO2.WAV gate=Operation env_heap_total=55869440 arena=30216144 uordblks=30108424 fordblks=107720 heap_available_estimate=25761016 linear_total=8388608 linear_free=6213632 lua=10661614 lua_known=1 requested=0 request_known=1 held=59664 held_known=1 min_heap_available=25761016 max_heap_used=30108424 min_linear_free=6213632 max_lua=10661614 max_request=0 max_held=140048 failures=0 opaque_unknown=134 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=67 first=13974569276 last=14018771633 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=30134224 uordblks=30078568 fordblks=55656 heap_available_estimate=25790872 linear_total=8388608 linear_free=6213632 lua=10661614 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=25790872 max_heap_used=30078568 min_linear_free=6213632 max_lua=10661614 max_request=0 max_held=21208 failures=0 opaque_unknown=67 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=442 first=13973343043 last=14032183532 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=30572496 uordblks=30504640 fordblks=67856 heap_available_estimate=25364800 linear_total=8388608 linear_free=6213632 lua=10953151 lua_known=1 requested=5408 request_known=1 held=2501848 held_known=1 min_heap_available=25359896 max_heap_used=30509544 min_linear_free=6213632 max_lua=10953151 max_request=32428 max_held=2501848 failures=0 opaque_unknown=442 truncated=0 sampled_lower_bound=1
+observed-memory: site=map samples=4 first=14038603354 last=14038623810 stage=S100 phase=after resource=original_cells gate=Operation env_heap_total=55869440 arena=35688400 uordblks=31852440 fordblks=3835960 heap_available_estimate=24017000 linear_total=8388608 linear_free=6213632 lua=9885681 lua_known=1 requested=1376256 request_known=1 held=1376256 held_known=1 min_heap_available=24017000 max_heap_used=31852440 min_linear_free=6213632 max_lua=9885681 max_request=1376256 max_held=1376256 failures=0 opaque_unknown=4 truncated=0 sampled_lower_bound=1
+observed-memory: site=save samples=11 first=14032677901 last=14036447450 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=32927696 uordblks=28361592 fordblks=4566104 heap_available_estimate=27507848 linear_total=8388608 linear_free=6213632 lua=9158619 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25965664 max_heap_used=29903776 min_linear_free=6213632 max_lua=9717608 max_request=0 max_held=554047 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=reload samples=8 first=14032359273 last=14040589247 stage=S100 phase=gc-after resource=load gate=Operation env_heap_total=55869440 arena=37421008 uordblks=27872736 fordblks=9548272 heap_available_estimate=27996704 linear_total=8388608 linear_free=6213632 lua=8793171 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=18527704 max_heap_used=37341736 min_linear_free=6213632 max_lua=14250557 max_request=0 max_held=0 failures=0 opaque_unknown=8 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=94 first=13973347808 last=14040587557 stage=S100 phase=map-after resource=level-map gate=Operation env_heap_total=55869440 arena=37421008 uordblks=28020208 fordblks=9400800 heap_available_estimate=27849232 linear_total=8388608 linear_free=6213632 lua=14250557 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=25364800 max_heap_used=30504640 min_linear_free=6213632 max_lua=14250557 max_request=0 max_held=0 failures=0 opaque_unknown=94 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=262 first=13973445311 last=14040606005 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=37421008 uordblks=27873040 fordblks=9547968 heap_available_estimate=27996400 linear_total=8388608 linear_free=6213632 lua=8793427 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25358448 max_heap_used=30510992 min_linear_free=6213632 max_lua=10958448 max_request=0 max_held=0 failures=0 opaque_unknown=262 truncated=0 sampled_lower_bound=1
+workload: at_us=14041521189 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-01T00 camera_x=-454 camera_y=1634 language=English music_enabled=0
+checkpoint[save_load] +157026ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Benchmark/Saves/Autosaves/Autosave-04-01.sav bytes=0 requested=0 known=yes
+memory[S100] +157042ms: env_heap_total=55869440 arena=37421008 uordblks=26375256 fordblks=11045752 heap_available_estimate=29494184 heap_used_estimate=26375256 linear_total=8388608 linear_free=6213632 heap_available_low=18527704 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7348204 lua_peak=14250557
+checkpoint[save_load] +161252ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Benchmark/Saves/Autosaves/Autosave-04-01.sav bytes=0 requested=0 known=yes
+memory[S100] +161267ms: env_heap_total=55869440 arena=37421008 uordblks=29755720 fordblks=7665288 heap_available_estimate=26113720 heap_used_estimate=29755720 linear_total=8388608 linear_free=6213632 heap_available_low=18527704 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9717268 lua_peak=14250557
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=1 copy_us=4944 submit_us=14326 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=1 copy_us=7078 submit_us=18811
+input-queue: sampled=12728 popped=0 coalesced=12299 touch_down=0 touch_up=0 overflows=0 discarded=427 max_age_us=0 max_sample_gap_us=16080 peak=15 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=1002 fallback_flip=0 creates=0 decoded_pixels=0 flip_hits=52 flip_misses=0 avoided_flip_pixels=56396 evictions=0 cache_bytes=2501848 cache_peak=2501848 cache_budget=6291456
+blit-work: enabled=1 direct=153644 opaque=11082 fallback=20042 promotions=83 clipped=43425 pixels=200316825 live_bytes=4875546 peak_bytes=4875546 images=423
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=131650 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=4 overflow=0
+operation-memory: site=save phase=before identity=save timestamp=14041558007 heap_available=27995680 arena=37421008 lua=8794089 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=14041757355 heap_available=29494272 arena=37421008 lua=7348120 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=14046012674 heap_available=26113608 arena=37421008 lua=9717356 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=14046213051 heap_available=27656376 arena=37421008 lua=9157779 lua_known=1 linear_free=6213632
+frames: begin=14040606037 end=14046660737 elapsed=6054700 success=1 failed=0 skipped=0 count=1 sum=14321785 p50_lo=8388608 p50_hi=14321785 p95_lo=8388608 p95_hi=14321785 p99_lo=8388608 p99_hi=14321785 max=14321785 coverage_begin=14032336240 coverage_end=14046658025 open_gap=2712 invalid=0
+span: stage=event count=183 failed=0 inclusive_us=1076 exclusive_us=1076 max=90 open=0
+span: stage=runtime count=1 failed=0 inclusive_us=22623 exclusive_us=22623 max=22623 open=0
+span: stage=logic count=1 failed=0 inclusive_us=4739769 exclusive_us=83077 max=4739769 open=0
+span: stage=render count=1 failed=0 inclusive_us=350350 exclusive_us=331051 max=350350 open=0
+span: stage=top count=1 failed=0 inclusive_us=19299 exclusive_us=19299 max=19299 open=0
+span: stage=bottom count=1 failed=0 inclusive_us=25913 exclusive_us=25913 max=25913 open=0
+span: stage=gc count=3 failed=0 inclusive_us=402406 exclusive_us=402406 max=200368 open=0
+span: stage=save count=1 failed=0 inclusive_us=4656692 exclusive_us=4256982 max=4656692 open=0
+span: stage=load count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=save samples=11 first=14041558007 last=14046213051 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=37421008 uordblks=28213064 fordblks=9207944 heap_available_estimate=27656376 linear_total=8388608 linear_free=6213632 lua=9157779 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=26113608 max_heap_used=29755832 min_linear_free=6213632 max_lua=9717356 max_request=0 max_held=554023 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=2 first=14046659334 last=14046660696 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=37421008 uordblks=28372920 fordblks=9048088 heap_available_estimate=27496520 linear_total=8388608 linear_free=6213632 lua=9167887 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=27496520 max_heap_used=28372920 min_linear_free=6213632 max_lua=9167887 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+perf: at_us=14050623893 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=3963156 successful=8 failed=0 intervals=8 mean_us=495417 p95_us=924059 max_us=924059 gap_us=2530 heap_free=27395728 heap_low=18527704 lua=9252433 linear_free=6213632 log_us=6032034 workload_us=189007 terminal=0 truncated=0
+simulation-clock: at_us=14050623893 elapsed_us=10017856 timer_events=286 callbacks=9 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14050623893 name=temperature calls=9 total_us=221941 max_us=34348 units=147456 enabled=1 inclusive=1
+cpu-work: at_us=14050623893 name=pathfind calls=4 total_us=301 max_us=191 units=4 enabled=1 inclusive=1
+cpu-work: at_us=14050623893 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14050623893 name=input_action calls=13 total_us=22050 max_us=18491 units=13 enabled=1 inclusive=1
+cpu-work: at_us=14050623893 name=world calls=9 total_us=5203217 max_us=4738403 units=9 enabled=1 inclusive=1
+cpu-work: at_us=14050623893 name=ui calls=9 total_us=10932 max_us=1345 units=9 enabled=1 inclusive=1
+simulation-budget: steps=547 debt_us=126000 dropped_us=79004800 rebases=4 budget_exits=186 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14051654899 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-01T11 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14060870532 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=14209795 successful=31 failed=0 intervals=31 mean_us=458388 p95_us=924059 max_us=924059 gap_us=2470 heap_free=27119664 heap_low=18527704 lua=9483088 linear_free=6213632 log_us=6182904 workload_us=202929 terminal=0 truncated=0
+simulation-clock: at_us=14060870532 elapsed_us=10246639 timer_events=54 callbacks=23 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14060870532 name=temperature calls=23 total_us=538709 max_us=23599 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14060870532 name=pathfind calls=5 total_us=203 max_us=71 units=5 enabled=1 inclusive=1
+cpu-work: at_us=14060870532 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14060870532 name=input_action calls=24 total_us=21126 max_us=13913 units=24 enabled=1 inclusive=1
+cpu-work: at_us=14060870532 name=world calls=23 total_us=1332169 max_us=62600 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14060870532 name=ui calls=23 total_us=27832 max_us=1339 units=23 enabled=1 inclusive=1
+simulation-budget: steps=570 debt_us=126000 dropped_us=88830359 rebases=4 budget_exits=209 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14061896826 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-01T34 camera_x=-454 camera_y=1634 language=English music_enabled=0
+benchmark: at_us=14070808689 event=SAMPLE-BEGIN speed="And then some more" date=1-04-02T04
+perf: at_us=14071274147 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=24613410 successful=54 failed=0 intervals=54 mean_us=455815 p95_us=924059 max_us=924059 gap_us=2088 heap_free=26812560 heap_low=18527704 lua=9734282 linear_free=6213632 log_us=6360571 workload_us=217298 terminal=0 truncated=0
+simulation-clock: at_us=14071274147 elapsed_us=10403615 timer_events=55 callbacks=23 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14071274147 name=temperature calls=23 total_us=538907 max_us=23602 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14071274147 name=pathfind calls=9 total_us=468 max_us=103 units=9 enabled=1 inclusive=1
+cpu-work: at_us=14071274147 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14071274147 name=input_action calls=24 total_us=37174 max_us=16103 units=24 enabled=1 inclusive=1
+cpu-work: at_us=14071274147 name=world calls=23 total_us=1422551 max_us=145144 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14071274147 name=ui calls=23 total_us=38616 max_us=11805 units=23 enabled=1 inclusive=1
+simulation-budget: steps=593 debt_us=126000 dropped_us=98804177 rebases=4 budget_exits=232 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=54 copy_us=268417 submit_us=775273 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=54 copy_us=390060 submit_us=986749
+input-queue: sampled=15805 popped=0 coalesced=15265 touch_down=0 touch_up=0 overflows=0 discarded=538 max_age_us=0 max_sample_gap_us=16080 peak=15 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=53910 fallback_flip=0 creates=1 decoded_pixels=1377 flip_hits=2834 flip_misses=0 avoided_flip_pixels=3001567 evictions=0 cache_bytes=2507868 cache_peak=2507868 cache_budget=6291456
+blit-work: enabled=1 direct=200744 opaque=14700 fallback=26852 promotions=83 clipped=56248 pixels=260089506 live_bytes=4881584 peak_bytes=4881584 images=424
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=132180 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=1 presentation_api_timing=1 operation_rows=0 overflow=0
+frames: begin=14046660737 end=14071274147 elapsed=24613410 success=54 failed=0 skipped=3 count=54 sum=24614034 p50_lo=262144 p50_hi=524287 p95_lo=524288 p95_hi=924059 p99_lo=524288 p99_hi=924059 max=924059 coverage_begin=14046658025 coverage_end=14071272059 open_gap=2088 invalid=0
+span: stage=event count=213 failed=0 inclusive_us=1378 exclusive_us=1378 max=14 open=0
+span: stage=runtime count=57 failed=0 inclusive_us=88718 exclusive_us=88718 max=17964 open=0
+span: stage=logic count=54 failed=0 inclusive_us=3303363 exclusive_us=3298661 max=146477 open=0
+span: stage=render count=54 failed=0 inclusive_us=18923658 exclusive_us=17878482 max=382869 open=0
+span: stage=top count=54 failed=0 inclusive_us=1045176 exclusive_us=1045176 max=20190 open=0
+span: stage=bottom count=54 failed=0 inclusive_us=1377972 exclusive_us=1377972 max=25975 open=0
+span: stage=gc count=57 failed=0 inclusive_us=138432 exclusive_us=138432 max=2634 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=2 failed=0 inclusive_us=4702 exclusive_us=4702 max=2411 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=vspr_table samples=4 first=14070420528 last=14070424185 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=37421008 uordblks=29036280 fordblks=8384728 heap_available_estimate=26833160 linear_total=8388608 linear_free=6213632 lua=9716973 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=26833160 max_heap_used=29036280 min_linear_free=6213632 max_lua=9716973 max_request=0 max_held=0 failures=0 opaque_unknown=4 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=4 first=14048297351 last=14070429809 stage=S100 phase=pin-after resource=HLIGHTP2.WAV gate=Operation env_heap_total=55869440 arena=37421008 uordblks=29036280 fordblks=8384728 heap_available_estimate=26833160 linear_total=8388608 linear_free=6213632 lua=9716973 lua_known=1 requested=0 request_known=1 held=140048 held_known=1 min_heap_available=26833160 max_heap_used=29036280 min_linear_free=6213632 max_lua=9716973 max_request=0 max_held=140048 failures=0 opaque_unknown=4 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=2 first=14048295472 last=14070426312 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=37421008 uordblks=29036280 fordblks=8384728 heap_available_estimate=26833160 linear_total=8388608 linear_free=6213632 lua=9716973 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=26833160 max_heap_used=29036280 min_linear_free=6213632 max_lua=9716973 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=5 first=14061341001 last=14061347633 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=37421008 uordblks=28759976 fordblks=8661032 heap_available_estimate=27109464 linear_total=8388608 linear_free=6213632 lua=9485963 lua_known=1 requested=6020 request_known=1 held=2507868 held_known=1 min_heap_available=27103952 max_heap_used=28765488 min_linear_free=6213632 max_lua=9485963 max_request=6020 max_held=2507868 failures=0 opaque_unknown=5 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=1 first=14061346438 last=14061346438 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=37421008 uordblks=28759976 fordblks=8661032 heap_available_estimate=27109464 linear_total=8388608 linear_free=6213632 lua=9485963 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=27109464 max_heap_used=28759976 min_linear_free=6213632 max_lua=9485963 max_request=0 max_held=0 failures=0 opaque_unknown=1 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=114 first=14047127389 last=14071274115 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=37421008 uordblks=29056880 fordblks=8364128 heap_available_estimate=26812560 linear_total=8388608 linear_free=6213632 lua=9734282 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=26812560 max_heap_used=29056880 min_linear_free=6213632 max_lua=9734282 max_request=0 max_held=0 failures=0 opaque_unknown=114 truncated=0 sampled_lower_bound=1
+workload: at_us=14072338285 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-02T06 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14081676062 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=10401915 successful=22 failed=0 intervals=22 mean_us=472814 p95_us=524287 max_us=1059321 gap_us=2090 heap_free=26561376 heap_low=18527704 lua=9941886 linear_free=6213632 log_us=6986628 workload_us=232519 terminal=0 truncated=0
+simulation-clock: at_us=14081676062 elapsed_us=10401915 timer_events=80 callbacks=22 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14081676062 name=temperature calls=22 total_us=515187 max_us=23564 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=14081676062 name=pathfind calls=4 total_us=101 max_us=30 units=4 enabled=1 inclusive=1
+cpu-work: at_us=14081676062 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14081676062 name=input_action calls=23 total_us=22248 max_us=15212 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14081676062 name=world calls=22 total_us=1242557 max_us=62058 units=22 enabled=1 inclusive=1
+cpu-work: at_us=14081676062 name=ui calls=22 total_us=28066 max_us=1447 units=22 enabled=1 inclusive=1
+simulation-budget: steps=615 debt_us=126000 dropped_us=108818457 rebases=4 budget_exits=254 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14082712340 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-02T29 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14091826114 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=20551967 successful=44 failed=0 intervals=44 mean_us=467091 p95_us=1048575 max_us=1059321 gap_us=2032 heap_free=26179192 heap_low=18527704 lua=10157131 linear_free=6213632 log_us=7141868 workload_us=246989 terminal=0 truncated=0
+simulation-clock: at_us=14091826114 elapsed_us=10150052 timer_events=62 callbacks=22 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14091826114 name=temperature calls=22 total_us=515879 max_us=23628 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=14091826114 name=pathfind calls=7 total_us=258 max_us=60 units=7 enabled=1 inclusive=1
+cpu-work: at_us=14091826114 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14091826114 name=input_action calls=23 total_us=21167 max_us=14462 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14091826114 name=world calls=22 total_us=1376895 max_us=168011 units=22 enabled=1 inclusive=1
+cpu-work: at_us=14091826114 name=ui calls=22 total_us=27707 max_us=1337 units=22 enabled=1 inclusive=1
+simulation-budget: steps=637 debt_us=126000 dropped_us=118588150 rebases=4 budget_exits=276 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14092921046 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-03T01 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14102158169 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=30884022 successful=67 failed=0 intervals=67 mean_us=460956 p95_us=1048575 max_us=1059321 gap_us=2070 heap_free=25892640 heap_low=18527704 lua=10395803 linear_free=6213632 log_us=7295298 workload_us=267527 terminal=0 truncated=0
+simulation-clock: at_us=14102158169 elapsed_us=10332055 timer_events=54 callbacks=23 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14102158169 name=temperature calls=23 total_us=538852 max_us=23553 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14102158169 name=pathfind calls=4 total_us=142 max_us=46 units=4 enabled=1 inclusive=1
+cpu-work: at_us=14102158169 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14102158169 name=input_action calls=24 total_us=27805 max_us=20529 units=24 enabled=1 inclusive=1
+cpu-work: at_us=14102158169 name=world calls=23 total_us=1395595 max_us=148718 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14102158169 name=ui calls=23 total_us=30245 max_us=1466 units=23 enabled=1 inclusive=1
+simulation-budget: steps=660 debt_us=126000 dropped_us=128485301 rebases=4 budget_exits=299 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14103177249 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-03T24 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14112411940 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=41137793 successful=90 failed=0 intervals=90 mean_us=457088 p95_us=1048575 max_us=1059321 gap_us=1923 heap_free=25618832 heap_low=18527704 lua=10623454 linear_free=6213632 log_us=7454107 workload_us=287473 terminal=0 truncated=0
+simulation-clock: at_us=14112411940 elapsed_us=10253771 timer_events=54 callbacks=23 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14112411940 name=temperature calls=23 total_us=538541 max_us=23568 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14112411940 name=pathfind calls=9 total_us=309 max_us=69 units=9 enabled=1 inclusive=1
+cpu-work: at_us=14112411940 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14112411940 name=input_action calls=24 total_us=26956 max_us=19937 units=24 enabled=1 inclusive=1
+cpu-work: at_us=14112411940 name=world calls=23 total_us=1310143 max_us=60712 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14112411940 name=ui calls=23 total_us=29799 max_us=1423 units=23 enabled=1 inclusive=1
+simulation-budget: steps=683 debt_us=126000 dropped_us=138344067 rebases=4 budget_exits=322 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14113420465 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-03T47 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14122577148 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=51303001 successful=112 failed=0 intervals=112 mean_us=458064 p95_us=1048575 max_us=1059321 gap_us=1958 heap_free=25240248 heap_low=18527704 lua=10848617 linear_free=6213632 log_us=7625829 workload_us=324377 terminal=0 truncated=0
+simulation-clock: at_us=14122577148 elapsed_us=10165208 timer_events=58 callbacks=22 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14122577148 name=temperature calls=22 total_us=515694 max_us=23577 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=14122577148 name=pathfind calls=7 total_us=243 max_us=53 units=7 enabled=1 inclusive=1
+cpu-work: at_us=14122577148 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14122577148 name=input_action calls=23 total_us=43829 max_us=36895 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14122577148 name=world calls=22 total_us=1441689 max_us=164496 units=22 enabled=1 inclusive=1
+cpu-work: at_us=14122577148 name=ui calls=22 total_us=28290 max_us=1448 units=22 enabled=1 inclusive=1
+simulation-budget: steps=705 debt_us=126000 dropped_us=148113841 rebases=4 budget_exits=344 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14123570884 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="And then some more" hours_per_tick=1 tick_rate=1 date=1-04-04T19 camera_x=-454 camera_y=1634 language=English music_enabled=0
+benchmark: at_us=14130946356 event=SAMPLE-END speed="And then some more" date=1-04-04T36
+checkpoint[save_load] +246732ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Benchmark/Saves/recovery-before-load.sav bytes=0 requested=0 known=yes
+memory[S100] +246747ms: env_heap_total=55869440 arena=37421008 uordblks=26764640 fordblks=10656368 heap_available_estimate=29104800 heap_used_estimate=26764640 linear_total=8388608 linear_free=6213632 heap_available_low=18527704 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7349683 lua_peak=14250557
+checkpoint[save_load] +250885ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Benchmark/Saves/recovery-before-load.sav bytes=0 requested=0 known=yes
+memory[S100] +250903ms: env_heap_total=55869440 arena=37421008 uordblks=30144400 fordblks=7276608 heap_available_estimate=25725040 heap_used_estimate=30144400 linear_total=8388608 linear_free=6213632 heap_available_low=18527704 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9718334 lua_peak=14250557
+checkpoint[save_load] +251124ms: stage=S100 phase=load-begin identity=sdmc:/3ds/corsixth/Benchmark/input.sav bytes=0 requested=0 known=yes
+memory[S100] +251140ms: env_heap_total=55869440 arena=37421008 uordblks=28602608 fordblks=8818400 heap_available_estimate=27266832 heap_used_estimate=28602608 linear_total=8388608 linear_free=6213632 heap_available_low=18527704 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9159714 lua_peak=14250557
+checkpoint[save_load] +254794ms: stage=S100 phase=load-complete identity=sdmc:/3ds/corsixth/Benchmark/input.sav bytes=0 requested=0 known=yes
+memory[S100] +254814ms: env_heap_total=55869440 arena=38473680 uordblks=37580528 fordblks=893152 heap_available_estimate=18288912 heap_used_estimate=37580528 linear_total=8388608 linear_free=6213632 heap_available_low=18288912 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=14248550 lua_peak=14250557
+benchmark: at_us=14139991272 event=COMPLETE speed="Normal" date=1-04-01T00
+perf: at_us=14140013499 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=68739352 successful=131 failed=0 intervals=131 mean_us=455511 p95_us=1048575 max_us=1059321 gap_us=9069513 heap_free=27755584 heap_low=18288800 lua=8793724 linear_free=6213632 log_us=7937327 workload_us=339243 terminal=0 truncated=0
+simulation-clock: at_us=14140013499 elapsed_us=17436351 timer_events=48 callbacks=19 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14140013499 name=temperature calls=19 total_us=444893 max_us=23652 units=311296 enabled=1 inclusive=1
+cpu-work: at_us=14140013499 name=pathfind calls=8 total_us=426 max_us=124 units=8 enabled=1 inclusive=1
+cpu-work: at_us=14140013499 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14140013499 name=input_action calls=23 total_us=9084718 max_us=9063167 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14140013499 name=world calls=19 total_us=1087651 max_us=64226 units=19 enabled=1 inclusive=1
+cpu-work: at_us=14140013499 name=ui calls=19 total_us=27588 max_us=5664 units=19 enabled=1 inclusive=1
+simulation-budget: steps=724 debt_us=0 dropped_us=156132854 rebases=5 budget_exits=363 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=131 copy_us=651176 submit_us=1878540 errors=0 view_x=0 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=131 copy_us=946139 submit_us=2391397
+input-queue: sampled=23849 popped=0 coalesced=23043 touch_down=0 touch_up=0 overflows=0 discarded=804 max_age_us=0 max_sample_gap_us=16080 peak=15 pending=2
+input-latency: cumulative_samples=0 age_p95_upper_us=0 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=128098 fallback_flip=0 creates=9 decoded_pixels=2701 flip_hits=6746 flip_misses=0 avoided_flip_pixels=6907336 evictions=0 cache_bytes=2523280 cache_peak=2523280 cache_budget=6291456
+blit-work: enabled=1 direct=313168 opaque=23126 fallback=42526 promotions=88 clipped=87164 pixels=404560707 live_bytes=4893292 peak_bytes=4893292 images=433
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=133084 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=8 overflow=0
+operation-memory: site=reload phase=before identity=load timestamp=14130966257 heap_available=25026616 arena=37421008 lua=11027805 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=gc-before identity=load timestamp=14131279096 heap_available=29069928 arena=37421008 lua=7379360 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=before identity=save timestamp=14131281372 heap_available=29069736 arena=37421008 lua=7379526 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=14131460906 heap_available=29104928 arena=37421008 lua=7349567 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=14135651847 heap_available=25724928 arena=37421008 lua=9718422 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=14135852796 heap_available=27266832 arena=37421008 lua=9159714 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=committed identity=load timestamp=14139558445 heap_available=18288800 arena=38473680 lua=14248638 lua_known=1 linear_free=6213632
+operation-memory: site=reload phase=gc-after identity=load timestamp=14139990727 heap_available=27756232 arena=38473680 lua=8793180 lua_known=1 linear_free=6213632
+frames: begin=14071274147 end=14140013499 elapsed=68739352 success=131 failed=0 skipped=1 count=131 sum=59671927 p50_lo=262144 p50_hi=524287 p95_lo=524288 p95_hi=1048575 p99_lo=524288 p99_hi=1048575 max=1059321 coverage_begin=14071272059 coverage_end=14130943986 open_gap=9069513 invalid=0
+span: stage=event count=356 failed=0 inclusive_us=2571 exclusive_us=2571 max=43 open=0
+span: stage=runtime count=132 failed=0 inclusive_us=9298191 exclusive_us=272621 max=9064253 open=0
+span: stage=logic count=131 failed=0 inclusive_us=8044877 exclusive_us=8040957 max=169436 open=0
+span: stage=render count=131 failed=0 inclusive_us=46448734 exclusive_us=43915238 max=447868 open=0
+span: stage=top count=131 failed=0 inclusive_us=2533496 exclusive_us=2533496 max=20153 open=0
+span: stage=bottom count=131 failed=0 inclusive_us=3340338 exclusive_us=3340338 max=26081 open=0
+span: stage=gc count=136 failed=0 inclusive_us=1388726 exclusive_us=1388726 max=432281 open=0
+span: stage=save count=1 failed=0 inclusive_us=4573376 exclusive_us=4192918 max=4573376 open=0
+span: stage=load count=15 failed=0 inclusive_us=9061480 exclusive_us=3711008 max=9025570 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=9 first=14085860799 last=14117245134 stage=S100 phase=owner-after resource=ISPOT006.WAV gate=Operation env_heap_total=55869440 arena=37421008 uordblks=30498832 fordblks=6922176 heap_available_estimate=25370608 linear_total=8388608 linear_free=6213632 lua=10739907 lua_known=1 requested=0 request_known=1 held=889802 held_known=1 min_heap_available=25370608 max_heap_used=30498832 min_linear_free=6213632 max_lua=10739907 max_request=559978 max_held=889802 failures=0 opaque_unknown=9 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=26 first=14124083779 last=14139448563 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=38473680 uordblks=37476696 fordblks=996984 heap_available_estimate=18392744 linear_total=8388608 linear_free=6213632 lua=14157711 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=18392744 max_heap_used=37476696 min_linear_free=6213632 max_lua=14157711 max_request=0 max_held=0 failures=0 opaque_unknown=26 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=2 first=14138060846 last=14138062270 stage=S100 phase=after resource=Graphics:loadAnimations gate=Operation env_heap_total=55869440 arena=37421008 uordblks=32102264 fordblks=5318744 heap_available_estimate=23767176 linear_total=8388608 linear_free=6213632 lua=9895324 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=23767176 max_heap_used=32102264 min_linear_free=6213632 max_lua=9895324 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=72 first=14085844217 last=14117227568 stage=S100 phase=after resource=offset=6296512 length=55136 cursor=44 gate=Operation env_heap_total=55869440 arena=37421008 uordblks=30445040 fordblks=6975968 heap_available_estimate=25424400 linear_total=8388608 linear_free=6213632 lua=10739907 lua_known=1 requested=54938 request_known=1 held=54938 held_known=1 min_heap_available=25424400 max_heap_used=30445040 min_linear_free=6213632 max_lua=10739907 max_request=54938 max_held=54938 failures=0 opaque_unknown=72 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=138 first=14076631000 last=14118905574 stage=S100 phase=pin-after resource=SQUEAK1.WAV gate=Operation env_heap_total=55869440 arena=37421008 uordblks=30535576 fordblks=6885432 heap_available_estimate=25333864 linear_total=8388608 linear_free=6213632 lua=10770597 lua_known=1 requested=0 request_known=1 held=21648 held_known=1 min_heap_available=25333864 max_heap_used=30535576 min_linear_free=6213632 max_lua=10770597 max_request=0 max_held=243288 failures=0 opaque_unknown=138 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=69 first=14076629332 last=14118902385 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=37421008 uordblks=30535576 fordblks=6885432 heap_available_estimate=25333864 linear_total=8388608 linear_free=6213632 lua=10770597 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=25333864 max_heap_used=30535576 min_linear_free=6213632 max_lua=10770597 max_request=0 max_held=219768 failures=0 opaque_unknown=69 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=45 first=14088429326 last=14090368420 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=37421008 uordblks=29646680 fordblks=7774328 heap_available_estimate=26222760 linear_total=8388608 linear_free=6213632 lua=10120943 lua_known=1 requested=704 request_known=1 held=2523280 held_known=1 min_heap_available=26222560 max_heap_used=29646880 min_linear_free=6213632 max_lua=10120943 max_request=4076 max_held=2523280 failures=0 opaque_unknown=45 truncated=0 sampled_lower_bound=1
+observed-memory: site=map samples=4 first=14138005125 last=14138025882 stage=S100 phase=after resource=original_cells gate=Operation env_heap_total=55869440 arena=37421008 uordblks=32093664 fordblks=5327344 heap_available_estimate=23775776 linear_total=8388608 linear_free=6213632 lua=9886776 lua_known=1 requested=1376256 request_known=1 held=1376256 held_known=1 min_heap_available=23775776 max_heap_used=32093664 min_linear_free=6213632 max_lua=9886776 max_request=1376256 max_held=1376256 failures=0 opaque_unknown=4 truncated=0 sampled_lower_bound=1
+observed-memory: site=save samples=11 first=14131281372 last=14135852796 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=37421008 uordblks=28602608 fordblks=8818400 heap_available_estimate=27266832 linear_total=8388608 linear_free=6213632 lua=9159714 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25724928 max_heap_used=30144512 min_linear_free=6213632 max_lua=9718422 max_request=0 max_held=553958 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=reload samples=8 first=14130966257 last=14139990727 stage=S100 phase=gc-after resource=load gate=Operation env_heap_total=55869440 arena=38473680 uordblks=28113208 fordblks=10360472 heap_available_estimate=27756232 linear_total=8388608 linear_free=6213632 lua=8793180 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=18288800 max_heap_used=37580640 min_linear_free=6213632 max_lua=14248638 max_request=0 max_held=0 failures=0 opaque_unknown=8 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=10 first=14088433547 last=14139988997 stage=S100 phase=map-after resource=level-map gate=Operation env_heap_total=55869440 arena=38473680 uordblks=28260680 fordblks=10213000 heap_available_estimate=27608760 linear_total=8388608 linear_free=6213632 lua=14248638 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=26222760 max_heap_used=29646680 min_linear_free=6213632 max_lua=14248638 max_request=0 max_held=0 failures=0 opaque_unknown=10 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=264 first=14072332495 last=14140013468 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=38473680 uordblks=28113856 fordblks=10359824 heap_available_estimate=27755584 linear_total=8388608 linear_free=6213632 lua=8793724 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25026712 max_heap_used=30842728 min_linear_free=6213632 max_lua=11027723 max_request=0 max_held=0 failures=0 opaque_unknown=264 truncated=0 sampled_lower_bound=1
+workload: at_us=14141189090 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T00 camera_x=-454 camera_y=1634 language=English music_enabled=0
+checkpoint[save_load] +256698ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Saves/Autosaves/Autosave-04-01.sav bytes=0 requested=0 known=yes
+memory[S100] +256713ms: env_heap_total=55869440 arena=37416912 uordblks=26617232 fordblks=10799680 heap_available_estimate=29252208 heap_used_estimate=26617232 linear_total=8388608 linear_free=6213632 heap_available_low=18288800 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7348249 lua_peak=14250557
+checkpoint[save_load] +260874ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Saves/Autosaves/Autosave-04-01.sav bytes=0 requested=0 known=yes
+memory[S100] +260889ms: env_heap_total=55869440 arena=37416912 uordblks=29998248 fordblks=7418664 heap_available_estimate=25871192 heap_used_estimate=29998248 linear_total=8388608 linear_free=6213632 heap_available_low=18288800 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9717148 lua_peak=14250557
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=1 copy_us=5031 submit_us=14126 errors=0 view_x=215 view_y=0 view_w=400 view_h=240 context=0
+bottom-stats: attempts=1 copy_us=7013 submit_us=18281
+input-queue: sampled=24094 popped=2 coalesced=23285 touch_down=0 touch_up=0 overflows=0 discarded=805 max_age_us=1172760 max_sample_gap_us=16080 peak=15 pending=2
+input-latency: cumulative_samples=2 age_p95_upper_us=1172760 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=1002 fallback_flip=0 creates=0 decoded_pixels=0 flip_hits=52 flip_misses=0 avoided_flip_pixels=56396 evictions=0 cache_bytes=2523280 cache_peak=2523280 cache_budget=6291456
+blit-work: enabled=1 direct=314043 opaque=23193 fallback=42653 promotions=88 clipped=87403 pixels=405667399 live_bytes=4893292 peak_bytes=4893292 images=433
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=133084 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=4 overflow=0
+operation-memory: site=save phase=before identity=save timestamp=14141226689 heap_available=27752792 arena=38473680 lua=8794726 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=14141427522 heap_available=29252288 arena=37416912 lua=7348175 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=14145634603 heap_available=25871080 arena=37416912 lua=9717236 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=14145835318 heap_available=27413608 arena=37416912 lua=9157898 lua_known=1 linear_free=6213632
+frames: begin=14140013499 end=14146290726 elapsed=6277227 success=1 failed=0 skipped=0 count=1 sum=15343976 p50_lo=8388608 p50_hi=15343976 p95_lo=8388608 p95_hi=15343976 p99_lo=8388608 p99_hi=15343976 max=15343976 coverage_begin=14130943986 coverage_end=14146287962 open_gap=2764 invalid=0
+span: stage=event count=236 failed=0 inclusive_us=1393 exclusive_us=1393 max=28 open=0
+span: stage=runtime count=1 failed=0 inclusive_us=23801 exclusive_us=23801 max=23801 open=0
+span: stage=logic count=1 failed=0 inclusive_us=4693951 exclusive_us=83663 max=4693951 open=0
+span: stage=render count=1 failed=0 inclusive_us=357958 exclusive_us=338771 max=357958 open=0
+span: stage=top count=1 failed=0 inclusive_us=19187 exclusive_us=19187 max=19187 open=0
+span: stage=bottom count=1 failed=0 inclusive_us=25312 exclusive_us=25312 max=25312 open=0
+span: stage=gc count=3 failed=0 inclusive_us=404252 exclusive_us=404252 max=200829 open=0
+span: stage=save count=1 failed=0 inclusive_us=4610288 exclusive_us=4208750 max=4610288 open=0
+span: stage=load count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=save samples=11 first=14141226689 last=14145835318 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=37416912 uordblks=28455832 fordblks=8961080 heap_available_estimate=27413608 linear_total=8388608 linear_free=6213632 lua=9157898 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25871080 max_heap_used=29998360 min_linear_free=6213632 max_lua=9717236 max_request=0 max_held=554050 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=2 first=14146289294 last=14146290660 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=37416912 uordblks=28615616 fordblks=8801296 heap_available_estimate=27253824 linear_total=8388608 linear_free=6213632 lua=9168006 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=27253824 max_heap_used=28615616 min_linear_free=6213632 max_lua=9168006 max_request=0 max_held=0 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+perf: at_us=14150277359 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=3986633 successful=8 failed=0 intervals=8 mean_us=498330 p95_us=931216 max_us=931216 gap_us=2755 heap_free=27151800 heap_low=18288800 lua=9253780 linear_free=6213632 log_us=9715596 workload_us=357933 terminal=0 truncated=0
+simulation-clock: at_us=14150277359 elapsed_us=10263860 timer_events=346 callbacks=22 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14150277359 name=temperature calls=8 total_us=198559 max_us=34461 units=131072 enabled=1 inclusive=1
+cpu-work: at_us=14150277359 name=pathfind calls=4 total_us=181 max_us=66 units=4 enabled=1 inclusive=1
+cpu-work: at_us=14150277359 name=input_state calls=12 total_us=4014 max_us=456 units=12 enabled=1 inclusive=1
+cpu-work: at_us=14150277359 name=input_action calls=14 total_us=24606 max_us=18679 units=14 enabled=1 inclusive=1
+cpu-work: at_us=14150277359 name=world calls=22 total_us=5101221 max_us=4692646 units=22 enabled=1 inclusive=1
+cpu-work: at_us=14150277359 name=ui calls=22 total_us=26071 max_us=1372 units=22 enabled=1 inclusive=1
+simulation-budget: steps=746 debt_us=90000 dropped_us=159737559 rebases=6 budget_exits=370 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14151370656 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T10 camera_x=-454 camera_y=1634 language=English music_enabled=0
+perf: at_us=14160615164 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=14324438 successful=31 failed=0 intervals=31 mean_us=462088 p95_us=931216 max_us=931216 gap_us=2484 heap_free=26863552 heap_low=18288800 lua=9494058 linear_free=6213632 log_us=9942458 workload_us=372279 terminal=0 truncated=0
+simulation-clock: at_us=14160615164 elapsed_us=10337805 timer_events=59 callbacks=69 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14160615164 name=temperature calls=23 total_us=539285 max_us=23580 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14160615164 name=pathfind calls=5 total_us=237 max_us=69 units=5 enabled=1 inclusive=1
+cpu-work: at_us=14160615164 name=input_state calls=23 total_us=7737 max_us=454 units=23 enabled=1 inclusive=1
+cpu-work: at_us=14160615164 name=input_action calls=24 total_us=24662 max_us=14335 units=24 enabled=1 inclusive=1
+cpu-work: at_us=14160615164 name=world calls=69 total_us=1332899 max_us=62463 units=69 enabled=1 inclusive=1
+cpu-work: at_us=14160615164 name=ui calls=69 total_us=82586 max_us=1375 units=69 enabled=1 inclusive=1
+simulation-budget: steps=815 debt_us=90000 dropped_us=168827493 rebases=6 budget_exits=393 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14161670247 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-01T33 camera_x=-454 camera_y=1634 language=English music_enabled=0
+control-edge: at_us=14170516218 sample_us=14170352035 held=512 changed=512 context=0 cursor=582,58
+view-toggle: context=0 source=480x288 origin=158,49 cursor=582,58
+control-edge: at_us=14170544157 sample_us=14170496773 held=0 changed=512 context=0 cursor=582,58
+view-present: source=480x288 origin=158,26 cursor=582,58 submitted=1
+perf: at_us=14170984638 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=24693912 successful=58 failed=0 intervals=58 mean_us=425766 p95_us=931216 max_us=931216 gap_us=2272 heap_free=26446448 heap_low=18288800 lua=9841221 linear_free=6213632 log_us=10233524 workload_us=386742 terminal=0 truncated=0
+simulation-clock: at_us=14170984638 elapsed_us=10369474 timer_events=65 callbacks=81 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14170984638 name=temperature calls=27 total_us=632882 max_us=23578 units=442368 enabled=1 inclusive=1
+cpu-work: at_us=14170984638 name=pathfind calls=10 total_us=672 max_us=214 units=10 enabled=1 inclusive=1
+cpu-work: at_us=14170984638 name=input_state calls=106 total_us=36735 max_us=506 units=106 enabled=1 inclusive=1
+cpu-work: at_us=14170984638 name=input_action calls=107 total_us=141331 max_us=14454 units=107 enabled=1 inclusive=1
+cpu-work: at_us=14170984638 name=world calls=81 total_us=1664136 max_us=147906 units=81 enabled=1 inclusive=1
+cpu-work: at_us=14170984638 name=ui calls=81 total_us=102065 max_us=6754 units=81 enabled=1 inclusive=1
+simulation-budget: steps=896 debt_us=90000 dropped_us=177758310 rebases=6 budget_exits=420 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14171876783 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-02T10 camera_x=-580 camera_y=1687 language=English music_enabled=0
+perf: at_us=14181240345 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=34949619 successful=78 failed=0 intervals=78 mean_us=448086 p95_us=1048575 max_us=1995637 gap_us=1703 heap_free=25561584 heap_low=18288800 lua=10224633 linear_free=6213632 log_us=10431557 workload_us=444674 terminal=0 truncated=0
+simulation-clock: at_us=14181240345 elapsed_us=10255707 timer_events=66 callbacks=60 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14181240345 name=temperature calls=20 total_us=468509 max_us=23545 units=327680 enabled=1 inclusive=1
+cpu-work: at_us=14181240345 name=pathfind calls=8 total_us=434 max_us=204 units=8 enabled=1 inclusive=1
+cpu-work: at_us=14181240345 name=input_state calls=57 total_us=20356 max_us=505 units=57 enabled=1 inclusive=1
+cpu-work: at_us=14181240345 name=input_action calls=66 total_us=1533931 max_us=1340852 units=66 enabled=1 inclusive=1
+cpu-work: at_us=14181240345 name=world calls=60 total_us=1167174 max_us=61901 units=60 enabled=1 inclusive=1
+cpu-work: at_us=14181240345 name=ui calls=60 total_us=89617 max_us=4091 units=60 enabled=1 inclusive=1
+simulation-budget: steps=956 debt_us=90000 dropped_us=186912234 rebases=6 budget_exits=440 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14182265139 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-02T30 camera_x=-479 camera_y=1687 language=English music_enabled=0
+perf: at_us=14191546506 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=45255780 successful=101 failed=0 intervals=101 mean_us=448088 p95_us=1048575 max_us=1995637 gap_us=1663 heap_free=25128240 heap_low=18288800 lua=10571175 linear_free=6213632 log_us=10622590 workload_us=501284 terminal=0 truncated=0
+simulation-clock: at_us=14191546506 elapsed_us=10306161 timer_events=60 callbacks=69 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14191546506 name=temperature calls=23 total_us=538437 max_us=23582 units=376832 enabled=1 inclusive=1
+cpu-work: at_us=14191546506 name=pathfind calls=5 total_us=262 max_us=145 units=5 enabled=1 inclusive=1
+cpu-work: at_us=14191546506 name=input_state calls=44 total_us=16056 max_us=506 units=44 enabled=1 inclusive=1
+cpu-work: at_us=14191546506 name=input_action calls=47 total_us=189252 max_us=89416 units=47 enabled=1 inclusive=1
+cpu-work: at_us=14191546506 name=world calls=69 total_us=1408821 max_us=145228 units=69 enabled=1 inclusive=1
+cpu-work: at_us=14191546506 name=ui calls=69 total_us=233138 max_us=4415 units=69 enabled=1 inclusive=1
+simulation-budget: steps=1025 debt_us=90000 dropped_us=196109630 rebases=6 budget_exits=463 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14192342095 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-03T03 camera_x=-479 camera_y=1836 language=English music_enabled=0
+perf: at_us=14201726317 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=55435591 successful=134 failed=0 intervals=134 mean_us=413707 p95_us=524287 max_us=1995637 gap_us=1568 heap_free=24745280 heap_low=18288800 lua=10891561 linear_free=6213632 log_us=10805755 workload_us=514458 terminal=0 truncated=0
+simulation-clock: at_us=14201726317 elapsed_us=10179811 timer_events=76 callbacks=99 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14201726317 name=temperature calls=33 total_us=773767 max_us=23644 units=540672 enabled=1 inclusive=1
+cpu-work: at_us=14201726317 name=pathfind calls=8 total_us=322 max_us=62 units=8 enabled=1 inclusive=1
+cpu-work: at_us=14201726317 name=input_state calls=33 total_us=11024 max_us=446 units=33 enabled=1 inclusive=1
+cpu-work: at_us=14201726317 name=input_action calls=34 total_us=28716 max_us=13163 units=34 enabled=1 inclusive=1
+cpu-work: at_us=14201726317 name=world calls=99 total_us=1891932 max_us=62925 units=99 enabled=1 inclusive=1
+cpu-work: at_us=14201726317 name=ui calls=99 total_us=114794 max_us=1347 units=99 enabled=1 inclusive=1
+simulation-budget: steps=1124 debt_us=90000 dropped_us=204516110 rebases=6 budget_exits=496 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14202516004 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-03T36 camera_x=-479 camera_y=1836 language=English music_enabled=0
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=149 copy_us=968633 submit_us=2143681 errors=0 view_x=104 view_y=192 view_w=480 view_h=288 context=0
+bottom-stats: attempts=149 copy_us=992835 submit_us=2709096
+input-queue: sampled=31578 popped=428 coalesced=30342 touch_down=8 touch_up=8 overflows=0 discarded=807 max_age_us=1216972 max_sample_gap_us=16080 peak=15 pending=1
+input-latency: cumulative_samples=428 age_p95_upper_us=1216972 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=139590 fallback_flip=0 creates=56 decoded_pixels=81063 flip_hits=6992 flip_misses=0 avoided_flip_pixels=6910530 evictions=0 cache_bytes=2876204 cache_peak=2876204 cache_budget=6291456
+blit-work: enabled=1 direct=438655 opaque=33226 fallback=57631 promotions=117 clipped=124073 pixels=559653944 live_bytes=5219614 peak_bytes=5219614 images=489
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=135154 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=1 presentation_api_timing=1 operation_rows=0 overflow=0
+frames: begin=14146290726 end=14206459458 elapsed=60168732 success=149 failed=0 skipped=3 count=149 sum=60169923 p50_lo=262144 p50_hi=524287 p95_lo=262144 p95_hi=524287 p99_lo=524288 p99_hi=1048575 max=1995637 coverage_begin=14146287962 coverage_end=14206457885 open_gap=1573 invalid=0
+span: stage=event count=481 failed=0 inclusive_us=3552 exclusive_us=3552 max=116 open=0
+span: stage=runtime count=152 failed=0 inclusive_us=2187830 exclusive_us=907564 max=1355019 open=0
+span: stage=logic count=444 failed=0 inclusive_us=9499542 exclusive_us=9494332 max=149212 open=0
+span: stage=render count=149 failed=0 inclusive_us=42851748 exclusive_us=39684544 max=543995 open=0
+span: stage=top count=149 failed=0 inclusive_us=3167204 exclusive_us=3167204 max=72773 open=0
+span: stage=bottom count=149 failed=0 inclusive_us=3705007 exclusive_us=3705007 max=25895 open=0
+span: stage=gc count=152 failed=0 inclusive_us=307372 exclusive_us=307372 max=2811 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=23 failed=0 inclusive_us=1285476 exclusive_us=1285476 max=1234835 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=6 first=14178853769 last=14189216926 stage=S100 phase=owner-after resource=NO4.WAV gate=Operation env_heap_total=55869440 arena=37416912 uordblks=30641416 fordblks=6775496 heap_available_estimate=25228024 linear_total=8388608 linear_free=6213632 lua=10486335 lua_known=1 requested=0 request_known=1 held=919202 held_known=1 min_heap_available=25228024 max_heap_used=30641416 min_linear_free=6213632 max_lua=10486335 max_request=115216 max_held=919202 failures=0 opaque_unknown=6 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=48 first=14163469153 last=14180138036 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=37416912 uordblks=29875544 fordblks=7541368 heap_available_estimate=25993896 linear_total=8388608 linear_free=6213632 lua=10140236 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25993896 max_heap_used=29875544 min_linear_free=6213632 max_lua=10140236 max_request=0 max_held=2490 failures=0 opaque_unknown=48 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_data samples=2 first=14178953844 last=14179031518 stage=S100 phase=read-after resource=Req10V gate=Operation env_heap_total=55869440 arena=37416912 uordblks=29770312 fordblks=7646600 heap_available_estimate=26099128 linear_total=8388608 linear_free=6213632 lua=10139412 lua_known=1 requested=0 request_known=0 held=18765 held_known=1 min_heap_available=26099128 max_heap_used=29770312 min_linear_free=6213632 max_lua=10139412 max_request=0 max_held=18765 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=1244 first=14179034270 last=14180132950 stage=S100 phase=converted-after resource=sprite-converted gate=Operation env_heap_total=55869440 arena=37416912 uordblks=29874528 fordblks=7542384 heap_available_estimate=25994912 linear_total=8388608 linear_free=6213632 lua=10139412 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=25994912 max_heap_used=29874528 min_linear_free=6213632 max_lua=10139412 max_request=16600 max_held=16600 failures=0 opaque_unknown=1244 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=48 first=14178837713 last=14189211840 stage=S100 phase=after resource=offset=1622080 length=5744 cursor=44 gate=Operation env_heap_total=55869440 arena=37416912 uordblks=30637040 fordblks=6779872 heap_available_estimate=25232400 linear_total=8388608 linear_free=6213632 lua=10486335 lua_known=1 requested=5520 request_known=1 held=5520 held_known=1 min_heap_available=25232400 max_heap_used=30637040 min_linear_free=6213632 max_lua=10486335 max_request=5520 max_held=5520 failures=0 opaque_unknown=48 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=54 first=14148373227 last=14189489095 stage=S100 phase=pin-after resource=SCRATCH.WAV gate=Operation env_heap_total=55869440 arena=37416912 uordblks=30648200 fordblks=6768712 heap_available_estimate=25221240 linear_total=8388608 linear_free=6213632 lua=10492039 lua_known=1 requested=0 request_known=1 held=22456 held_known=1 min_heap_available=25221240 max_heap_used=30648200 min_linear_free=6213632 max_lua=10492039 max_request=0 max_held=140048 failures=0 opaque_unknown=54 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=27 first=14148371280 last=14189486175 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=37416912 uordblks=30648200 fordblks=6768712 heap_available_estimate=25221240 linear_total=8388608 linear_free=6213632 lua=10492039 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=25221240 max_heap_used=30648200 min_linear_free=6213632 max_lua=10492039 max_request=0 max_held=140048 failures=0 opaque_unknown=27 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=280 first=14164235512 last=14185027684 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=37416912 uordblks=30461936 fordblks=6954976 heap_available_estimate=25407504 linear_total=8388608 linear_free=6213632 lua=10345052 lua_known=1 requested=800 request_known=1 held=2876204 held_known=1 min_heap_available=25407208 max_heap_used=30462232 min_linear_free=6213632 max_lua=10345052 max_request=43964 max_held=2876204 failures=0 opaque_unknown=280 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=58 first=14164240484 last=14185026916 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=37416912 uordblks=30461936 fordblks=6954976 heap_available_estimate=25407504 linear_total=8388608 linear_free=6213632 lua=10345052 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=25407504 max_heap_used=30461936 min_linear_free=6213632 max_lua=10345052 max_request=0 max_held=0 failures=0 opaque_unknown=58 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=304 first=14146827655 last=14206459425 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=37416912 uordblks=31302512 fordblks=6114400 heap_available_estimate=24566928 linear_total=8388608 linear_free=6213632 lua=11041197 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=24566928 max_heap_used=31302512 min_linear_free=6213632 max_lua=11041197 max_request=0 max_held=0 failures=0 opaque_unknown=304 truncated=0 sampled_lower_bound=1
+perf: at_us=14211952386 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=5492928 successful=9 failed=0 intervals=9 mean_us=610331 p95_us=1961147 max_us=1961147 gap_us=1526 heap_free=23308864 heap_low=18288800 lua=11498765 linear_free=6213632 log_us=11754640 workload_us=529194 terminal=0 truncated=0
+simulation-clock: at_us=14211952386 elapsed_us=10226069 timer_events=127 callbacks=72 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14211952386 name=temperature calls=24 total_us=562966 max_us=23656 units=393216 enabled=1 inclusive=1
+cpu-work: at_us=14211952386 name=pathfind calls=7 total_us=231 max_us=47 units=7 enabled=1 inclusive=1
+cpu-work: at_us=14211952386 name=input_state calls=34 total_us=11712 max_us=473 units=34 enabled=1 inclusive=1
+cpu-work: at_us=14211952386 name=input_action calls=37 total_us=1522705 max_us=1481565 units=37 enabled=1 inclusive=1
+cpu-work: at_us=14211952386 name=world calls=72 total_us=1476636 max_us=144822 units=72 enabled=1 inclusive=1
+cpu-work: at_us=14211952386 name=ui calls=72 total_us=143395 max_us=5436 units=72 enabled=1 inclusive=1
+simulation-budget: steps=1196 debt_us=90000 dropped_us=213385404 rebases=6 budget_exits=520 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14212859449 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-04T10 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14222084433 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=15624975 successful=36 failed=0 intervals=36 mean_us=434029 p95_us=1961147 max_us=1961147 gap_us=1510 heap_free=22670656 heap_low=18288800 lua=12033611 linear_free=6213632 log_us=11946617 workload_us=548887 terminal=0 truncated=0
+simulation-clock: at_us=14222084433 elapsed_us=10132047 timer_events=64 callbacks=81 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14222084433 name=temperature calls=27 total_us=632748 max_us=23534 units=442368 enabled=1 inclusive=1
+cpu-work: at_us=14222084433 name=pathfind calls=9 total_us=363 max_us=55 units=9 enabled=1 inclusive=1
+cpu-work: at_us=14222084433 name=input_state calls=122 total_us=49987 max_us=599 units=122 enabled=1 inclusive=1
+cpu-work: at_us=14222084433 name=input_action calls=124 total_us=240110 max_us=19684 units=124 enabled=1 inclusive=1
+cpu-work: at_us=14222084433 name=world calls=81 total_us=1545348 max_us=61985 units=81 enabled=1 inclusive=1
+cpu-work: at_us=14222084433 name=ui calls=81 total_us=246848 max_us=5683 units=81 enabled=1 inclusive=1
+simulation-budget: steps=1277 debt_us=90000 dropped_us=222074461 rebases=6 budget_exits=547 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14223056770 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-04T37 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14232175408 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=25715950 successful=63 failed=0 intervals=63 mean_us=408190 p95_us=1048575 max_us=1961147 gap_us=1560 heap_free=22031368 heap_low=18288800 lua=12545940 linear_free=6213632 log_us=12138532 workload_us=570893 terminal=0 truncated=0
+simulation-clock: at_us=14232175408 elapsed_us=10090975 timer_events=69 callbacks=78 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14232175408 name=temperature calls=26 total_us=608294 max_us=23682 units=425984 enabled=1 inclusive=1
+cpu-work: at_us=14232175408 name=pathfind calls=3 total_us=120 max_us=53 units=3 enabled=1 inclusive=1
+cpu-work: at_us=14232175408 name=input_state calls=110 total_us=45142 max_us=624 units=110 enabled=1 inclusive=1
+cpu-work: at_us=14232175408 name=input_action calls=112 total_us=245305 max_us=21998 units=112 enabled=1 inclusive=1
+cpu-work: at_us=14232175408 name=world calls=78 total_us=1587073 max_us=154297 units=78 enabled=1 inclusive=1
+cpu-work: at_us=14232175408 name=ui calls=78 total_us=211791 max_us=94932 units=78 enabled=1 inclusive=1
+simulation-budget: steps=1355 debt_us=90000 dropped_us=230752160 rebases=6 budget_exits=574 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14233074106 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-05T13 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14242203671 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=35744213 successful=87 failed=0 intervals=87 mean_us=410852 p95_us=1048575 max_us=1961147 gap_us=1646 heap_free=19110896 heap_low=17895552 lua=13950245 linear_free=6213632 log_us=12340620 workload_us=585401 terminal=0 truncated=0
+simulation-clock: at_us=14242203671 elapsed_us=10028263 timer_events=89 callbacks=74 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14242203671 name=temperature calls=22 total_us=515933 max_us=23658 units=360448 enabled=1 inclusive=1
+cpu-work: at_us=14242203671 name=pathfind calls=6 total_us=410 max_us=167 units=6 enabled=1 inclusive=1
+cpu-work: at_us=14242203671 name=input_state calls=30 total_us=11648 max_us=541 units=30 enabled=1 inclusive=1
+cpu-work: at_us=14242203671 name=input_action calls=33 total_us=1271499 max_us=1221178 units=33 enabled=1 inclusive=1
+cpu-work: at_us=14242203671 name=world calls=74 total_us=1267363 max_us=62755 units=74 enabled=1 inclusive=1
+cpu-work: at_us=14242203671 name=ui calls=74 total_us=83415 max_us=2289 units=74 enabled=1 inclusive=1
+simulation-budget: steps=1429 debt_us=72000 dropped_us=239506453 rebases=6 budget_exits=596 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14243346944 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Pause" hours_per_tick=0 tick_rate=1 date=1-04-05T33 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14252218097 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=45758639 successful=116 failed=0 intervals=116 mean_us=394471 p95_us=1048575 max_us=1961147 gap_us=1576 heap_free=18629832 heap_low=17895552 lua=14327433 linear_free=6213632 log_us=12540005 workload_us=599868 terminal=0 truncated=0
+simulation-clock: at_us=14252218097 elapsed_us=10014426 timer_events=72 callbacks=106 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14252218097 name=temperature calls=11 total_us=257398 max_us=23601 units=180224 enabled=1 inclusive=1
+cpu-work: at_us=14252218097 name=pathfind calls=3 total_us=91 max_us=40 units=3 enabled=1 inclusive=1
+cpu-work: at_us=14252218097 name=input_state calls=32 total_us=12474 max_us=549 units=32 enabled=1 inclusive=1
+cpu-work: at_us=14252218097 name=input_action calls=35 total_us=148031 max_us=110320 units=35 enabled=1 inclusive=1
+cpu-work: at_us=14252218097 name=world calls=106 total_us=656199 max_us=60030 units=106 enabled=1 inclusive=1
+cpu-work: at_us=14252218097 name=ui calls=106 total_us=181907 max_us=7761 units=106 enabled=1 inclusive=1
+simulation-budget: steps=1535 debt_us=90000 dropped_us=247556527 rebases=6 budget_exits=606 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14253464152 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-05T47 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14262552130 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=56092672 successful=144 failed=0 intervals=144 mean_us=389532 p95_us=524287 max_us=1961147 gap_us=1582 heap_free=18124976 heap_low=17895552 lua=14738650 linear_free=6213632 log_us=12730572 workload_us=615420 terminal=0 truncated=0
+simulation-clock: at_us=14262552130 elapsed_us=10334033 timer_events=70 callbacks=84 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14262552130 name=temperature calls=28 total_us=656408 max_us=23654 units=458752 enabled=1 inclusive=1
+cpu-work: at_us=14262552130 name=pathfind calls=9 total_us=293 max_us=48 units=9 enabled=1 inclusive=1
+cpu-work: at_us=14262552130 name=input_state calls=39 total_us=14710 max_us=520 units=39 enabled=1 inclusive=1
+cpu-work: at_us=14262552130 name=input_action calls=42 total_us=154138 max_us=91354 units=42 enabled=1 inclusive=1
+cpu-work: at_us=14262552130 name=world calls=84 total_us=1701769 max_us=146703 units=84 enabled=1 inclusive=1
+cpu-work: at_us=14262552130 name=ui calls=84 total_us=139039 max_us=2935 units=84 enabled=1 inclusive=1
+simulation-budget: steps=1619 debt_us=90000 dropped_us=256375665 rebases=6 budget_exits=634 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14263458974 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-06T24 camera_x=-479 camera_y=1842 language=English music_enabled=0
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=156 copy_us=801746 submit_us=2243855 errors=0 view_x=39 view_y=0 view_w=400 view_h=240 context=4
+bottom-stats: attempts=156 copy_us=1031959 submit_us=2833169
+input-queue: sampled=39066 popped=1102 coalesced=37124 touch_down=17 touch_up=17 overflows=0 discarded=839 max_age_us=1216972 max_sample_gap_us=16080 peak=24 pending=1
+input-latency: cumulative_samples=1102 age_p95_upper_us=1216972 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=145240 fallback_flip=0 creates=94 decoded_pixels=487506 flip_hits=6442 flip_misses=0 avoided_flip_pixels=5730735 evictions=0 cache_bytes=3294556 cache_peak=3294556 cache_budget=6291456
+blit-work: enabled=1 direct=572129 opaque=47772 fallback=69397 promotions=150 clipped=161653 pixels=725480770 live_bytes=7177168 peak_bytes=7177168 images=585
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=142684 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=1 presentation_api_timing=1 operation_rows=0 overflow=0
+frames: begin=14206459458 end=14266661510 elapsed=60202052 success=156 failed=0 skipped=0 count=156 sum=60201908 p50_lo=262144 p50_hi=524287 p95_lo=524288 p95_hi=1048575 p99_lo=1048576 p99_hi=1961147 max=1961147 coverage_begin=14206457885 coverage_end=14266659793 open_gap=1717 invalid=0
+span: stage=event count=513 failed=0 inclusive_us=3640 exclusive_us=3640 max=34 open=0
+span: stage=runtime count=156 failed=0 inclusive_us=3889520 exclusive_us=2005830 max=1488175 open=0
+span: stage=logic count=486 failed=0 inclusive_us=9150616 exclusive_us=9148978 max=155513 open=0
+span: stage=render count=156 failed=0 inclusive_us=41159989 exclusive_us=38109977 max=507364 open=0
+span: stage=top count=156 failed=0 inclusive_us=3050012 exclusive_us=3050012 max=22669 open=0
+span: stage=bottom count=156 failed=0 inclusive_us=3868387 exclusive_us=3868387 max=25415 open=0
+span: stage=gc count=156 failed=0 inclusive_us=245917 exclusive_us=245917 max=1843 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=6 failed=0 inclusive_us=1885328 exclusive_us=1885328 max=1096113 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=9 first=14230412710 last=14253917679 stage=S100 phase=owner-after resource=CAMCLICK.WAV gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37320808 fordblks=1329000 heap_available_estimate=18548632 linear_total=8388608 linear_free=6213632 lua=14389044 lua_known=1 requested=0 request_known=1 held=1200434 held_known=1 min_heap_available=18548632 max_heap_used=37320808 min_linear_free=6213632 max_lua=14389044 max_request=563758 max_held=1200434 failures=0 opaque_unknown=9 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=20 first=14208542102 last=14248294207 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37051288 fordblks=1598520 heap_available_estimate=18818152 linear_total=8388608 linear_free=6213632 lua=14183281 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=18818152 max_heap_used=37051288 min_linear_free=6213632 max_lua=14183281 max_request=0 max_held=2490 failures=0 opaque_unknown=20 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_data samples=8 first=14208595740 last=14248246612 stage=S100 phase=read-after resource=Watch01V gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37032808 fordblks=1617000 heap_available_estimate=18836632 linear_total=8388608 linear_free=6213632 lua=14183065 lua_known=1 requested=0 request_known=0 held=5284 held_known=1 min_heap_available=18836632 max_heap_used=37032808 min_linear_free=6213632 max_lua=14183065 max_request=0 max_held=42321 failures=0 opaque_unknown=8 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=1943 first=14208697943 last=14248293270 stage=S100 phase=converted-after resource=sprite-converted gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37051784 fordblks=1598024 heap_available_estimate=18817656 linear_total=8388608 linear_free=6213632 lua=14183065 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=18817656 max_heap_used=37051784 min_linear_free=6213632 max_lua=14183065 max_request=16600 max_held=16600 failures=0 opaque_unknown=1943 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=72 first=14230399238 last=14253913580 stage=S100 phase=after resource=offset=4987232 length=4576 cursor=44 gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37317648 fordblks=1332160 heap_available_estimate=18551792 linear_total=8388608 linear_free=6213632 lua=14389044 lua_known=1 requested=4310 request_known=1 held=4310 held_known=1 min_heap_available=18551792 max_heap_used=37317648 min_linear_free=6213632 max_lua=14389044 max_request=55358 max_held=55358 failures=0 opaque_unknown=72 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=14 first=14208539041 last=14264580719 stage=S100 phase=pin-after resource=NO4.WAV gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37845728 fordblks=804080 heap_available_estimate=18023712 linear_total=8388608 linear_free=6213632 lua=14820230 lua_known=1 requested=0 request_known=1 held=22096 held_known=1 min_heap_available=18023712 max_heap_used=37845728 min_linear_free=6213632 max_lua=14820230 max_request=0 max_held=221448 failures=0 opaque_unknown=14 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=7 first=14208537584 last=14264577786 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37845728 fordblks=804080 heap_available_estimate=18023712 linear_total=8388608 linear_free=6213632 lua=14820230 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=18023712 max_heap_used=37845728 min_linear_free=6213632 max_lua=14820230 max_request=0 max_held=0 failures=0 opaque_unknown=7 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=478 first=14208459895 last=14264514509 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37839888 fordblks=809920 heap_available_estimate=18029552 linear_total=8388608 linear_free=6213632 lua=14814806 lua_known=1 requested=5664 request_known=1 held=3294556 held_known=1 min_heap_available=17895552 max_heap_used=37973888 min_linear_free=6213632 max_lua=14814806 max_request=1228800 max_held=3294556 failures=0 opaque_unknown=478 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=104 first=14208463863 last=14264513688 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37839888 fordblks=809920 heap_available_estimate=18029552 linear_total=8388608 linear_free=6213632 lua=14814806 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=18029552 max_heap_used=37839888 min_linear_free=6213632 max_lua=14814806 max_request=0 max_held=0 failures=0 opaque_unknown=104 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=312 first=14207615868 last=14266661468 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=38649808 uordblks=37925944 fordblks=723864 heap_available_estimate=17943496 linear_total=8388608 linear_free=6213632 lua=14886989 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=17943496 max_heap_used=37925944 min_linear_free=6213632 max_lua=14886989 max_request=0 max_held=0 failures=0 opaque_unknown=312 truncated=0 sampled_lower_bound=1
+perf: at_us=14273146208 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=6484698 successful=13 failed=0 intervals=13 mean_us=498828 p95_us=1806036 max_us=1806036 gap_us=1646 heap_free=17315896 heap_low=17315896 lua=15179369 linear_free=6213632 log_us=13691639 workload_us=629991 terminal=0 truncated=0
+simulation-clock: at_us=14273146208 elapsed_us=10594078 timer_events=108 callbacks=75 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14273146208 name=temperature calls=25 total_us=585648 max_us=23627 units=409600 enabled=1 inclusive=1
+cpu-work: at_us=14273146208 name=pathfind calls=5 total_us=195 max_us=56 units=5 enabled=1 inclusive=1
+cpu-work: at_us=14273146208 name=input_state calls=37 total_us=13767 max_us=559 units=37 enabled=1 inclusive=1
+cpu-work: at_us=14273146208 name=input_action calls=48 total_us=869385 max_us=667429 units=48 enabled=1 inclusive=1
+cpu-work: at_us=14273146208 name=world calls=75 total_us=1546908 max_us=162458 units=75 enabled=1 inclusive=1
+cpu-work: at_us=14273146208 name=ui calls=75 total_us=127381 max_us=3272 units=75 enabled=1 inclusive=1
+simulation-budget: steps=1694 debt_us=90000 dropped_us=264947127 rebases=6 budget_exits=659 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14274181168 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-06T48 camera_x=-479 camera_y=1842 language=English music_enabled=0
+checkpoint[save_load] +394845ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Saves/Slot2.sav bytes=0 requested=0 known=yes
+memory[S100] +394864ms: env_heap_total=55869440 arena=39194576 uordblks=30350976 fordblks=8843600 heap_available_estimate=25518464 heap_used_estimate=30350976 linear_total=8388608 linear_free=6213632 heap_available_low=16797632 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7481235 lua_peak=15350896
+checkpoint[save_load] +399003ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Saves/Slot2.sav bytes=0 requested=0 known=yes
+memory[S100] +399033ms: env_heap_total=55869440 arena=41562064 uordblks=33644752 fordblks=7917312 heap_available_estimate=22224688 heap_used_estimate=33644752 linear_total=8388608 linear_free=6213632 heap_available_low=16797632 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9776889 lua_peak=15350896
+perf: at_us=14283981394 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=17319884 successful=18 failed=0 intervals=18 mean_us=683666 p95_us=2085482 max_us=2085482 gap_us=5015606 heap_free=23767376 heap_low=16797632 lua=9217362 linear_free=6213632 log_us=13950287 workload_us=645449 terminal=0 truncated=0
+simulation-clock: at_us=14283981394 elapsed_us=10835186 timer_events=98 callbacks=15 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14283981394 name=temperature calls=5 total_us=117415 max_us=23632 units=81920 enabled=1 inclusive=1
+cpu-work: at_us=14283981394 name=pathfind calls=4 total_us=151 max_us=47 units=4 enabled=1 inclusive=1
+cpu-work: at_us=14283981394 name=input_state calls=16 total_us=6899 max_us=542 units=16 enabled=1 inclusive=1
+cpu-work: at_us=14283981394 name=input_action calls=21 total_us=6106975 max_us=4989006 units=21 enabled=1 inclusive=1
+cpu-work: at_us=14283981394 name=world calls=15 total_us=512313 max_us=183430 units=15 enabled=1 inclusive=1
+cpu-work: at_us=14283981394 name=ui calls=15 total_us=24603 max_us=2104 units=15 enabled=1 inclusive=1
+simulation-budget: steps=1709 debt_us=0 dropped_us=270548067 rebases=7 budget_exits=664 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=18 copy_us=90493 submit_us=257191 errors=0 view_x=120 view_y=61 view_w=400 view_h=240 context=4
+bottom-stats: attempts=18 copy_us=118883 submit_us=325681
+input-queue: sampled=40727 popped=1174 coalesced=38698 touch_down=22 touch_up=22 overflows=0 discarded=853 max_age_us=1216972 max_sample_gap_us=16080 peak=24 pending=2
+input-latency: cumulative_samples=1174 age_p95_upper_us=1216972 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=19946 fallback_flip=0 creates=50 decoded_pixels=34566 flip_hits=800 flip_misses=0 avoided_flip_pixels=691688 evictions=0 cache_bytes=3458420 cache_peak=3458420 cache_budget=6291456
+blit-work: enabled=1 direct=589676 opaque=51480 fallback=71796 promotions=168 clipped=165945 pixels=742690321 live_bytes=7319054 peak_bytes=7319054 images=635
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=146306 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=4 overflow=0
+operation-memory: site=save phase=before identity=save timestamp=14279068637 heap_available=16797632 arena=39194576 lua=15350896 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=14279571229 heap_available=25518528 arena=39194576 lua=7481180 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=14283774308 heap_available=22224576 arena=41562064 lua=9776977 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=14283976809 heap_available=23767784 arena=41562064 lua=9217002 lua_known=1 linear_free=6213632
+frames: begin=14266661510 end=14283981394 elapsed=17319884 success=18 failed=0 skipped=1 count=18 sum=12305995 p50_lo=262144 p50_hi=524287 p95_lo=1048576 p95_hi=2085482 p99_lo=1048576 p99_hi=2085482 max=2085482 coverage_begin=14266659793 coverage_end=14278965788 open_gap=5015606 invalid=0
+span: stage=event count=174 failed=0 inclusive_us=1214 exclusive_us=1214 max=107 open=0
+span: stage=runtime count=19 failed=0 inclusive_us=6925303 exclusive_us=880427 max=5011012 open=0
+span: stage=logic count=54 failed=0 inclusive_us=1452288 exclusive_us=1452288 max=185370 open=0
+span: stage=render count=18 failed=0 inclusive_us=7510472 exclusive_us=7162283 max=933824 open=0
+span: stage=top count=18 failed=0 inclusive_us=348189 exclusive_us=348189 max=20400 open=0
+span: stage=bottom count=18 failed=0 inclusive_us=444926 exclusive_us=444926 max=24989 open=0
+span: stage=gc count=21 failed=0 inclusive_us=737023 exclusive_us=737023 max=502577 open=0
+span: stage=save count=1 failed=0 inclusive_us=4908947 exclusive_us=4203873 max=4908947 open=0
+span: stage=load count=14 failed=0 inclusive_us=1135929 exclusive_us=1135929 max=1041235 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=12 first=14268069518 last=14279063573 stage=S100 phase=owner-after resource=YESX.WAV gate=Operation env_heap_total=55869440 arena=39194576 uordblks=39071128 fordblks=123448 heap_available_estimate=16798312 linear_total=8388608 linear_free=6213632 lua=15350368 lua_known=1 requested=0 request_known=1 held=1953074 held_known=1 min_heap_available=16798312 max_heap_used=39071128 min_linear_free=6213632 max_lua=15350368 max_request=809746 max_held=1953074 failures=0 opaque_unknown=12 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=32 first=14271451821 last=14276119522 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=38768592 uordblks=38690896 fordblks=77696 heap_available_estimate=17178544 linear_total=8388608 linear_free=6213632 lua=15253588 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=17178544 max_heap_used=38690896 min_linear_free=6213632 max_lua=15253588 max_request=0 max_held=2490 failures=0 opaque_unknown=32 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_data samples=4 first=14271494490 last=14275201737 stage=S100 phase=read-after resource=Req04V gate=Operation env_heap_total=55869440 arena=38690768 uordblks=38635560 fordblks=55208 heap_available_estimate=17233880 linear_total=8388608 linear_free=6213632 lua=15253228 lua_known=1 requested=0 request_known=0 held=7893 held_known=1 min_heap_available=17233880 max_heap_used=38635560 min_linear_free=6213632 max_lua=15253228 max_request=0 max_held=7893 failures=0 opaque_unknown=4 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=1258 first=14271519935 last=14276117144 stage=S100 phase=converted-after resource=sprite-converted gate=Operation env_heap_total=55869440 arena=38768592 uordblks=38690464 fordblks=78128 heap_available_estimate=17178976 linear_total=8388608 linear_free=6213632 lua=15253228 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=17174872 max_heap_used=38694568 min_linear_free=6213632 max_lua=15253228 max_request=16600 max_held=16600 failures=0 opaque_unknown=1258 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=100 first=14268055530 last=14279058980 stage=S100 phase=after resource=offset=1614928 length=7152 cursor=44 gate=Operation env_heap_total=55869440 arena=39194576 uordblks=39065320 fordblks=129256 heap_available_estimate=16804120 linear_total=8388608 linear_free=6213632 lua=15350368 lua_known=1 requested=6958 request_known=1 held=6958 held_known=1 min_heap_available=16804120 max_heap_used=39065320 min_linear_free=6213632 max_lua=15350368 max_request=82690 max_held=82690 failures=0 opaque_unknown=100 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=18 first=14268137144 last=14279066496 stage=S100 phase=pin-after resource=YESX.WAV gate=Operation env_heap_total=55869440 arena=39194576 uordblks=39071128 fordblks=123448 heap_available_estimate=16798312 linear_total=8388608 linear_free=6213632 lua=15350368 lua_known=1 requested=0 request_known=1 held=358624 held_known=1 min_heap_available=16798312 max_heap_used=39071128 min_linear_free=6213632 max_lua=15350368 max_request=0 max_held=358624 failures=0 opaque_unknown=18 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=8 first=14268034215 last=14277994353 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=38961104 uordblks=38859448 fordblks=101656 heap_available_estimate=17009992 linear_total=8388608 linear_free=6213632 lua=15322339 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=17009992 max_heap_used=38859448 min_linear_free=6213632 max_lua=15322339 max_request=0 max_held=188696 failures=0 opaque_unknown=8 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=250 first=14269571058 last=14277080195 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=38961104 uordblks=38834032 fordblks=127072 heap_available_estimate=17035408 linear_total=8388608 linear_free=6213632 lua=15300774 lua_known=1 requested=848 request_known=1 held=3458420 held_known=1 min_heap_available=17018640 max_heap_used=38850800 min_linear_free=6213632 max_lua=15300774 max_request=20228 max_held=3458420 failures=0 opaque_unknown=250 truncated=0 sampled_lower_bound=1
+observed-memory: site=save samples=11 first=14279068637 last=14283976809 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=41562064 uordblks=32101656 fordblks=9460408 heap_available_estimate=23767784 linear_total=8388608 linear_free=6213632 lua=9217002 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=16797632 max_heap_used=39071808 min_linear_free=6213632 max_lua=15350896 max_request=0 max_held=555090 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=54 first=14269574345 last=14277079448 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=38961104 uordblks=38834032 fordblks=127072 heap_available_estimate=17035408 linear_total=8388608 linear_free=6213632 lua=15300774 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=17035408 max_heap_used=38834032 min_linear_free=6213632 max_lua=15300774 max_request=0 max_held=0 failures=0 opaque_unknown=54 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=38 first=14267732731 last=14283981362 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=41562064 uordblks=32102064 fordblks=9460000 heap_available_estimate=23767376 linear_total=8388608 linear_free=6213632 lua=9217362 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=16823768 max_heap_used=39045672 min_linear_free=6213632 max_lua=15339648 max_request=0 max_held=0 failures=0 opaque_unknown=38 truncated=0 sampled_lower_bound=1
+workload: at_us=14284999028 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-07T02 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14294128899 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=10147505 successful=30 failed=0 intervals=30 mean_us=505358 p95_us=524287 max_us=6343990 gap_us=2379 heap_free=23417096 heap_low=16797632 lua=9509834 linear_free=6213632 log_us=14974771 workload_us=661224 terminal=0 truncated=0
+simulation-clock: at_us=14294128899 elapsed_us=10147505 timer_events=178 callbacks=90 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14294128899 name=temperature calls=30 total_us=702892 max_us=23690 units=491520 enabled=1 inclusive=1
+cpu-work: at_us=14294128899 name=pathfind calls=8 total_us=311 max_us=61 units=8 enabled=1 inclusive=1
+cpu-work: at_us=14294128899 name=input_state calls=30 total_us=10954 max_us=431 units=30 enabled=1 inclusive=1
+cpu-work: at_us=14294128899 name=input_action calls=31 total_us=31005 max_us=15765 units=31 enabled=1 inclusive=1
+cpu-work: at_us=14294128899 name=world calls=90 total_us=1744568 max_us=68898 units=90 enabled=1 inclusive=1
+cpu-work: at_us=14294128899 name=ui calls=90 total_us=122081 max_us=1540 units=90 enabled=1 inclusive=1
+simulation-budget: steps=1799 debt_us=90000 dropped_us=278694020 rebases=7 budget_exits=694 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14295204645 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-07T35 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14304236984 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=20255590 successful=60 failed=0 intervals=60 mean_us=421150 p95_us=524287 max_us=6343990 gap_us=2170 heap_free=22369312 heap_low=16797632 lua=10092887 linear_free=6213632 log_us=15206993 workload_us=719855 terminal=0 truncated=0
+simulation-clock: at_us=14304236984 elapsed_us=10108085 timer_events=84 callbacks=90 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14304236984 name=temperature calls=30 total_us=702789 max_us=23598 units=491520 enabled=1 inclusive=1
+cpu-work: at_us=14304236984 name=pathfind calls=11 total_us=431 max_us=56 units=11 enabled=1 inclusive=1
+cpu-work: at_us=14304236984 name=input_state calls=33 total_us=11182 max_us=511 units=33 enabled=1 inclusive=1
+cpu-work: at_us=14304236984 name=input_action calls=37 total_us=102726 max_us=58622 units=37 enabled=1 inclusive=1
+cpu-work: at_us=14304236984 name=world calls=90 total_us=1952422 max_us=152864 units=90 enabled=1 inclusive=1
+cpu-work: at_us=14304236984 name=ui calls=90 total_us=357315 max_us=197742 units=90 enabled=1 inclusive=1
+simulation-budget: steps=1889 debt_us=90000 dropped_us=287163420 rebases=7 budget_exits=724 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14305347149 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-08T15 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14314392279 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=30410885 successful=91 failed=0 intervals=91 mean_us=389282 p95_us=524287 max_us=6343990 gap_us=1788 heap_free=21522192 heap_low=16797632 lua=10779415 linear_free=6213632 log_us=15395980 workload_us=773283 terminal=0 truncated=0
+simulation-clock: at_us=14314392279 elapsed_us=10155295 timer_events=73 callbacks=93 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14314392279 name=temperature calls=31 total_us=726313 max_us=23585 units=507904 enabled=1 inclusive=1
+cpu-work: at_us=14314392279 name=pathfind calls=10 total_us=798 max_us=304 units=10 enabled=1 inclusive=1
+cpu-work: at_us=14314392279 name=input_state calls=46 total_us=14460 max_us=479 units=46 enabled=1 inclusive=1
+cpu-work: at_us=14314392279 name=input_action calls=51 total_us=136729 max_us=53419 units=51 enabled=1 inclusive=1
+cpu-work: at_us=14314392279 name=world calls=93 total_us=1821630 max_us=68316 units=93 enabled=1 inclusive=1
+cpu-work: at_us=14314392279 name=ui calls=93 total_us=140412 max_us=1725 units=93 enabled=1 inclusive=1
+simulation-budget: steps=1982 debt_us=90000 dropped_us=295635464 rebases=7 budget_exits=755 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14315501638 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-08T46 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14324409935 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=40428541 successful=122 failed=0 intervals=122 mean_us=372480 p95_us=524287 max_us=6343990 gap_us=1613 heap_free=20990920 heap_low=16797632 lua=11158118 linear_free=6213632 log_us=15585717 workload_us=828373 terminal=0 truncated=0
+simulation-clock: at_us=14324409935 elapsed_us=10017656 timer_events=72 callbacks=93 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14324409935 name=temperature calls=31 total_us=725182 max_us=23516 units=507904 enabled=1 inclusive=1
+cpu-work: at_us=14324409935 name=pathfind calls=12 total_us=469 max_us=60 units=12 enabled=1 inclusive=1
+cpu-work: at_us=14324409935 name=input_state calls=31 total_us=11381 max_us=539 units=31 enabled=1 inclusive=1
+cpu-work: at_us=14324409935 name=input_action calls=32 total_us=70019 max_us=55081 units=32 enabled=1 inclusive=1
+cpu-work: at_us=14324409935 name=world calls=93 total_us=1892898 max_us=150607 units=93 enabled=1 inclusive=1
+cpu-work: at_us=14324409935 name=ui calls=93 total_us=137115 max_us=2032 units=93 enabled=1 inclusive=1
+simulation-budget: steps=2075 debt_us=90000 dropped_us=303983894 rebases=7 budget_exits=786 step_us=18000 max_steps=4 budget_us=24000
+workload: at_us=14325513569 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=3 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-09T27 camera_x=-479 camera_y=1842 language=English music_enabled=0
+checkpoint[save_load] +447904ms: stage=S100 phase=save-begin identity=sdmc:/3ds/corsixth/Saves/save-and-exit.sav bytes=0 requested=0 known=yes
+memory[S100] +447924ms: env_heap_total=55869440 arena=39968720 uordblks=30689376 fordblks=9279344 heap_available_estimate=25180064 heap_used_estimate=30689376 linear_total=8388608 linear_free=6213632 heap_available_low=16797632 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=7418285 lua_peak=15350896
+checkpoint[save_load] +452116ms: stage=S100 phase=save-complete identity=sdmc:/3ds/corsixth/Saves/save-and-exit.sav bytes=0 requested=0 known=yes
+memory[S100] +452135ms: env_heap_total=55869440 arena=43323344 uordblks=34038328 fordblks=9285016 heap_available_estimate=21831112 heap_used_estimate=34038328 linear_total=8388608 linear_free=6213632 heap_available_low=16797632 linear_low=6213632 low_water_valid=yes linear_low_valid=yes lua_current=9761028 lua_peak=15350896
+perf: at_us=14337272534 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=53291140 successful=146 failed=0 intervals=146 mean_us=364876 p95_us=524287 max_us=6343990 gap_us=5034829 heap_free=23301768 heap_low=16797632 lua=9269464 linear_free=6213632 log_us=15840519 workload_us=843247 terminal=0 truncated=0
+simulation-clock: at_us=14337272534 elapsed_us=12862599 timer_events=64 callbacks=72 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14337272534 name=temperature calls=24 total_us=562719 max_us=23740 units=393216 enabled=1 inclusive=1
+cpu-work: at_us=14337272534 name=pathfind calls=5 total_us=496 max_us=300 units=5 enabled=1 inclusive=1
+cpu-work: at_us=14337272534 name=input_state calls=35 total_us=12723 max_us=521 units=35 enabled=1 inclusive=1
+cpu-work: at_us=14337272534 name=input_action calls=43 total_us=5165822 max_us=5015394 units=43 enabled=1 inclusive=1
+cpu-work: at_us=14337272534 name=world calls=72 total_us=1410478 max_us=67358 units=72 enabled=1 inclusive=1
+cpu-work: at_us=14337272534 name=ui calls=72 total_us=106657 max_us=1760 units=72 enabled=1 inclusive=1
+simulation-budget: steps=2147 debt_us=0 dropped_us=310522545 rebases=8 budget_exits=810 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+display-stats: attempts=146 copy_us=747721 submit_us=2103647 errors=0 view_x=120 view_y=61 view_w=400 view_h=240 context=4
+bottom-stats: attempts=146 copy_us=969350 submit_us=2649048
+input-queue: sampled=46838 popped=2263 coalesced=43709 touch_down=31 touch_up=30 overflows=0 discarded=864 max_age_us=1216972 max_sample_gap_us=16080 peak=24 pending=2
+input-latency: cumulative_samples=2263 age_p95_upper_us=1216972 visible_latency_not_measured=1
+render-work: fast_flip=1 draws=144659 fallback_flip=0 creates=16 decoded_pixels=17853 flip_hits=6135 flip_misses=0 avoided_flip_pixels=5336177 evictions=0 cache_bytes=3538024 cache_peak=3538024 cache_budget=6291456
+blit-work: enabled=1 direct=720846 opaque=73889 fallback=85285 promotions=171 clipped=201197 pixels=880080270 live_bytes=7393144 peak_bytes=7393144 images=651
+blit-probe: ran=1 checksum_match=1 reference_forced=0 opaque_reference_us=35662 opaque_fast_us=27826 sparse_reference_us=27216 sparse_fast_us=10534 selected=binary-span span_bytes=148984 span_budget=262144
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=4 overflow=0
+operation-memory: site=save phase=before identity=save timestamp=14332263702 heap_available=20502728 arena=41562064 lua=11567682 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-before identity=save timestamp=14332628670 heap_available=25180136 arena=39968720 lua=7418222 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=committed identity=save timestamp=14336877913 heap_available=21831000 arena=43323344 lua=9761116 lua_known=1 linear_free=6213632
+operation-memory: site=save phase=gc-after identity=save timestamp=14337080078 heap_available=23375584 arena=42319824 lua=9199733 lua_known=1 linear_free=6213632
+frames: begin=14283981394 end=14337272534 elapsed=53291140 success=146 failed=0 skipped=1 count=146 sum=53271917 p50_lo=262144 p50_hi=524287 p95_lo=262144 p95_hi=524287 p99_lo=262144 p99_hi=524287 max=6343990 coverage_begin=14278965788 coverage_end=14332237705 open_gap=5034829 invalid=0
+span: stage=event count=475 failed=0 inclusive_us=3745 exclusive_us=3745 max=260 open=0
+span: stage=runtime count=147 failed=0 inclusive_us=5666201 exclusive_us=835722 max=5030622 open=0
+span: stage=logic count=438 failed=0 inclusive_us=9743169 exclusive_us=9628188 max=256736 open=0
+span: stage=render count=146 failed=0 inclusive_us=32281240 exclusive_us=29425830 max=268540 open=0
+span: stage=top count=146 failed=0 inclusive_us=2855410 exclusive_us=2855410 max=21024 open=0
+span: stage=bottom count=146 failed=0 inclusive_us=3621323 exclusive_us=3621323 max=25850 open=0
+span: stage=gc count=149 failed=0 inclusive_us=859568 exclusive_us=859568 max=364949 open=0
+span: stage=save count=1 failed=0 inclusive_us=4817221 exclusive_us=4250116 max=4817221 open=0
+span: stage=load count=18 failed=0 inclusive_us=128239 exclusive_us=128239 max=90285 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+observed-memory: site=sound_decode samples=3 first=14301244705 last=14301339097 stage=S100 phase=owner-after resource=EMERG004.WAV gate=Operation env_heap_total=55869440 arena=41562064 uordblks=33271304 fordblks=8290760 heap_available_estimate=22598136 linear_total=8388608 linear_free=6213632 lua=9908808 lua_known=1 requested=0 request_known=1 held=2604290 held_known=1 min_heap_available=22598136 max_heap_used=33271304 min_linear_free=6213632 max_lua=9908808 max_request=1449336 max_held=2604290 failures=0 opaque_unknown=3 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_table samples=38 first=14296461694 last=14330635282 stage=S100 phase=after resource=Graphics:loadSpriteTable gate=Operation env_heap_total=55869440 arena=41562064 uordblks=35235616 fordblks=6326448 heap_available_estimate=20633824 linear_total=8388608 linear_free=6213632 lua=11449496 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=20633824 max_heap_used=35235616 min_linear_free=6213632 max_lua=11449496 max_request=0 max_held=72 failures=0 opaque_unknown=38 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_data samples=2 first=14296538274 last=14296557221 stage=S100 phase=read-after resource=Money01V gate=Operation env_heap_total=55869440 arena=41562064 uordblks=32553952 fordblks=9008112 heap_available_estimate=23315488 linear_total=8388608 linear_free=6213632 lua=9596200 lua_known=1 requested=0 request_known=0 held=974 held_known=1 min_heap_available=23315488 max_heap_used=32553952 min_linear_free=6213632 max_lua=9596200 max_request=0 max_held=974 failures=0 opaque_unknown=2 truncated=0 sampled_lower_bound=1
+observed-memory: site=vspr_decode samples=35 first=14296560820 last=14296600441 stage=S100 phase=converted-after resource=sprite-converted gate=Operation env_heap_total=55869440 arena=41562064 uordblks=32555480 fordblks=9006584 heap_available_estimate=23313960 linear_total=8388608 linear_free=6213632 lua=9596200 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=23313800 max_heap_used=32555640 min_linear_free=6213632 max_lua=9596200 max_request=578 max_held=578 failures=0 opaque_unknown=35 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_read samples=50 first=14301224225 last=14301392084 stage=S100 phase=after resource=offset=7838096 length=81568 cursor=40 gate=Operation env_heap_total=55869440 arena=41562064 uordblks=33272448 fordblks=8289616 heap_available_estimate=22596992 linear_total=8388608 linear_free=6213632 lua=9908808 lua_known=1 requested=4 request_known=1 held=4 held_known=1 min_heap_available=22596992 max_heap_used=33272448 min_linear_free=6213632 max_lua=9908808 max_request=81400 max_held=81400 failures=0 opaque_unknown=50 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_play samples=36 first=14285627806 last=14332261588 stage=S100 phase=pin-after resource=YESX.WAV gate=Operation env_heap_total=55869440 arena=41562064 uordblks=35365960 fordblks=6196104 heap_available_estimate=20503480 linear_total=8388608 linear_free=6213632 lua=11567095 lua_known=1 requested=0 request_known=1 held=27848 held_known=1 min_heap_available=20503480 max_heap_used=35365960 min_linear_free=6213632 max_lua=11567095 max_request=0 max_held=839912 failures=0 opaque_unknown=36 truncated=0 sampled_lower_bound=1
+observed-memory: site=sound_release samples=19 first=14285623986 last=14332258914 stage=S100 phase=channel-after resource=pins gate=Operation env_heap_total=55869440 arena=41562064 uordblks=35365960 fordblks=6196104 heap_available_estimate=20503480 linear_total=8388608 linear_free=6213632 lua=11567095 lua_known=1 requested=0 request_known=1 held=0 held_known=1 min_heap_available=20503480 max_heap_used=35365960 min_linear_free=6213632 max_lua=11567095 max_request=0 max_held=839912 failures=0 opaque_unknown=19 truncated=0 sampled_lower_bound=1
+observed-memory: site=textures samples=80 first=14296825674 last=14327659668 stage=S100 phase=sprite-cache resource=pixels-plus-allowance gate=Operation env_heap_total=55869440 arena=41562064 uordblks=35008952 fordblks=6553112 heap_available_estimate=20860488 linear_total=8388608 linear_free=6213632 lua=11263315 lua_known=1 requested=4356 request_known=1 held=3538024 held_known=1 min_heap_available=20856640 max_heap_used=35012800 min_linear_free=6213632 max_lua=11263315 max_request=34568 max_held=3538024 failures=0 opaque_unknown=80 truncated=0 sampled_lower_bound=1
+observed-memory: site=save samples=11 first=14332263702 last=14337080078 stage=S100 phase=gc-after resource=save gate=Operation env_heap_total=55869440 arena=42319824 uordblks=32493856 fordblks=9825968 heap_available_estimate=23375584 linear_total=8388608 linear_free=6213632 lua=9199733 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=20502728 max_heap_used=35366712 min_linear_free=6213632 max_lua=11567682 max_request=0 max_held=557030 failures=0 opaque_unknown=11 truncated=0 sampled_lower_bound=1
+observed-memory: site=release samples=18 first=14296558440 last=14327658940 stage=S100 phase=pixels-after resource=ARGB gate=Operation env_heap_total=55869440 arena=41562064 uordblks=35008952 fordblks=6553112 heap_available_estimate=20860488 linear_total=8388608 linear_free=6213632 lua=11263315 lua_known=1 requested=0 request_known=0 held=0 held_known=1 min_heap_available=20860488 max_heap_used=35008952 min_linear_free=6213632 max_lua=11263315 max_request=0 max_held=0 failures=0 opaque_unknown=18 truncated=0 sampled_lower_bound=1
+observed-memory: site=gc samples=294 first=14285311054 last=14337272502 stage=S100 phase=after resource=incremental gate=Operation env_heap_total=55869440 arena=42319824 uordblks=32567672 fordblks=9752152 heap_available_estimate=23301768 linear_total=8388608 linear_free=6213632 lua=9269464 lua_known=1 requested=0 request_known=0 held=0 held_known=0 min_heap_available=20513096 max_heap_used=35356344 min_linear_free=6213632 max_lua=11558131 max_request=0 max_held=0 failures=0 opaque_unknown=294 truncated=0 sampled_lower_bound=1
+workload: at_us=14338377794 scene=level:sdmc:/3ds/corsixth/Levels/example.level patients=4 staff=17 rooms=3 speed="Normal" hours_per_tick=1 tick_rate=3 date=1-04-09T48 camera_x=-479 camera_y=1842 language=English music_enabled=0
+perf: at_us=14338393244 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=1120710 successful=0 failed=0 intervals=0 mean_us=0 p95_us=0 max_us=0 gap_us=6155539 heap_free=23300968 heap_low=16797632 lua=9270203 linear_free=6213632 log_us=16952254 workload_us=858027 terminal=0 truncated=0
+simulation-clock: at_us=14338393244 elapsed_us=1120710 timer_events=72 callbacks=0 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14338393244 name=temperature calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338393244 name=pathfind calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338393244 name=input_state calls=1 total_us=371 max_us=371 units=1 enabled=1 inclusive=1
+cpu-work: at_us=14338393244 name=input_action calls=2 total_us=15462 max_us=14772 units=2 enabled=1 inclusive=1
+cpu-work: at_us=14338393244 name=world calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338393244 name=ui calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+simulation-budget: steps=2147 debt_us=0 dropped_us=310522545 rebases=8 budget_exits=810 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=0 overflow=0
+frames: begin=14337272534 end=14338393244 elapsed=1120710 success=0 failed=0 skipped=0 count=0 sum=0 p50_lo=0 p50_hi=0 p95_lo=0 p95_hi=0 p99_lo=0 p99_hi=0 max=0 coverage_begin=0 coverage_end=0 open_gap=6155539 invalid=0
+span: stage=event count=73 failed=0 inclusive_us=432 exclusive_us=432 max=12 open=0
+span: stage=runtime count=1 failed=0 inclusive_us=19749 exclusive_us=19749 max=19749 open=0
+span: stage=logic count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=render count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=top count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=bottom count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=gc count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+perf: at_us=14338816075 scene=level:sdmc:/3ds/corsixth/Levels/example.level elapsed_us=422831 successful=0 failed=0 intervals=0 mean_us=0 p95_us=0 max_us=0 gap_us=6578370 heap_free=23300968 heap_low=16797632 lua=9270203 linear_free=6213632 log_us=17373242 workload_us=858027 terminal=0 truncated=0
+simulation-clock: at_us=14338816075 elapsed_us=422831 timer_events=0 callbacks=0 failures=0 nominal_timer_us=18000
+cpu-work: at_us=14338816075 name=temperature calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338816075 name=pathfind calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338816075 name=input_state calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338816075 name=input_action calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338816075 name=world calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+cpu-work: at_us=14338816075 name=ui calls=0 total_us=0 max_us=0 units=0 enabled=1 inclusive=1
+simulation-budget: steps=2147 debt_us=0 dropped_us=310522545 rebases=8 budget_exits=810 step_us=18000 max_steps=4 budget_us=24000
+observation: terminal=0 active_spans=0 reset_allowed=1
+frame-interval-sum: overflowed=0
+segment: scene=level:sdmc:/3ds/corsixth/Levels/example.level stable_eligible=0 presentation_api_timing=1 operation_rows=0 overflow=0
+frames: begin=14338393244 end=14338816075 elapsed=422831 success=0 failed=0 skipped=0 count=0 sum=0 p50_lo=0 p50_hi=0 p95_lo=0 p95_hi=0 p99_lo=0 p99_hi=0 max=0 coverage_begin=0 coverage_end=0 open_gap=6578370 invalid=0
+span: stage=event count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=runtime count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=logic count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=render count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=top count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=bottom count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=gc count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=save count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=load count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+span: stage=restore count=0 failed=0 inclusive_us=0 exclusive_us=0 max=0 open=0
+runtime: shutdown requested
+runtime: shutdown complete

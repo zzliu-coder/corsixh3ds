@@ -1,0 +1,3 @@
+Compiled with api_version: 2717, arch: armv6k, midi_device: false, movies: false, os: unix, update_check: false
+SDL renderer: software
+Lua 5.4 run with api version: 2717, game version: v0.70.1, savegame version: 254

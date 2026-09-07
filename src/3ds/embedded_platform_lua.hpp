@@ -11,6 +11,9 @@ inline constexpr char kEmbeddedPlatformLua[] = R"cth3ds_lua(-- CorsixTH 0.70.1 p
 
 local Platform = {}
 Platform.__index = Platform
+-- The five ordinary entries in CorsixTH 0.70.1's Options / Game speed menu.
+-- World:setSpeed owns their timing; this list contains no platform rates.
+local game_speeds = {"Slowest", "Slower", "Normal", "Max speed", "And then some more"}
 
 local function clamp(value, low, high)
   if value < low then return low end
@@ -635,8 +638,10 @@ function Platform:cycleSpeed()
     native_notice(self.native, "PAUSED - RESUME BEFORE CHANGING SPEED", false)
     return true
   end
-  local next_speed = current == "Normal" and "Max speed" or
-    current == "Max speed" and "And then some more" or "Normal"
+  local next_speed = "Normal"
+  for index, name in ipairs(game_speeds) do
+    if current == name then next_speed = game_speeds[index % #game_speeds + 1]; break end
+  end
   local ok, err = pcall(world.setSpeed, world, next_speed)
   if not ok then return false, "speed change: " .. tostring(err) end
   local actual = world:getCurrentSpeed()
@@ -644,9 +649,7 @@ function Platform:cycleSpeed()
     native_notice(self.native, "SPEED UNCHANGED: " .. tostring(actual), false)
     return true
   end
-  local label = actual == "Normal" and "NORMAL" or
-    actual == "Max speed" and "FAST (1.5x TARGET)" or "FASTER (3x TARGET)"
-  native_notice(self.native, "SPEED: " .. label, false)
+  native_notice(self.native, "SPEED: " .. actual:upper(), false)
   native_checkpoint(self.native, "game_speed", "selected", actual)
   return true
 end

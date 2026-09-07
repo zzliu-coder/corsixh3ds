@@ -54,7 +54,7 @@ local w=setmetatable({ui=ui,hours_per_tick=1,tick_rate=3,tick_timer=3},{__index=
 w.updateUserActionsAllowed=function()end
 w.updateScreenBlueFilter=function()end
 app.world=w
-for _,name in ipairs({'Max speed','And then some more','Normal'}) do
+for _,name in ipairs({'Max speed','And then some more','Slowest','Slower','Normal'}) do
   assert(p:handleAction{type='speed_cycle'})
   assert(w:getCurrentSpeed()==name and checkpoints[#checkpoints]==name)
 end

@@ -13,3 +13,8 @@ int gfxGetScreenFormat(int);
 #define GX_TRANSFER_SCALING(x) 0
 u64 svcGetSystemTick();u32 linearSpaceFree();u32 vramSpaceFree();
 void GPUCMD_GetBuffer(u32**,u32*,u32*);
+using gfxScreen_t=int;
+using Result=int;
+#define R_SUCCEEDED(x) ((x)>=0)
+u8* gfxGetFramebuffer(gfxScreen_t,int,u16*,u16*);
+Result GSPGPU_InvalidateDataCache(const void*,u32);

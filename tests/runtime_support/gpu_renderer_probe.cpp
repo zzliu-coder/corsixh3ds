@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <array>
+#include <string>
 #include <vector>
 #include "cth3ds/gpu_api.hpp"
 #include "cth3ds/gpu_layout.hpp"
@@ -17,7 +19,14 @@ C3D_RenderTarget* current{};C3D_RenderTarget* outputs[2]{};
 SDL_Rect clip{};bool clipped{},in_frame{},ready{};
 unsigned offset{},cost=64,objects{},max_objects{},waits{},allocations{},live{},fail_at{};
 bool allocation(){return ++allocations!=fail_at;}
-bool corrupt_sampling{};
+bool corrupt_sampling{},corrupt_clear{},corrupt_raster{},corrupt_lcd{},reject_invalidate{},wrong_dimensions{};
+std::array<std::array<u8,400*240*4>,2> lcd{};
+std::vector<std::string> diagnostic_lines;
+std::vector<C3D_RenderTarget*> drawn_targets;
+// Model transfer bytes independently of the production LCD decoder. Physical
+// byte offset walks columns bottom-to-top, and top/bottom use different formats.
+void transfer_lcd(int screen,C3D_RenderTarget* t);
+
 void finish(){for(auto& call:pending)call();pending.clear();++waits;}
 u32& raw(C3D_Tex* tex,int x,int y){return static_cast<u32*>(tex->data)[cth3ds::gpu_tile_offset(x,tex->height-1-y,tex->width)];}
 u32 pixel(C3D_Tex* tex,int x,int y){return cth3ds::gpu_pixel(raw(tex,x,y));}
@@ -49,6 +58,22 @@ SDL_Rect bounds(){return clipped?clip:SDL_Rect{0,0,current->width,current->heigh
 void emitted(){assert(in_frame);assert(++objects<=max_objects);offset+=cost;assert(offset<65536);}
 }
 u64 svcGetSystemTick(){static u64 clock;return ++clock;}u32 linearSpaceFree(){return 8000000;}u32 vramSpaceFree(){return 6000000;}
+u8* gfxGetFramebuffer(gfxScreen_t screen,int eye,u16* width,u16* height){
+  assert(eye==GFX_LEFT);if(width)*width=wrong_dimensions?239:240;
+  if(height)*height=screen==GFX_TOP?400:320;return lcd[screen].data();
+}
+Result GSPGPU_InvalidateDataCache(const void*,u32){assert(pending.empty());return reject_invalidate?-1:0;}
+namespace {
+void transfer_lcd(int screen,C3D_RenderTarget* t){
+  u8* dest=lcd[screen].data();
+  for(int x=0;x<t->width;++x)for(int y=t->height-1;y>=0;--y){
+    const auto p=pixel(t->tex,x,y);const u8 r=p,g=p>>8,b=p>>16,a=p>>24;
+    if(screen==GFX_TOP){*dest++=b;*dest++=g;*dest++=r;}
+    else {*dest++=a;*dest++=b;*dest++=g;*dest++=r;}
+  }
+  if(corrupt_lcd)lcd[screen].fill(0);
+}
+}
 int gfxGetScreenFormat(int screen){return screen==GFX_TOP?GSP_BGR8_OES:GSP_RGBA8_OES;}
 void GPUCMD_GetBuffer(u32**,u32* size,u32* pos){*size=65536;*pos=offset;}
 bool C3D_Init(int){ready=allocation();return ready;}void C3D_Fini(){assert(pending.empty());ready=false;}
@@ -68,14 +93,22 @@ C3D_RenderTarget* C3D_RenderTargetCreate(int w,int h,int,int depth){
 void C3D_RenderTargetDelete(C3D_RenderTarget* t){if(t->owner){C3D_TexDelete(t->tex);delete t->tex;}delete t;--live;}
 void C3D_RenderTargetSetOutput(C3D_RenderTarget* t,int screen,int eye,u32 flags){assert(eye==GFX_LEFT);assert(flags==u32(gfxGetScreenFormat(screen)<<12));if(!in_frame)finish();outputs[screen]=t;}
 bool C3D_FrameBegin(u8){assert(ready&&!in_frame);finish();in_frame=true;offset=objects=0;return true;}
-void C3D_FrameEnd(u8){assert(in_frame&&pending.empty());pending=std::move(commands);commands.clear();in_frame=false;}
+void C3D_FrameEnd(u8 flags){
+  assert(flags==0); // production retains safe whole-linear-cache flush
+  assert(in_frame&&pending.empty());
+  for(int s=0;s<2;++s){auto* t=outputs[s];
+    if(t && std::find(drawn_targets.begin(),drawn_targets.end(),t)!=drawn_targets.end())
+      commands.emplace_back([=]{transfer_lcd(s,t);});
+  }
+  drawn_targets.clear();pending=std::move(commands);commands.clear();in_frame=false;
+}
 float C3D_GetDrawingTime(){return 1;}
 void C2D_Flush(){}void C2D_Prepare(){}void C2D_SetTintMode(int){}void C2D_ViewReset(){}
 void C3D_DepthTest(bool enabled,int,int mask){assert(!enabled&&mask==GPU_WRITE_COLOR);}
 void C3D_AlphaBlend(int,int,int src,int dst,int alpha,int adst){assert(src==GPU_SRC_ALPHA&&dst==GPU_ONE_MINUS_SRC_ALPHA&&alpha==GPU_ONE&&adst==GPU_ONE_MINUS_SRC_ALPHA);}
-void C2D_SceneBegin(C3D_RenderTarget* t){current=t;}
+void C2D_SceneBegin(C3D_RenderTarget* t){current=t;drawn_targets.push_back(t);}
 void C3D_SetScissor(int mode,int l,int b,int r,int t){clipped=mode;clip={l,current->height-t,r-l,t-b};}
-void C2D_TargetClear(C3D_RenderTarget* t,u32 c){commands.emplace_back([=]{for(int y=0;y<t->height;++y)for(int x=0;x<t->width;++x)raw(t->tex,x,y)=cth3ds::gpu_pixel(c);});}
+void C2D_TargetClear(C3D_RenderTarget* t,u32 c){commands.emplace_back([=]{for(int y=0;y<t->height;++y)for(int x=0;x<t->width;++x)raw(t->tex,x,y)=cth3ds::gpu_pixel(corrupt_clear?0U:c);});}
 bool C2D_DrawImage(C2D_Image image,const C2D_DrawParams* p,const C2D_ImageTint* colour){
   emitted();const auto sub=*image.subtex;const auto params=*p;const auto tint=colour?colour->colour:0xffffffffU;
   const auto cut=bounds();auto* target=current;auto* tex=image.tex;
@@ -86,9 +119,9 @@ bool C2D_DrawImage(C2D_Image image,const C2D_DrawParams* p,const C2D_ImageTint* 
     u32 value=texture_pixel(tex,x,y),result=0;for(unsigned s=0;s<32;s+=8)result|=(((((value>>s)&255U)*((tint>>s)&255U))/255U)<<s);return result;
   });});return true;
 }
-bool C2D_DrawRectSolid(float x,float y,float,float w,float h,u32 c){emitted();auto* t=current;auto cut=bounds();commands.emplace_back([=]{raster(t,x,y,w,h,cut,[=](float,float){return c;});});return true;}
+bool C2D_DrawRectSolid(float x,float y,float,float w,float h,u32 c){emitted();auto* t=current;auto cut=bounds();commands.emplace_back([=]{raster(t,x,y,w,h,cut,[=](float,float){return corrupt_raster?0xff000000U:c;});});return true;}
 bool C2D_DrawLine(float,float,u32,float,float,u32,float,float){assert(false&&"line model intentionally excluded");return false;}
-namespace cth3ds{void runtime_diagnostic_line(const char* line){std::puts(line);}}
+namespace cth3ds{void runtime_diagnostic_line(const char* line) noexcept {diagnostic_lines.emplace_back(line);std::puts(line);}}
 
 int main(){
   using namespace cth3ds;assert(SDL_Init(0)==0);
@@ -97,7 +130,14 @@ int main(){
   // Every partial initialization must release its own objects.
   allocations=0;fail_at=0;assert(gpu_initialize());const unsigned allocation_steps=allocations;gpu_shutdown();
   for(unsigned failure=1;failure<=allocation_steps;++failure){allocations=0;fail_at=failure;assert(!gpu_initialize());assert(live==0);}
-  fail_at=0;corrupt_sampling=true;assert(!gpu_initialize());assert(!gpu_active()&&live==0);
+  fail_at=0;
+  for(bool* fault:{&corrupt_clear,&corrupt_raster,&corrupt_lcd,&reject_invalidate,&wrong_dimensions}){
+    *fault=true;diagnostic_lines.clear();assert(!gpu_initialize());assert(!gpu_active()&&live==0);
+    bool saw_failure=false;for(const auto& line:diagnostic_lines)
+      saw_failure|=line.find("gpu-stage:")!=std::string::npos && line.find("status=FAIL")!=std::string::npos;
+    assert(saw_failure);*fault=false;
+  }
+  corrupt_sampling=true;assert(!gpu_initialize());assert(!gpu_active()&&live==0);
   corrupt_sampling=false;assert(gpu_initialize());
   std::vector<u32> colours(640*480);for(int y=0;y<480;++y)for(int x=0;x<640;++x)colours[y*640+x]=0xff000000U|u32(x%256)|u32(y%256)<<8U|u32((x+y)%256)<<16U;
   auto* background=gpu_image_create(renderer,640,480,colours.data());assert(background);

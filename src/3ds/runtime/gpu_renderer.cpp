@@ -12,6 +12,7 @@
 #include <new>
 #include <vector>
 #include "cth3ds/gpu_layout.hpp"
+#include "cth3ds/gpu_diagnostics.hpp"
 #include "runtime_3ds.hpp"
 
 namespace cth3ds {
@@ -161,33 +162,143 @@ bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height) no
   C2D_DrawParams params{};params.pos={0,0,static_cast<float>(width),-static_cast<float>(height)};
   return C2D_DrawImage({&canvas,&sub},&params,&tint);
 }
+// R54 keeps the R53 upload and canvas readback formulae unchanged. The stages
+// isolate their contracts; no inferred orientation is used to "repair" a test.
+struct PixelCheck {
+  const char* stage;
+  unsigned samples{},mismatches{};
+  void check(unsigned x,unsigned y,u32 expected,u32 actual,u32 raw_value,u32 alternate) noexcept {
+    ++samples;
+    if(actual==expected)return;
+    if(mismatches++<8U)
+      boot_log("gpu-mismatch: stage=%s x=%u y=%u expected=%08lx actual=%08lx raw=%08lx alternate_y_raw=%08lx",
+        stage,x,y,static_cast<unsigned long>(expected),static_cast<unsigned long>(actual),
+        static_cast<unsigned long>(raw_value),static_cast<unsigned long>(alternate));
+  }
+  bool finish(bool submitted,bool barrier,bool visible=true) const noexcept {
+    const bool ok=submitted&&barrier&&visible&&samples>0&&mismatches==0;
+    boot_log("gpu-stage: name=%s status=%s samples=%u mismatches=%u submitted=%u barrier_returned=%u cpu_read_ready=%u",
+      stage,ok?"PASS":"FAIL",samples,mismatches,submitted?1U:0U,barrier?1U:0U,visible?1U:0U);
+    return ok;
+  }
+};
+void diagnostic_canvas_pixel(PixelCheck& test,unsigned x,unsigned y,u32 expected) noexcept {
+  const auto* data=static_cast<const u32*>(canvas.data);
+  const auto raw_value=data[gpu_tile_offset(x,511U-y,1024)];
+  // Alternate interpretation is EVIDENCE ONLY. It never changes the verdict.
+  const auto alternate=data[gpu_tile_offset(x,y,1024)];
+  test.check(x,y,expected,gpu_pixel(raw_value),raw_value,alternate);
+}
+bool diagnostic_complete() noexcept {
+  end_job();outputs(false);record_completion();
+  return !in_frame&&!pending;
+}
+struct LcdCapture {
+  u8* data{};u16 physical_width{},physical_height{};
+  unsigned format{},width{};
+  std::size_t bytes{};
+};
+LcdCapture diagnostic_capture(gfxScreen_t screen,unsigned width) noexcept {
+  LcdCapture result;result.width=width;
+  result.format=static_cast<unsigned>(gfxGetScreenFormat(screen));
+  result.data=gfxGetFramebuffer(screen,GFX_LEFT,&result.physical_width,&result.physical_height);
+  result.bytes=static_cast<std::size_t>(result.physical_width)*result.physical_height*
+    gpu_lcd_pixel_size(result.format);
+  return result;
+}
+bool diagnostic_lcd(const LcdCapture& capture,const char* name,bool submitted,bool barrier,
+                    bool is_top) noexcept {
+  PixelCheck test{name};
+  const bool dimensions=capture.data&&capture.physical_width==240&&capture.physical_height==capture.width;
+  const bool visible=dimensions&&capture.bytes&&R_SUCCEEDED(GSPGPU_InvalidateDataCache(
+    capture.data,static_cast<u32>(capture.bytes)));
+  boot_log("gpu-target: stage=%s format=%u physical=%ux%u logical=%ux240 bytes=%lu captured_before_submit=1 cache_invalidated=%u lcd_visual=NOT_PROVEN",
+    name,capture.format,static_cast<unsigned>(capture.physical_width),
+    static_cast<unsigned>(capture.physical_height),capture.width,
+    static_cast<unsigned long>(capture.bytes),visible?1U:0U);
+  if(visible) {
+    constexpr unsigned points[][2]={{15,15},{280,15},{15,210},{280,210},{85,110},{220,150}};
+    for(const auto& point:points) {
+      const unsigned x=point[0],y=point[1];u32 actual{};
+      const bool decoded=gpu_lcd_rgb(capture.data,capture.bytes,capture.format,capture.width,240,x,y,actual);
+      const auto expected=gpu_diagnostic_scene(is_top?x+120U:2U*x,is_top?y+96U:2U*y)&0xffffffU;
+      test.check(x,y,expected,decoded?actual:0xdeadbeefU,actual,0);
+    }
+  }
+  return test.finish(submitted,barrier,visible);
+}
 bool startup_self_test() noexcept {
-  // Exercise real PICA texture sampling before any game resource is created.
-  // Four asymmetric crops/flips have independent expected pixel values.
+  clip={0,0,640,480};empty_clip=false;
+  boot_log("gpu-diagnostic: revision=R54 canvas=1024x512 logical=640x480 atlas=512x512 format=RGBA8 upload_formula=R53_unchanged canvas_read_formula=R53_unchanged full_linear_flush=retained lcd_visual=NOT_PROVEN");
+  bool all=true;
+  // A: no texture or coordinate-dependent content. Distinguish clear/colour
+  // storage from upload/sampling, while reporting non-symmetric raw channels.
+  PixelCheck clear{"clear-readback"};
+  bool submitted=begin_job();
+  if(submitted)C2D_TargetClear(canvas_target,0xff653511U);
+  bool barrier=diagnostic_complete();
+  constexpr unsigned corners[][2]={{0,0},{639,0},{0,479},{639,479},{333,227}};
+  for(const auto& point:corners)diagnostic_canvas_pixel(clear,point[0],point[1],0xff653511U);
+  all=clear.finish(submitted,barrier)&&all;
+  // B: untextured rasterisation and scissor, independent from the uploader.
+  PixelCheck raster{"raster-and-clip"};submitted=begin_job();
+  if(submitted) {
+    C2D_TargetClear(canvas_target,0xff000000U);
+    const SDL_Rect red{16,24,28,20},green{580,420,24,28};
+    submitted=gpu_fill(&red,0xff0000ffU)&&submitted;
+    submitted=gpu_fill(&green,0xff00ff00U)&&submitted;
+    const SDL_Rect cut{300,200,20,16},blue{290,190,40,40};gpu_clip(&cut);
+    submitted=gpu_fill(&blue,0xffff0000U)&&submitted;
+    gpu_clip(nullptr);
+  }
+  barrier=diagnostic_complete();
+  diagnostic_canvas_pixel(raster,20,28,0xff0000ffU);
+  diagnostic_canvas_pixel(raster,590,430,0xff00ff00U);
+  diagnostic_canvas_pixel(raster,310,208,0xffff0000U);
+  diagnostic_canvas_pixel(raster,295,208,0xff000000U);
+  diagnostic_canvas_pixel(raster,310,220,0xff000000U);
+  all=raster.finish(submitted,barrier)&&all;
+  // C: retain all 1024 exact R53 crop/flip comparisons.
   std::array<std::uint32_t,16*16> pattern{};
   for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
     pattern[y*16+x]=C2D_Color32(x*13U,y*11U,37U^x^y,255);
   gpu_upload_rgba(static_cast<std::uint32_t*>(pages[0].texture.data),512,
     24,40,pattern.data(),16,16,16);
-  if(!begin_job())return false;
-  C2D_TargetClear(canvas_target,0xff000000U);
-  const Tex3DS_SubTexture sub{16,16,24/512.0f,1-40/512.0f,40/512.0f,1-56/512.0f};
-  bool submitted=true;
-  for(unsigned flip=0;flip<4;++flip)
-    submitted=draw_image(pages[0].texture,sub,{12.0f+flip*24,20,16,16},
-      0xffffffffU,(flip&1)!=0,(flip&2)!=0)&&submitted;
-  end_job();outputs(false);record_completion();
-  const auto* data=static_cast<const std::uint32_t*>(canvas.data);
-  unsigned mismatches=0;
-  for(unsigned flip=0;flip<4;++flip)for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x){
-    const auto actual=gpu_pixel(data[gpu_tile_offset(12+flip*24+x,511-(20+y),1024)]);
-    const auto expected=pattern[((flip&2)?15-y:y)*16+((flip&1)?15-x:x)];
-    if(actual!=expected)++mismatches;
+  PixelCheck texture{"atlas-crop-four-flips"};submitted=begin_job();
+  if(submitted) {
+    C2D_TargetClear(canvas_target,0xff000000U);
+    const Tex3DS_SubTexture sub{16,16,24/512.0f,1-40/512.0f,40/512.0f,1-56/512.0f};
+    for(unsigned flip=0;flip<4;++flip)
+      submitted=draw_image(pages[0].texture,sub,{12.0f+flip*24,20,16,16},
+        0xffffffffU,(flip&1)!=0,(flip&2)!=0)&&submitted;
   }
-  boot_log("gpu-self-test: result=%s pixels=1024 mismatches=%u checks=atlas-crop-four-flips-canvas-readback lcd_visual=NOT_PROVEN",
-    submitted&&mismatches==0?"PASS":"FAIL",mismatches);
-  stats={};epoch=1;objects=0;
-  return submitted&&mismatches==0;
+  barrier=diagnostic_complete();
+  for(unsigned flip=0;flip<4;++flip)for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
+    diagnostic_canvas_pixel(texture,12+flip*24+x,20+y,
+      pattern[((flip&2)?15-y:y)*16+((flip&1)?15-x:x)]);
+  all=texture.finish(submitted,barrier)&&all;
+  // D: use the actual production canvas -> both output -> GX transfer path.
+  // Read the buffers selected for this job, not the next post-swap backbuffers.
+  submitted=begin_job();
+  if(submitted) {
+    C2D_TargetClear(canvas_target,0xff000000U);
+    for(unsigned y=0;y<480;y+=240)for(unsigned x=0;x<640;x+=320) {
+      const SDL_Rect rect{static_cast<int>(x),static_cast<int>(y),320,240};
+      submitted=gpu_fill(&rect,gpu_diagnostic_scene(x,y))&&submitted;
+    }
+  }
+  const auto top=diagnostic_capture(GFX_TOP,400),bottom=diagnostic_capture(GFX_BOTTOM,320);
+  if(in_frame) {
+    submitted=gpu_top({120,96,400,240})&&submitted;
+    submitted=gpu_bottom({120,96,400,240},nullptr,0)&&submitted;
+  }
+  barrier=diagnostic_complete();
+  all=diagnostic_lcd(top,"canvas-to-top-buffer",submitted,barrier,true)&&all;
+  all=diagnostic_lcd(bottom,"canvas-to-bottom-buffer",submitted,barrier,false)&&all;
+  boot_log("gpu-self-test: result=%s pixels=1024 mismatches=%u checks=staged-clear-raster-atlas-dual-output stages=5 lcd_visual=NOT_PROVEN",
+    all?"PASS":"FAIL",texture.mismatches);
+  stats={};epoch=1;objects=0;clip={0,0,640,480};empty_clip=false;
+  return all;
 }
 void forget(Image* image) noexcept {
   if(image->previous)image->previous->next=image->next;else images=image->next;

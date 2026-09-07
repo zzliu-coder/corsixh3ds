@@ -61,4 +61,16 @@ return std::fwrite(dst.data(),4,dst.size(),stdout)==dst.size()?0:1;}
             self.assertIn('PASS production GPU',result.stdout)
             print(result.stdout,end='')
 
+    def test_lcd_readback_bounds(self):
+        with tempfile.TemporaryDirectory(prefix='cth-r54-lcd-') as d:
+            binary=Path(d)/'probe'
+            subprocess.run([shutil.which('clang++') or shutil.which('g++'),'-std=c++17','-O2',
+                '-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-omit-frame-pointer',
+                '-I'+str(ROOT/'include'),str(ROOT/'tests/runtime_support/r54_lcd_probe.cpp'),
+                '-o',str(binary)],check=True)
+            result=subprocess.run([str(binary)],capture_output=True,text=True,
+                env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn('PASS independent LCD decoder',result.stdout)
+
 if __name__=='__main__':unittest.main()

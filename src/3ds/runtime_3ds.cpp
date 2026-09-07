@@ -5,6 +5,7 @@
 #endif
 #include "runtime_3ds.hpp"
 #include "runtime/game_view.hpp"
+#include "runtime/observation.hpp"
 
 #include <3ds.h>
 #include <SDL.h>
@@ -129,31 +130,19 @@ constexpr int kOverlayHeight = 13;
 // show. Everything below writes to the SD card instead, unbuffered, so the
 // last line on disk is the last thing that actually executed.
 // ---------------------------------------------------------------------------
-Telemetry g_timing;
-MemoryTelemetry g_memory_observations;
 lua_State* g_observation_state = nullptr;
 bool g_top_present_seen = false;
 bool g_top_present_ok = false;
-std::uint64_t g_observation_flush_us = 0;
-bool g_observation_flush_requested = false;
-struct OperationSample {std::array<char,24> site{};MemoryObservation observation;};
-std::array<OperationSample,64> g_operation_samples{};
-std::size_t g_operation_sample_count=0;
-std::uint64_t g_operation_overflow=0;
-std::array<char,96> g_scene_identity{};
-bool g_window_has_operation=false;
-bool g_window_scene_changed=false;
+RuntimeObservations g_observations;
 BoundedLog g_log;
 #if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
 std::FILE* g_saved_stderr = nullptr;
 std::FILE* g_stderr_sink = nullptr;
 #endif
-std::uint64_t g_compact_flush_us = 0, g_log_time_us = 0, g_workload_time_us = 0;
-bool g_terminal_observation = false, g_terminal_observation_saved = false;
+std::uint64_t g_log_time_us = 0, g_workload_time_us = 0;
 // Snapshot of App.ui's authoritative pointer, refreshed at each input boundary.
 // The upstream renderer cursor fields are legacy zeros on the 3DS path.
 int g_input_cursor_x = 0, g_input_cursor_y = 0;
-std::uint64_t g_timer_events = 0, g_logic_callbacks = 0, g_logic_failures = 0;
 SimulationClock g_simulation_clock;
 PresentationClock g_presentation_clock;
 bool g_benchmark_active=false;
@@ -1377,7 +1366,7 @@ class Runtime {
       result = ok ? PresentResult::Success : PresentResult::Failed;
       }
     }
-    g_timing.present_complete(now_us(), result);
+    g_observations.timing.present_complete(now_us(), result);
     g_top_present_seen = g_top_present_ok = false;
   }
 
@@ -1400,7 +1389,7 @@ class Runtime {
 #endif
 #ifndef CTH3DS_STUB_BUILD
     input_collector_.pause(true);
-    g_window_has_operation = true;
+    g_observations.window_has_operation = true;
     bool channel_paused[32]{};
     for (int i=0;i<32;++i) { channel_paused[i]=Mix_Paused(i)!=0; Mix_Pause(i); }
     const bool music_paused=Mix_PausedMusic()!=0; Mix_PauseMusic();
@@ -1481,7 +1470,7 @@ class Runtime {
     scheduler_.request_redraw();
   }
 
-  PerformanceSnapshot performance() const { return g_timing.snapshot(now_us()); }
+  PerformanceSnapshot performance() const { return g_observations.timing.snapshot(now_us()); }
 
   bool probe_regular_heap(const char* label,
                           MemoryGate gate = MemoryGate::MenuStable) {
@@ -2222,7 +2211,7 @@ std::uint64_t checked_non_negative_integer(lua_State* state, int index) {
 }
 
 int l_request_observation_flush(lua_State*) {
-  g_observation_flush_requested = true;
+  g_observations.flush_requested = true;
   return 0;
 }
 int l_cpu_profile(lua_State* state) {
@@ -2274,6 +2263,10 @@ int l_span_end(lua_State* state) {
   const auto token = static_cast<std::uint64_t>(luaL_checkinteger(state, 1));
   if (!runtime_span_end(token, lua_toboolean(state, 2) != 0))
     return luaL_error(state, "timing span end rejected");
+  return 0;
+}
+int l_operation_boundary(lua_State*) {
+  runtime_operation_boundary();
   return 0;
 }
 int l_observe_memory(lua_State* state) {
@@ -2370,9 +2363,9 @@ int l_scene(lua_State* state) {
   const auto* identity=luaL_checkstring(state,1);
   if(std::strncmp(identity,"level:",6)!=0 && std::strcmp(identity,"menu")!=0)
     return luaL_error(state,"invalid game scene identity");
-  if(std::strlen(identity)>=g_scene_identity.size())return luaL_error(state,"scene identity too long");
-  if(std::strcmp(g_scene_identity.data(),identity))g_window_scene_changed=true;
-  std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"%s",identity);
+  if(std::strlen(identity)>=g_observations.scene.size())return luaL_error(state,"scene identity too long");
+  if(std::strcmp(g_observations.scene.data(),identity))g_observations.window_scene_changed=true;
+  std::snprintf(g_observations.scene.data(),g_observations.scene.size(),"%s",identity);
   return 0;
 }
 int l_workload(lua_State* state) {
@@ -2381,7 +2374,7 @@ int l_workload(lua_State* state) {
   const auto date = table_string(state,1,"game_date","unknown");
   const auto speed = table_string(state,1,"speed","unknown");
   boot_log("workload: at_us=%llu scene=%s patients=%lld staff=%lld rooms=%lld speed=\"%s\" hours_per_tick=%lld tick_rate=%lld date=%s camera_x=%lld camera_y=%lld language=%s music_enabled=%d",
-    static_cast<unsigned long long>(now_us()),g_scene_identity.data(),
+    static_cast<unsigned long long>(now_us()),g_observations.scene.data(),
     static_cast<long long>(table_integer(state,1,"patients",-1)),
     static_cast<long long>(table_integer(state,1,"staff",-1)),
     static_cast<long long>(table_integer(state,1,"rooms",-1)),
@@ -2502,6 +2495,7 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state,"span_begin",l_span_begin);
   set_function(state,"span_end",l_span_end);
   set_function(state,"observe_memory",l_observe_memory);
+  set_function(state,"operation_boundary",l_operation_boundary);
   set_function(state,"flush_observations",l_request_observation_flush);
   set_function(state, "allocation_failure", l_allocation_failure);
   set_function(state, "set_state", l_set_state);
@@ -2526,16 +2520,16 @@ int luaopen_th3ds(lua_State* state) {
 }
 
 void register_lua_module(lua_State* state) {
-  g_compact_flush_us=now_us();g_log_time_us=g_workload_time_us=0;
+  g_observations = {};
+  g_observations.compact_us=now_us();g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
   g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
-  g_timer_events=g_logic_callbacks=g_logic_failures=0;
-  g_terminal_observation=g_terminal_observation_saved=false;
-  g_operation_sample_count=0;g_operation_overflow=0;g_scene_identity.fill(0);g_window_has_operation=false;
-  g_window_scene_changed=false;
-  g_observation_state=state;g_timing.clear();g_timing.reset_window(now_us());
-  g_memory_observations.clear();g_observation_flush_us=now_us();g_observation_flush_requested=false;
+  g_observations.timer_events=g_observations.logic_callbacks=g_observations.logic_failures=0;
+  g_observations.terminal=g_observations.terminal_saved=false;
+  g_observations.window_scene_changed=false;
+  g_observation_state=state;g_observations.timing.clear();g_observations.timing.reset_window(now_us());
+  g_observations.memory.clear();g_observations.full_us=now_us();g_observations.flush_requested=false;
   boot_log_open();
   // R55 diagnostic switches are sampled only at native startup.
   // Reference mode retains the full weighted thermal arithmetic for A/B runs.
@@ -2586,7 +2580,7 @@ void report_fatal(const char* reason) noexcept {
   const char* text = reason != nullptr ? reason : "unknown fatal error";
   boot_log("FATAL: %s", text);
   boot_log_memory("FATAL");
-  g_terminal_observation = true;
+  g_observations.terminal = true;
   runtime_flush_observations(true);
   runtime().show_fatal(text);
   // Give the player time to read the lower screen before the process leaves.
@@ -2655,17 +2649,21 @@ bool runtime_present_game(int cursor_x, int cursor_y) noexcept {
 std::uint64_t runtime_span_begin(TimingStage stage) noexcept {
   // Observation only: a sprite/sound Load span is not a game-load operation.
   // Authoritative save/load/lifecycle boundaries own clock interruption.
-  return g_timing.begin_span(stage, now_us());
+  return g_observations.timing.begin_span(stage, now_us());
 }
 bool runtime_span_end(std::uint64_t token, bool success) noexcept {
-  return g_timing.end_span(token, now_us(), success);
+  return g_observations.timing.end_span(token, now_us(), success);
 }
 void runtime_begin_frame() noexcept { g_top_present_seen = g_top_present_ok = false; }
 void runtime_top_present_complete(bool success) noexcept {
   g_top_present_ok = g_top_present_seen ? g_top_present_ok && success : success;
   g_top_present_seen = true;
 }
-void runtime_frame_skipped() noexcept { g_timing.present_complete(now_us(), PresentResult::Skipped); }
+void runtime_frame_skipped() noexcept { g_observations.timing.present_complete(now_us(), PresentResult::Skipped); }
+void runtime_operation_boundary() noexcept {
+  g_simulation_clock.interrupt();
+  g_observations.window_has_operation=true;
+}
 void runtime_observe_memory(const char* checkpoint, const char* phase, const char* resource,
     MemoryGate gate, std::uint64_t requested, bool requested_known,
     std::uint64_t held, bool held_known, bool failed, bool opaque) noexcept {
@@ -2676,30 +2674,7 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
   const auto o = memory_observation(sample, gate, g_current_stage,
       phase ? phase : "unknown", resource ? resource : "unknown",
       requested, requested_known, held, held_known, failed, opaque);
-  g_memory_observations.observe(checkpoint ? checkpoint : "unknown", o);
-  if(checkpoint && phase && resource) {
-    const bool game_operation=!std::strcmp(checkpoint,"save")||!std::strcmp(checkpoint,"reload")||
-      !std::strcmp(checkpoint,"world")||!std::strcmp(checkpoint,"restore")||
-      (!std::strcmp(checkpoint,"release")&&!std::strcmp(resource,"App:loadMainMenu"));
-    if(game_operation && (!std::strcmp(phase,"before")||!std::strcmp(phase,"after")||
-       !std::strcmp(phase,"committed")||!std::strcmp(phase,"failed")||!std::strcmp(phase,"gc-after"))){
-      g_window_has_operation=true;g_simulation_clock.interrupt();
-    }
-    const bool operation=!std::strcmp(checkpoint,"save")||!std::strcmp(checkpoint,"reload")||!std::strcmp(checkpoint,"world")||!std::strcmp(checkpoint,"release")||!std::strcmp(checkpoint,"restore");
-    const bool boundary=!std::strcmp(phase,"before")||!std::strcmp(phase,"after")||!std::strcmp(phase,"committed")||!std::strcmp(phase,"failed")||!std::strcmp(phase,"gc-before")||!std::strcmp(phase,"gc-after");
-    if(operation&&boundary) {
-      if(g_operation_sample_count<g_operation_samples.size()) {
-        auto& row=g_operation_samples[g_operation_sample_count++];row.observation=o;
-        std::snprintf(row.site.data(),row.site.size(),"%s",checkpoint);
-      }else ++g_operation_overflow;
-    }
-    if(!std::strcmp(phase,"after") && (!std::strncmp(resource,"level:",6)||!std::strcmp(resource,"menu"))) {
-      if (std::strcmp(g_scene_identity.data(), resource)) {
-        g_window_scene_changed=true;
-      }
-      std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"%s",resource);
-    }
-  }
+  g_observations.observe(checkpoint,o);
   if (failed) {
     boot_log("allocation-failure: checkpoint=%s phase=%s resource=%s requested=%llu known=%d",
       checkpoint ? checkpoint : "unknown", o.phase.data(), o.resource.data(),
@@ -2707,118 +2682,27 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
     boot_log_memory(g_current_stage);
   }
 }
-void runtime_note_timer_event() noexcept { ++g_timer_events; }
+void runtime_note_timer_event() noexcept { ++g_observations.timer_events; }
 void runtime_simulation_begin() noexcept { g_simulation_clock.begin(now_us()); }
 bool runtime_simulation_step() noexcept { return g_simulation_clock.take_step(now_us()); }
 bool runtime_frame_due(bool changed) noexcept {
   return g_presentation_clock.take(now_us(),changed,
-    std::strncmp(g_scene_identity.data(),"level:",6)==0);
+    std::strncmp(g_observations.scene.data(),"level:",6)==0);
 }
 void runtime_note_logic_callback(bool success) noexcept {
-  ++g_logic_callbacks;
-  if (!success) { ++g_logic_failures; g_simulation_clock.interrupt(); }
+  ++g_observations.logic_callbacks;
+  if (!success) { ++g_observations.logic_failures; g_simulation_clock.interrupt(); }
 }
 void runtime_flush_observations(bool force) noexcept {
-  if (g_terminal_observation_saved) return;
-  const auto now = now_us();
-  g_observation_flush_requested = g_observation_flush_requested || force;
-  const bool full = g_observation_flush_requested || now - g_observation_flush_us >= 60000000U;
-  if (!full && now - g_compact_flush_us < 10000000U) return;
-  const auto p = g_timing.snapshot(now);
-  const bool compact = force || g_terminal_observation || now - g_compact_flush_us >= 10000000U;
-  if (compact) {
-    update_lua_memory(g_observation_state);
-    const auto m = heap_snapshot();
-    boot_log("perf: at_us=%llu scene=%s elapsed_us=%llu successful=%llu failed=%llu intervals=%llu mean_us=%.0f p95_us=%llu max_us=%llu gap_us=%llu heap_free=%llu heap_low=%llu lua=%llu linear_free=%llu log_us=%llu workload_us=%llu terminal=%d truncated=%d",
-      static_cast<unsigned long long>(now),g_scene_identity.data(),static_cast<unsigned long long>(p.elapsed_us),
-      static_cast<unsigned long long>(p.successful_presents),static_cast<unsigned long long>(p.failed_presents),
-      static_cast<unsigned long long>(p.intervals.count),p.intervals.count ? static_cast<double>(p.intervals.total_us)/static_cast<double>(p.intervals.count) : 0.0,
-      static_cast<unsigned long long>(p.intervals.p95_upper_us),static_cast<unsigned long long>(p.intervals.maximum_us),
-      static_cast<unsigned long long>(p.open_present_gap_us),static_cast<unsigned long long>(m.heap_available_estimate),
-      static_cast<unsigned long long>(m.heap_available_low_water),static_cast<unsigned long long>(m.lua_bytes),
-      static_cast<unsigned long long>(m.linear_free),static_cast<unsigned long long>(g_log_time_us),
-      static_cast<unsigned long long>(g_workload_time_us),g_terminal_observation,g_log.truncated());
-    // Delivered SDL events remain an observation; SimulationClock now decides
-    // callback dispatch. Read debt/dropped time below to judge lost progress.
-    boot_log("simulation-clock: at_us=%llu elapsed_us=%llu timer_events=%llu callbacks=%llu failures=%llu nominal_timer_us=18000",
-      (unsigned long long)now,(unsigned long long)(now-g_compact_flush_us),
-      (unsigned long long)g_timer_events,(unsigned long long)g_logic_callbacks,(unsigned long long)g_logic_failures);
-    g_timer_events=g_logic_callbacks=g_logic_failures=0;
-    const auto clock = g_simulation_clock.statistics();
-    for(std::size_t i=0;i<cpu_work.rows.size();++i) {
-      const auto& row=cpu_work.rows[i];
-      boot_log("cpu-work: at_us=%llu name=%s calls=%llu total_us=%llu max_us=%llu units=%llu enabled=%d inclusive=1",
-        (unsigned long long)now,kCpuWorkNames[i],(unsigned long long)row.calls,
-        (unsigned long long)row.total_us,(unsigned long long)row.max_us,(unsigned long long)row.units,cpu_work.enabled);
-    }
-    cpu_work.rows = {};
-    boot_log("simulation-budget: steps=%llu debt_us=%llu dropped_us=%llu rebases=%llu budget_exits=%llu step_us=18000 max_steps=4 budget_us=24000",
-      (unsigned long long)clock.steps,(unsigned long long)clock.debt_us,
-      (unsigned long long)clock.dropped_us,(unsigned long long)clock.rebases,
-      (unsigned long long)clock.budget_exits);
-    g_compact_flush_us = now;
-    boot_log("log-buffer: capacity=4096 flushes=%llu failed=%d bytes_accepted=%llu flush_time_in_log_us=1",
-      (unsigned long long)g_log.flushes(),g_log.failed(),(unsigned long long)g_log.bytes());
-  }
-  if (!full) { boot_log_flush(); return; }
-  // A save/load may span the scheduled flush time; retain it until quiescent.
-  bool open = false;
-  for (const auto& stage : p.stages) if (stage.open != 0) open = true;
-  if (open && !g_terminal_observation) {
-    if (compact) boot_log_flush();
-    return;
-  }
-  boot_log("observation: terminal=%d active_spans=%d reset_allowed=%d",g_terminal_observation,open,!open);
-  runtime().log_display_stats();
-  const auto& d = p.intervals;
-  boot_log("frame-interval-sum: overflowed=%d",d.total_overflowed);
-  boot_log("segment: scene=%s stable_eligible=%d presentation_api_timing=1 operation_rows=%lu overflow=%llu",
-    g_scene_identity.data(),!g_terminal_observation && !g_window_has_operation && !g_window_scene_changed && g_scene_identity[0] && p.intervals.count>0 && p.failed_presents==0 && p.invalid_events==0,(unsigned long)g_operation_sample_count,(unsigned long long)g_operation_overflow);
-  for(std::size_t i=0;i<g_operation_sample_count;++i){
-    const auto& row=g_operation_samples[i];const auto& o=row.observation;const auto& m=o.sample;
-    boot_log("operation-memory: site=%s phase=%s identity=%s timestamp=%llu heap_available=%llu arena=%llu lua=%llu lua_known=%d linear_free=%llu",
-      row.site.data(),o.phase.data(),o.resource.data(),(unsigned long long)m.timestamp_us,(unsigned long long)m.heap_available_estimate(),(unsigned long long)m.arena,(unsigned long long)m.lua_bytes,m.lua_known,(unsigned long long)m.linear_free);
-  }
-  g_operation_sample_count=0;g_operation_overflow=0;g_window_has_operation=false;
-  g_window_scene_changed=false;
-  boot_log("frames: begin=%llu end=%llu elapsed=%llu success=%llu failed=%llu skipped=%llu count=%llu sum=%llu p50_lo=%llu p50_hi=%llu p95_lo=%llu p95_hi=%llu p99_lo=%llu p99_hi=%llu max=%llu coverage_begin=%llu coverage_end=%llu open_gap=%llu invalid=%llu",
-      (unsigned long long)p.window_begin_us, (unsigned long long)p.observed_until_us,
-      (unsigned long long)p.elapsed_us, (unsigned long long)p.successful_presents,
-      (unsigned long long)p.failed_presents, (unsigned long long)p.skipped_presents,
-      (unsigned long long)d.count, (unsigned long long)d.total_us,
-      (unsigned long long)d.p50_lower_us, (unsigned long long)d.p50_upper_us,
-      (unsigned long long)d.p95_lower_us, (unsigned long long)d.p95_upper_us,
-      (unsigned long long)d.p99_lower_us, (unsigned long long)d.p99_upper_us,
-      (unsigned long long)d.maximum_us, (unsigned long long)p.interval_coverage_begin_us,
-      (unsigned long long)p.interval_coverage_end_us, (unsigned long long)p.open_present_gap_us,
-      (unsigned long long)p.invalid_events);
-  for (std::size_t i = 0; i < p.stages.size(); ++i) {
-    const auto& s = p.stages[i];
-    boot_log("span: stage=%s count=%llu failed=%llu inclusive_us=%llu exclusive_us=%llu max=%llu open=%llu",
-      kTimingStageNames[i], (unsigned long long)s.completed, (unsigned long long)s.failed,
-      (unsigned long long)s.inclusive_us, (unsigned long long)s.exclusive_us, (unsigned long long)s.maximum_us,(unsigned long long)s.open);
-  }
-  for (std::size_t i = 0; i < g_memory_observations.checkpoints().size(); ++i) {
-    const auto& s = g_memory_observations.checkpoints()[i];
-    if (!s.samples) continue;
-    const auto& o = s.latest; const auto& m = o.sample;
-    boot_log("observed-memory: site=%.*s samples=%llu first=%llu last=%llu stage=%s phase=%s resource=%s gate=%.*s env_heap_total=%llu arena=%llu uordblks=%llu fordblks=%llu heap_available_estimate=%llu linear_total=%llu linear_free=%llu lua=%llu lua_known=%d requested=%llu request_known=%d held=%llu held_known=%d min_heap_available=%llu max_heap_used=%llu min_linear_free=%llu max_lua=%llu max_request=%llu max_held=%llu failures=%llu opaque_unknown=%llu truncated=%d sampled_lower_bound=1",
-      (int)kMemoryCheckpointNames[i].size(), kMemoryCheckpointNames[i].data(),
-      (unsigned long long)s.samples, (unsigned long long)s.first_us, (unsigned long long)s.last_us,
-      o.stage.data(), o.phase.data(), o.resource.data(), (int)memory_gate_name(o.gate).size(), memory_gate_name(o.gate).data(),
-      (unsigned long long)m.env_heap_total, (unsigned long long)m.arena, (unsigned long long)m.uordblks,
-      (unsigned long long)m.fordblks, (unsigned long long)m.heap_available_estimate(),
-      (unsigned long long)m.linear_total, (unsigned long long)m.linear_free, (unsigned long long)m.lua_bytes, m.lua_known,
-      (unsigned long long)o.requested_bytes, o.requested_known, (unsigned long long)o.held_bytes, o.held_known,
-      (unsigned long long)s.minimum_heap_available, (unsigned long long)s.maximum_heap_used,
-      (unsigned long long)s.minimum_linear_free, (unsigned long long)s.maximum_lua_bytes,
-      (unsigned long long)s.maximum_requested_bytes, (unsigned long long)s.maximum_known_held_bytes,
-      (unsigned long long)s.allocation_failures, (unsigned long long)s.unknown_temporary_samples, o.identity_truncated);
-  }
-  boot_log_flush();
-  if (g_terminal_observation) { g_terminal_observation_saved = true; return; }
-  g_timing.reset_window(now); g_memory_observations.clear(); g_observation_flush_us = now;
-  g_observation_flush_requested = false;
+  const auto now=now_us();
+  if(!g_observations.due(now,force))return;
+  update_lua_memory(g_observation_state);
+  const auto m=heap_snapshot();
+  const ObservationInputs inputs{now,m.heap_available_estimate,m.heap_available_low_water,
+    m.lua_bytes,m.linear_free,g_log_time_us,g_workload_time_us,g_log.flushes(),g_log.bytes(),
+    g_log.failed(),g_log.truncated(),g_simulation_clock.statistics()};
+  const ObservationOutput output{boot_log,boot_log_flush,[](){runtime().log_display_stats();}};
+  g_observations.flush(inputs,output,force);
 }
 
 void runtime_after_frame(bool draw_success) noexcept { runtime().after_frame(draw_success); }

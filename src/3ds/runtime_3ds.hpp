@@ -60,6 +60,8 @@ bool runtime_simulation_step() noexcept;
 bool runtime_frame_due(bool changed) noexcept;
 void runtime_note_logic_callback(bool success) noexcept;
 void runtime_flush_observations(bool force = false) noexcept;
+//! Explicit operation boundary; observation alone never rebases simulation.
+void runtime_operation_boundary() noexcept;
 void runtime_observe_memory(const char* checkpoint, const char* phase,
     const char* resource, MemoryGate gate, std::uint64_t requested = 0,
     bool requested_known = false, std::uint64_t held = 0,

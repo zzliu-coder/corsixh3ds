@@ -306,14 +306,14 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
   '  if TH3DS then TH3DS.observe_memory("map", "after", "new-map", "Operation") end'),
  ('CorsixTH/Lua/app.lua',
   '  self.world = World(self, determineFreeBuildMode())',
-  '  if TH3DS then TH3DS.observe_memory("world", "before", "world", "Operation") end\n'
+  '  if TH3DS then TH3DS.operation_boundary(); TH3DS.observe_memory("world", "before", "world", "Operation") end\n'
   '  self.world = World(self, determineFreeBuildMode())\n'
-  '  if TH3DS then TH3DS.observe_memory("world", "after", "world", "Operation") end'),
+  '  if TH3DS then TH3DS.operation_boundary(); TH3DS.observe_memory("world", "after", "world", "Operation") end'),
  ('CorsixTH/Lua/app.lua',
   '  self.world:createMapObjects(map_objects)',
-  '  if TH3DS then TH3DS.observe_memory("world", "before", "map-objects", "Operation") end\n'
+  '  if TH3DS then TH3DS.operation_boundary(); TH3DS.observe_memory("world", "before", "map-objects", "Operation") end\n'
   '  self.world:createMapObjects(map_objects)\n'
-  '  if TH3DS then TH3DS.observe_memory("world", "after", "map-objects", "Operation") end'),
+  '  if TH3DS then TH3DS.operation_boundary(); TH3DS.observe_memory("world", "after", "map-objects", "Operation") end'),
  ('CorsixTH/Lua/persistance.lua',
   '  state.map:prepareForSave()',
   '  if TH3DS then TH3DS.observe_memory("save", "prepare-before", "map", "Operation") end\n'
@@ -581,10 +581,10 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
   '    App._loadLevel = function(...)\n'
   '      if not TH3DS then return original(...) end\n'
   '      local token = TH3DS.span_begin("load")\n'
-  '      TH3DS.observe_memory("world", "before", "App:_loadLevel", "Operation")\n'
+  '      TH3DS.operation_boundary(); TH3DS.observe_memory("world", "before", "App:_loadLevel", "Operation")\n'
   '      local result = table.pack(pcall(original, ...))\n'
   '      local success = result[1] and result[2] ~= false\n'
-  '      TH3DS.observe_memory("world", success and "after" or "failed", "App:_loadLevel", "Operation")\n'
+  '      TH3DS.operation_boundary(); TH3DS.observe_memory("world", success and "after" or "failed", "App:_loadLevel", "Operation")\n'
   '      TH3DS.span_end(token, success)\n'
   '      TH3DS.flush_observations()\n'
   '      if not result[1] then error(result[2], 0) end\n'
@@ -596,10 +596,10 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
   '    App.loadMainMenu = function(...)\n'
   '      if not TH3DS then return original(...) end\n'
   '      local token = TH3DS.span_begin("load")\n'
-  '      TH3DS.observe_memory("release", "before", "App:loadMainMenu", "Operation")\n'
+  '      TH3DS.operation_boundary(); TH3DS.observe_memory("release", "before", "App:loadMainMenu", "Operation")\n'
   '      local result = table.pack(pcall(original, ...))\n'
   '      local success = result[1] and result[2] ~= false\n'
-  '      TH3DS.observe_memory("release", success and "after" or "failed", "App:loadMainMenu", "Operation")\n'
+  '      TH3DS.operation_boundary(); TH3DS.observe_memory("release", success and "after" or "failed", "App:loadMainMenu", "Operation")\n'
   '      TH3DS.span_end(token, success)\n'
   '      TH3DS.flush_observations()\n'
   '      if not result[1] then error(result[2], 0) end\n'

@@ -54,7 +54,7 @@ class PlayablePathTests(unittest.TestCase):
         self.lua(f'''
 local module=dofile({str(ROOT/'lua/3ds/platform.lua')!r})
 local events,commits=0,0
-local native={{span_begin=function()return 1 end,span_end=function()end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() end,request_redraw=function() end,
+local native={{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() end,request_redraw=function() end,
  begin_critical_io=function() end,end_critical_io=function() end,
  atomic_commit=function() commits=commits+1;return true end,
  resource_event=function() events=events+1;error('loose event') end}}
@@ -80,7 +80,7 @@ UIInformation=function(ui,text) return text end
 local module=dofile({str(ROOT/'lua/3ds/platform.lua')!r})
 local fail_save,fail_commit,load_result=false,false,true
 local exited,loaded,notices,recovery=0,0,0,0
-local native={{span_begin=function()return 1 end,span_end=function()end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() notices=notices+1 end,
+local native={{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() notices=notices+1 end,
  request_redraw=function() end,begin_critical_io=function() end,end_critical_io=function() end,
  atomic_commit=function() return not fail_commit,'injected rename failure' end}}
 local app={{world={{}},savegame_dir='Saves/',ui={{addWindow=function() end}},
@@ -214,7 +214,7 @@ class U3GeneratedClockTests(unittest.TestCase):
         source.write_text(code)
         compiler = shutil.which('clang++') or shutil.which('g++')
         built = subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
-            '-I'+str(ROOT/'include'), str(source), str(ROOT/'src/common/telemetry.cpp'),
+            '-I'+str(ROOT/'include'), '-I'+str(ROOT/'src/3ds'), str(source), str(ROOT/'src/common/telemetry.cpp'),
             '-o', str(cls.binary)], capture_output=True, text=True)
         if built.returncode: raise RuntimeError(built.stderr)
 
@@ -303,7 +303,7 @@ Platform={}
 TH3DS = {
   span_begin=function(stage) current=current+1; kinds[current]=stage; return current end,
   span_end=function(token, success) if kinds[token]~="gc" then if success then assert(commit_called) end; ended[#ended+1]=success end end,
-  observe_memory=function() end,
+  operation_boundary=function() end,observe_memory=function() end,
   flush_observations=function() end,
 }
 App = {_loadLevel=function() end,loadMainMenu=function() end,
@@ -323,6 +323,7 @@ local ok, err=App:load(); assert(ok==false and err=='incompatible' and ended[#en
 
 
 HARNESS = r'''
+#include "runtime/observation.hpp"
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/presentation_clock.hpp"
@@ -358,7 +359,8 @@ struct SDL_Event {int type=0;
  struct {int event=0,data1=0,data2=0;} window;
  struct {int code=0;void* data1=nullptr;} user;
 };
-cth3ds::Telemetry g_timing;
+cth3ds::RuntimeObservations g_observations;
+auto& g_timing=g_observations.timing;
 std::uint64_t clock_us=0;
 // This timing seam generates no sound-over events. Real SDL event ownership,
 // queue behavior and completion deadlines are covered by test_sound_lifetime.
@@ -372,10 +374,11 @@ std::string_view dispatch;
 std::uint64_t work[10]{},flushes=0;
 void spend(int stage,std::uint64_t base=1000) {++work[stage];clock_us+=base+(stage==delayed?7000:0);}
 namespace cth3ds {
-std::uint64_t g_timer_events=0,g_logic_callbacks=0,g_logic_failures=0;
+auto& g_timer_events=g_observations.timer_events;
+auto& g_logic_callbacks=g_observations.logic_callbacks;
 SimulationClock g_simulation_clock;
 PresentationClock g_presentation_clock;
-std::array<char,96> g_scene_identity{{'l','e','v','e','l',':','1'}};
+const auto initial_scene=[](){std::strcpy(g_observations.scene.data(),"level:1");return true;}();
 std::uint64_t now_us();
 struct RuntimeTimingScope {
  std::uint64_t token;
@@ -394,7 +397,6 @@ void runtime_top_present_complete(bool ok){g_top_present_seen=true;g_top_present
 void runtime_frame_skipped(){g_timing.present_complete(clock_us,PresentResult::Skipped);}
 // INSERT_CLOCK_COUNTERS
 void runtime_flush_observations(bool=false){}
-enum class MemoryGate{Operation};
 void runtime_observe_memory(const char*,const char*,const char*,MemoryGate){}
 std::uint64_t now_us(){return clock_us;}
 enum class BottomScreenMode{Game,Panel};

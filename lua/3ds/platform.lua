@@ -860,16 +860,19 @@ function Platform:installOperationSpans()
     local original = assert(app[method], "missing checked operation " .. method)
     app[method] = function(...)
       local token = native.span_begin(stage)
+      native.operation_boundary()
       native.observe_memory(site, "before", method, "Operation")
       local function baseline(phase)
         local gc_token=native.span_begin("gc")
         collectgarbage("collect")
+        if phase=="gc-after" then native.operation_boundary() end
         native.observe_memory(site,phase,method,"Operation")
         native.span_end(gc_token,true)
       end
       baseline("gc-before")
       local result = pack_values(pcall(original, ...))
       local success = result[1] and result[2] == true
+      native.operation_boundary()
       native.observe_memory(site, success and "committed" or "failed", method, "Operation")
       baseline("gc-after")
       native.span_end(token, success)
@@ -892,7 +895,7 @@ function module.attach(app, native, capabilities)
     assert(existing.completed and existing.native==native and existing.capabilities.epoch==capabilities.epoch, "adapter identity/epoch mismatch")
     return existing
   end
-  for _,name in ipairs({"span_begin","span_end","observe_memory","flush_observations","atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
+  for _,name in ipairs({"span_begin","span_end","observe_memory","operation_boundary","flush_observations","atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
     assert(type(native[name])=="function", "mandatory native API missing: "..name)
   end
   if capabilities.resource_events then assert(type(native.resource_event)=="function", "resource_event missing") end

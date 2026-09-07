@@ -36,12 +36,13 @@ extern "C" {
 #include "cth3ds/cpu_work.hpp"
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/simulation_clock.hpp"
+#include "runtime/observation.hpp"
 #include <cstring>
 #include <cstdio>
 static_assert(LUA_VERSION_NUM==504,"test requires Lua 5.4");
 using namespace cth3ds;
-std::array<char,96> g_scene_identity{};bool g_window_scene_changed=false;
-Telemetry g_timing;SimulationClock g_simulation_clock;
+RuntimeObservations g_observations;
+SimulationClock g_simulation_clock;
 std::uint64_t now_us() noexcept {static std::uint64_t clock=100;return ++clock;}
 struct render_target {};
 template<class T> T* luaT_testuserdata(lua_State*,int,int) { static T c;return &c; }
@@ -244,7 +245,7 @@ class InputNativeBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='cth3ds-input-native-') as temp:
             temp=Path(temp);source=temp/'probe.cpp';binary=temp/'probe';lua=temp/'probe.lua'
             source.write_text(CPP+CURSOR+push+focus+functions+MAIN);lua.write_text(script)
-            cmd=[os.environ.get('CXX','c++'),'-std=c++17','-O1','-g','-I'+str(ROOT/'include'),*flags,
+            cmd=[os.environ.get('CXX','c++'),'-std=c++17','-O1','-g','-I'+str(ROOT/'include'),'-I'+str(ROOT/'src/3ds'),*flags,
                  str(source),str(ROOT/'src/common/input_mapper.cpp'),str(ROOT/'src/common/action_codec.cpp'),
                  str(ROOT/'src/common/telemetry.cpp'),
                  str(ROOT/'src/common/screen_layout.cpp'),*links,'-o',str(binary)]

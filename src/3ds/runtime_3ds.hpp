@@ -26,7 +26,8 @@ void runtime_tick(lua_State* state);
 void runtime_set_game_window(SDL_Window* window) noexcept;
 //! Borrow the native-resolution source owned by render_target. Clear before free.
 void runtime_set_game_canvas(SDL_Surface* surface) noexcept;
-//! Present an already-flushed source. Cursor coordinates come from the game UI.
+//! Present an already-flushed source, following the current App.ui snapshot.
+//! Retain legacy cursor arguments for the renderer ABI; they are ignored.
 [[nodiscard]] bool runtime_present_game(int cursor_x, int cursor_y) noexcept;
 
 //! Called immediately after CorsixTH presents a frame, so the lower screen can
@@ -50,6 +51,9 @@ class RuntimeTimingScope {
 void runtime_begin_frame() noexcept;
 void runtime_top_present_complete(bool success) noexcept;
 void runtime_frame_skipped() noexcept;
+//! Normal-thread counters, aggregated with frame/workload observations.
+void runtime_note_timer_event() noexcept;
+void runtime_note_logic_callback(bool success) noexcept;
 void runtime_flush_observations(bool force = false) noexcept;
 void runtime_observe_memory(const char* checkpoint, const char* phase,
     const char* resource, MemoryGate gate, std::uint64_t requested = 0,

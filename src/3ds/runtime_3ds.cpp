@@ -145,7 +145,10 @@ std::FILE* g_stderr_sink = nullptr;
 #endif
 std::uint64_t g_compact_flush_us = 0, g_log_time_us = 0, g_workload_time_us = 0;
 bool g_terminal_observation = false, g_terminal_observation_saved = false;
-int g_input_cursor_x = 0, g_input_cursor_y = 0; // diagnostic snapshot only
+// Snapshot of App.ui's authoritative pointer, refreshed at each input boundary.
+// The upstream renderer cursor fields are legacy zeros on the 3DS path.
+int g_input_cursor_x = 0, g_input_cursor_y = 0;
+std::uint64_t g_timer_events = 0, g_logic_callbacks = 0, g_logic_failures = 0;
 std::uint64_t g_input_owner_epoch = 0;
 std::uint64_t now_us() noexcept;
 bool g_log_attempted = false;
@@ -972,18 +975,32 @@ class Runtime {
         if (!call_platform_method(state,"inputState",nullptr,&error,&last_context)) throw std::runtime_error(error);
         const auto owner_epoch = g_input_owner_epoch;
         set_view_context(last_context);
+        const auto edges = snapshot.held ^ traced_held_;
+        if (edges & (button_mask(Button::L) | button_mask(Button::Select))) {
+          boot_log("control-edge: at_us=%llu sample_us=%llu held=%lu changed=%lu context=%u cursor=%d,%d",
+            (unsigned long long)now_us(),(unsigned long long)snapshot.timestamp_us,
+            (unsigned long)snapshot.held,(unsigned long)edges,(unsigned)last_context,
+            g_input_cursor_x,g_input_cursor_y);
+        }
+        traced_held_ = snapshot.held;
         const float sample_delta = last_input_us_ && snapshot.timestamp_us >= last_input_us_ ?
           static_cast<float>(snapshot.timestamp_us - last_input_us_) / 1000000.0F : 0.008F;
         last_input_us_ = snapshot.timestamp_us;
         const bool accepted=input_mapper_.dispatch_mixed(snapshot,std::min(sample_delta,0.1F),
           [&] { InputContext context;
             if(!call_platform_method(state,"inputState",nullptr,&error,&context))throw std::runtime_error(error);
-            last_context = context; return context;
+            last_context = context; set_view_context(context); return context;
           },
           [&](const Action& action){
             bool ok = true;
             if (action.type == ActionType::MoveViewport) move_view(action.vector);
-            else if (action.type == ActionType::ToggleView) toggle_view();
+            else if (action.type == ActionType::ToggleView) {
+              toggle_view();
+              boot_log("view-toggle: context=%u source=%dx%d origin=%d,%d cursor=%d,%d",
+                (unsigned)view_context_,view_width_,view_height_,top_origin_.x,top_origin_.y,
+                g_input_cursor_x,g_input_cursor_y);
+              trace_next_present_ = true;
+            }
             else if (activation_needs_focus(action)) {
               focus_view(g_input_cursor_x, g_input_cursor_y);
               set_notice("TARGET REVEALED - PRESS AGAIN", false);
@@ -1000,6 +1017,7 @@ class Runtime {
           });
         if(!accepted)throw std::runtime_error(error.empty()?"input batch rejected":error);
         if (!call_platform_method(state,"inputState",nullptr,&error,&last_context)) throw std::runtime_error(error);
+        set_view_context(last_context);
         if (input_collector_.take_cancellation() || owner_epoch != g_input_owner_epoch) {
           input_collector_.discard(); (void)input_collector_.take_cancellation();
           cancel_input(state); break;
@@ -1134,6 +1152,7 @@ class Runtime {
   void set_view_context(InputContext context) {
     if (context != view_context_) {
       view_context_ = context;
+      detail_wide_view_ = false; // newly entered dialogs start in readable 1:1
       if (context == InputContext::PlaceObject)
         set_notice("A: PLACE  X: ROTATE  B: CANCEL", false);
       else if (context == InputContext::BuildRoom)
@@ -1143,18 +1162,21 @@ class Runtime {
     }
     const bool map = context == InputContext::World || context == InputContext::BuildRoom || context == InputContext::PlaceObject;
     view_map_context_ = map;
-    const int width = map && wide_view_ ? 480 : 400;
-    const int height = map && wide_view_ ? 288 : 240;
+    const bool wide = map ? wide_view_ : detail_wide_view_;
+    const int width = wide ? 480 : 400;
+    const int height = wide ? 288 : 240;
     if (width != view_width_) {
       const int x = top_origin_.x + view_width_ / 2, y = top_origin_.y + view_height_ / 2;
       view_width_ = width; view_height_ = height; focus_view(x, y);
     }
   }
   void toggle_view() {
-    if (!view_map_context_) { set_notice("MENUS USE CLEAR VIEW", false); return; }
-    wide_view_ = !wide_view_;
-    set_view_context(InputContext::World);
-    set_notice(wide_view_ ? "WIDE 480x288 - L: CLEAR" : "CLEAR 400x240 - L: WIDE", false);
+    // L is explicit user intent in every context. Menus start clear, but can
+    // be widened manually without losing the hospital's preferred view mode.
+    if (view_map_context_) wide_view_ = !wide_view_;
+    else detail_wide_view_ = !detail_wide_view_;
+    set_view_context(view_context_);
+    set_notice(view_width_ == 480 ? "WIDE 480x288 - L: CLEAR" : "CLEAR 400x240 - L: WIDE", false);
   }
   void move_view(Vec2f delta) noexcept {
     view_remainder_.x += delta.x; view_remainder_.y += delta.y;
@@ -1197,12 +1219,12 @@ class Runtime {
            (dst == SDL_PIXELFORMAT_ABGR8888 || dst == SDL_PIXELFORMAT_RGBA8888);
   }
 
-  bool present_game(int cursor_x, int cursor_y) {
+  bool present_game(int /*legacy_cursor_x*/, int /*legacy_cursor_y*/) {
     if (!game_window_ || !game_surface_) return false;
     SDL_Surface* output = SDL_GetWindowSurface(game_window_);
     if (!valid_output_surface(output, 400, 240))
       return display_failure("E-DISPLAY", "INVALID TOP CANVAS");
-    const Vec2i pointer{cursor_x, cursor_y};
+    const Vec2i pointer{g_input_cursor_x, g_input_cursor_y};
     if (!view_initialized_ || pointer.x != previous_pointer_.x || pointer.y != previous_pointer_.y)
       top_origin_ = follow_pointer_viewport(top_origin_, pointer, 640, 480, view_width_, view_height_);
     previous_pointer_ = pointer;
@@ -1222,16 +1244,22 @@ class Runtime {
     top_submit_us_ += now_us() - submitted_at;
     ++top_attempts_;
     if (!submitted) return display_failure("E-DISPLAY", "TOP PRESENT FAILED");
+    if (trace_next_present_) {
+      boot_log("view-present: source=%dx%d origin=%d,%d cursor=%d,%d submitted=1",
+        view_width_,view_height_,top_origin_.x,top_origin_.y,pointer.x,pointer.y);
+      trace_next_present_ = false;
+    }
     return true;
   }
 
   void log_display_stats() noexcept {
     if (!top_attempts_ && !display_error_count_) return;
-    boot_log("display-stats: attempts=%llu copy_us=%llu submit_us=%llu errors=%llu view_x=%d view_y=%d",
+    boot_log("display-stats: attempts=%llu copy_us=%llu submit_us=%llu errors=%llu view_x=%d view_y=%d view_w=%d view_h=%d context=%u",
         static_cast<unsigned long long>(top_attempts_),
         static_cast<unsigned long long>(top_copy_us_),
         static_cast<unsigned long long>(top_submit_us_),
-        static_cast<unsigned long long>(display_error_count_), top_origin_.x, top_origin_.y);
+        static_cast<unsigned long long>(display_error_count_), top_origin_.x, top_origin_.y,
+        view_width_,view_height_,(unsigned)view_context_);
     top_attempts_ = top_copy_us_ = top_submit_us_ = display_error_count_ = 0;
     boot_log("bottom-stats: attempts=%llu copy_us=%llu submit_us=%llu",
       static_cast<unsigned long long>(bottom_attempts_),static_cast<unsigned long long>(bottom_copy_us_),
@@ -1742,7 +1770,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R48 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R49 " + state.build_tag;
     if (text.empty()) {
       return;
     }
@@ -1829,7 +1857,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R48 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R49 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -1925,7 +1953,9 @@ class Runtime {
   Vec2i top_origin_{120, 120};
   Vec2f view_remainder_{};
   int view_width_{400}, view_height_{240};
-  bool wide_view_{false}, view_map_context_{false};
+  bool wide_view_{false}, view_map_context_{false}, detail_wide_view_{false};
+  bool trace_next_present_{false};
+  std::uint32_t traced_held_{0};
   InputContext view_context_{InputContext::World};
   Vec2i previous_pointer_{};
   bool view_initialized_{false};
@@ -2389,6 +2419,7 @@ int luaopen_th3ds(lua_State* state) {
 
 void register_lua_module(lua_State* state) {
   g_compact_flush_us=now_us();g_log_time_us=g_workload_time_us=0;
+  g_timer_events=g_logic_callbacks=g_logic_failures=0;
   g_terminal_observation=g_terminal_observation_saved=false;
   g_operation_sample_count=0;g_operation_overflow=0;g_scene_identity.fill(0);g_window_has_operation=false;
   g_window_scene_changed=false;
@@ -2399,7 +2430,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R48 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
+  boot_log("diagnostics: revision=R49 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2539,6 +2570,11 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
     boot_log_memory(g_current_stage);
   }
 }
+void runtime_note_timer_event() noexcept { ++g_timer_events; }
+void runtime_note_logic_callback(bool success) noexcept {
+  ++g_logic_callbacks;
+  if (!success) ++g_logic_failures;
+}
 void runtime_flush_observations(bool force) noexcept {
   if (g_terminal_observation_saved) return;
   const auto now = now_us();
@@ -2558,6 +2594,12 @@ void runtime_flush_observations(bool force) noexcept {
       static_cast<unsigned long long>(m.heap_available_low_water),static_cast<unsigned long long>(m.lua_bytes),
       static_cast<unsigned long long>(m.linear_free),static_cast<unsigned long long>(g_log_time_us),
       static_cast<unsigned long long>(g_workload_time_us),g_terminal_observation,g_log.truncated());
+    // Actual delivered timer events and dispatched App:onTick callbacks.
+    // Their difference measures coalescing, not a simulated CPU/GPU load.
+    boot_log("simulation-clock: at_us=%llu elapsed_us=%llu timer_events=%llu callbacks=%llu failures=%llu nominal_timer_us=18000",
+      (unsigned long long)now,(unsigned long long)(now-g_compact_flush_us),
+      (unsigned long long)g_timer_events,(unsigned long long)g_logic_callbacks,(unsigned long long)g_logic_failures);
+    g_timer_events=g_logic_callbacks=g_logic_failures=0;
     g_compact_flush_us = now;
   }
   if (!full) return;

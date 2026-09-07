@@ -1,0 +1,111 @@
+-- Exact method excerpts from MIT-licensed CorsixTH 0.70.1.
+-- Copyright (c) CorsixTH contributors; see repository LICENSE.
+-- Pin: 56bd5d00f76331c7f76d7b696726a7926303ca0c
+-- Sources: CorsixTH/Lua/world.lua and Lua/dialogs/place_objects.lua.
+-- Only constructors and peripheral world/UI services are host test seams.
+local unpack = table.unpack
+World = {}; UIPlaceObjects = {}
+
+local tick_rates = {
+  ["Pause"]              = {0, 1},
+  ["Slowest"]            = {1, 56}, -- 1 hour per s
+  ["Slower"]             = {1, 12}, -- 1 hour per 216ms
+  ["Normal"]             = {1, 3}, -- 1 hour per 54 ms
+  ["Max speed"]          = {1, 2}, -- 1 hour per 36 ms
+  ["And then some more"] = {1, 1}, -- 1 hour per 18ms
+  ["Speed Up"]           = {8, 1},
+}
+
+function World:isCurrentSpeed(speed)
+  local hours_per_tick, tick_rate = unpack(tick_rates[speed])
+  return self.hours_per_tick == hours_per_tick and self.tick_rate == tick_rate
+end
+
+function World:getCurrentSpeed()
+  for name, rate in pairs(tick_rates) do
+    if rate[1] == self.hours_per_tick and rate[2] == self.tick_rate then
+      return name
+    end
+  end
+end
+
+function World:setSpeed(new_speed)
+  if self:isCurrentSpeed(new_speed) then return end
+  if self:mustPause() and new_speed ~= "Pause" then return end -- "Must pause" takes precedence
+  tracy.Message("Changing speed to " .. new_speed)
+
+  if new_speed == "Pause" then
+    self.ui.hospital:tickEarthquake("pause")
+  end
+
+  local old_speed = self:getCurrentSpeed()
+  if old_speed ~= "Pause" and old_speed ~= "Speed Up" then
+    self.prev_speed = old_speed
+  end
+
+  local was_paused = old_speed == "Pause"
+  local old_tick_rate = self.tick_rate or 1
+  local new_hours_per_tick, new_tick_rate = unpack(tick_rates[new_speed])
+
+  if was_paused then
+    TheApp.audio:onEndPause()
+    self.tick_timer = new_tick_rate
+  else
+    self.tick_timer = math.ceil((self.tick_timer or 0) / old_tick_rate * new_tick_rate)
+  end
+
+  self.hours_per_tick = new_hours_per_tick
+  self.tick_rate = new_tick_rate
+
+  self:updateUserActionsAllowed()
+  self:updateScreenBlueFilter()
+
+  return false
+end
+
+function World:speedUp()
+  self:setSpeed("Speed Up")
+end
+
+function World:previousSpeed()
+  if self:isCurrentSpeed("Speed Up") then
+    self:setSpeed(self.prev_speed)
+  end
+end
+
+function World:mustPause()
+  return self.ui:anyMustPauseWindowOpen()
+end
+
+function UIPlaceObjects:onMouseUp(button, x, y)
+  local repaint = Window.onMouseUp(self, button, x, y)
+
+  -- We don't want to place objects because we are selecting new objects for adding in a room being built/edited
+  -- Or the game is paused.
+  if not self.place_objects or not self.world.user_actions_allowed then
+    return
+  end
+
+  if button == "right" then
+    self:tryNextOrientation()
+    repaint = true
+  elseif button == "left" then
+    if #self.objects > 0 then
+      local s = TheApp.config.ui_scale
+      if 0 <= x and x < self.width * s and 0 <= y and y < self.height * s then -- luacheck: ignore 542
+        -- Click within window - do nothing
+      elseif self.object_cell_x and self.object_cell_y then
+        if self.object_blueprint_good then
+          if not self.world:anyHumanoidObscuringArea(self.object_cell_x, self.object_cell_y) then
+            self:placeObject()
+            repaint = true
+          end
+        else
+          self.ui:tutorialStep(3, {13, 15}, 14)
+        end
+      end
+    end
+  end
+
+  return repaint
+end

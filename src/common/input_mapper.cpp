@@ -162,6 +162,10 @@ bool InputMapper::dispatch_mixed(const RawInputSnapshot& input,
       ActionType type = ActionType::None;
       if (button == Button::R) continue; // modifier only, no conflicting zoom.
       if (button == Button::L) type = ActionType::ToggleView;
+      if (button == Button::Select && !precise) type = ActionType::SpeedCycle;
+      if (button == Button::Y && (face_context == InputContext::World ||
+          face_context == InputContext::BuildRoom || face_context == InputContext::PlaceObject))
+        type = ActionType::ToggleWalls;
       if (precise && button == Button::Start) type = ActionType::OpenSaveSlots;
       if (precise && button == Button::Select) type = ActionType::ShowHelp;
       if (button == Button::A && face_context == InputContext::TextInput) type = ActionType::TextKeyboard;

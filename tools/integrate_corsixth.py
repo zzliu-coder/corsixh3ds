@@ -1900,6 +1900,33 @@ def patch_sound_initialization(root: Path, dry_run: bool = False) -> list[Change
     return [Change("CorsixTH/Src/th_sound.cpp", "sound-init-transaction")]
 
 
+SIMULATION_CLOCK_SITES = (
+    ('        case SDL_USEREVENT_TICK:\n          do_timer = true;',
+     '        case SDL_USEREVENT_TICK:\n#ifdef CORSIXTH_3DS\n'
+     '          cth3ds::runtime_note_timer_event();\n#endif\n          do_timer = true;'),
+    ('      u3_logic.finish(res == LUA_OK);\n#endif',
+     '      u3_logic.finish(res == LUA_OK);\n'
+     '      cth3ds::runtime_note_logic_callback(res == LUA_OK);\n#endif'),
+)
+
+
+def patch_simulation_clock(root: Path) -> list[Change]:
+    # This upgrade also accepts a previously integrated R48 tree. Counter calls
+    # stay on the main thread; the 18ms SDL timer never writes a log or Lua.
+    path = root / "CorsixTH/Src/sdl_core.cpp"
+    before = text = read_text(path)
+    for old, new in SIMULATION_CLOCK_SITES:
+        if text.count(new) == 1:
+            continue
+        if text.count(old) != 1:
+            raise IntegrationError("simulation clock anchor mismatch")
+        text = text.replace(old, new, 1)
+    if text == before:
+        return []
+    write_text(path, text, False)
+    return [Change("CorsixTH/Src/sdl_core.cpp", "simulation-clock")]
+
+
 def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors: list[str] = check_sound_lifetime(root, SOUND_INIT_R41_TRANSACTION)
     errors.extend(check_dual_screen(root))
@@ -1907,6 +1934,9 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors.extend(check_sprite_residency(root))
     errors.extend(check_handheld_ui(root))
     errors.extend(check_load_recovery(root))
+    clock_source = read_text(root / "CorsixTH/Src/sdl_core.cpp")
+    if any(clock_source.count(new) != 1 for _, new in SIMULATION_CLOCK_SITES):
+        errors.append("simulation clock observation sites missing or changed")
     if SOUND_INIT_TRANSACTION not in read_text(root / "CorsixTH/Src/th_sound.cpp"):
         errors.append("sound initialization transaction missing or changed")
     marker_files = {
@@ -1994,6 +2024,7 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
             shutil.copytree(root,preview,ignore=shutil.ignore_patterns(".git"))
             patch_sources(preview,False);patch_product_sources(preview,False)
             changes = patch_u3_observations(preview,False)
+            changes.extend(patch_simulation_clock(preview))
             changes.extend(Change(path, "dual-screen-canvas") for path in patch_dual_screen(preview))
             return changes
     changes = []
@@ -2670,6 +2701,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                            patch_load_recovery(root))
         changes.extend(patch_u3_observations(root, args.dry_run))
         if not args.dry_run:
+            changes.extend(patch_simulation_clock(root))
             changes.extend(Change(path, "sound-callbacks") for path in
                            patch_sound_callbacks(root))
             changes.extend(Change(path, "sprite-residency") for path in

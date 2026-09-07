@@ -74,6 +74,10 @@ TEST(overview_controls_have_independent_map_view_cursor_and_shortcuts) {
   EXPECT_EQ(a[0].type,ActionType::ShowHelp);
   a=actions(InputContext::TextInput,button_mask(Button::A),0);EXPECT_EQ(a[0].type,ActionType::TextKeyboard);
   a=actions(InputContext::World,button_mask(Button::L),0);EXPECT_EQ(a[0].type,ActionType::ToggleView);
+  a=actions(InputContext::World,button_mask(Button::Select),0);EXPECT_EQ(a[0].type,ActionType::SpeedCycle);
+  a=actions(InputContext::World,button_mask(Button::Y),0);EXPECT_EQ(a[0].type,ActionType::ToggleWalls);
+  a=actions(InputContext::PlaceObject,button_mask(Button::B),0);EXPECT_EQ(a[0].type,ActionType::Cancel);
+  a=actions(InputContext::PlaceObject,button_mask(Button::X),0);EXPECT_EQ(a[0].type,ActionType::RotateObject);
 }
 
 TEST(wide_view_has_exact_nearest_pixels_with_padding_and_edges) {

@@ -627,10 +627,28 @@ end
 
 function Platform:cycleSpeed()
   local world = self.app.world
-  if not world then return end
-  local current = tonumber(world.game_speed) or 0
-  local next_speed = current == 0 and 1 or (current >= 3 and 1 or current + 1)
-  safe_call(world, "setSpeed", next_speed)
+  if not world then return true end
+  -- World uses named rates, and setSpeed returns false even on success.
+  -- Read back the authoritative rate; mandatory pauses take precedence.
+  local current = world:getCurrentSpeed()
+  if current == "Pause" or world:mustPause() then
+    native_notice(self.native, "PAUSED - RESUME BEFORE CHANGING SPEED", false)
+    return true
+  end
+  local next_speed = current == "Normal" and "Max speed" or
+    current == "Max speed" and "And then some more" or "Normal"
+  local ok, err = pcall(world.setSpeed, world, next_speed)
+  if not ok then return false, "speed change: " .. tostring(err) end
+  local actual = world:getCurrentSpeed()
+  if actual ~= next_speed then
+    native_notice(self.native, "SPEED UNCHANGED: " .. tostring(actual), false)
+    return true
+  end
+  local label = actual == "Normal" and "NORMAL" or
+    actual == "Max speed" and "FAST (1.5x TARGET)" or "FASTER (3x TARGET)"
+  native_notice(self.native, "SPEED: " .. label, false)
+  native_checkpoint(self.native, "game_speed", "selected", actual)
+  return true
 end
 
 --! Zoom is deliberately disabled on Old 3DS.
@@ -675,7 +693,8 @@ function Platform:handleAction(action)
     return self:handlePointer{kind = "up"}
   elseif kind == "pan_camera" then
     if ui and type(ui.scrollMap) == "function" then
-      safe_call(ui, "scrollMap", -(action.dx or 0), -(action.dy or 0))
+      -- Same screen-offset convention as upstream's arrow-key handlers.
+      ui:scrollMap(action.dx or 0, action.dy or 0)
     end
   elseif kind == "cursor_step" then
     local ok, err = self:moveCursor(action.dx or 0, action.dy or 0, action.value == 1)
@@ -688,7 +707,8 @@ function Platform:handleAction(action)
     if top_window(ui) == ui.menu_bar and self:closeMenuBar() then
       -- The menu owns cancellation; do not send Escape into the world.
     elseif kind == "close_top_window" or context == "dialog" or
-       context == "menu" or context == "text_input" then
+       context == "menu" or context == "text_input" or
+       context == "place_object" or context == "build_room" then
       self:dispatchKey("Escape")
     else
       local ok, err = self:click(3, false)
@@ -716,7 +736,7 @@ function Platform:handleAction(action)
   elseif kind == "pause_toggle" then
     if world then safe_call(world, "pauseOrUnpause") end
   elseif kind == "speed_cycle" then
-    self:cycleSpeed()
+    return self:cycleSpeed()
   elseif kind == "overview" or kind == "open_town_map" then
     self:invokeBottom("dialogTownMap")
   elseif kind == "open_build" then
@@ -756,8 +776,8 @@ function Platform:handleAction(action)
     ui:addWindow(UIInformation(ui, {
       "D-PAD: MOVE HOSPITAL", "CIRCLE: MOVE TOP VIEW (MENU: CURSOR)",
       "PEN: CLICK / DRAG    A: CONFIRM", "B: BACK    X: MENU / ROTATE",
-      "Y: DETAILS / WALLS    L: CLEAR / WIDE", "R + D-PAD: PRECISE CURSOR",
-      "START: PAUSE    SELECT: TOWN MAP", "R + START: SAVE SLOTS",
+      "Y: WALLS    L: CLEAR / WIDE", "R + D-PAD: PRECISE CURSOR",
+      "START: PAUSE    SELECT: SPEED", "R + START: SAVE SLOTS",
       "TEXT FIELD + A: KEYBOARD", "R + SELECT: THIS HELP",
     }))
     return self:prepareInput()

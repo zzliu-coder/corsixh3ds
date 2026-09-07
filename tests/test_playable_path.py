@@ -2488,6 +2488,9 @@ class U3GeneratedClockTests(unittest.TestCase):
         bottom = function_body(runtime, '  void after_frame(bool draw_success)')
         present = function_body(runtime, 'bool runtime_present_game(int cursor_x, int cursor_y) noexcept')
         code = HARNESS.replace('// INSERT_TOP', top).replace('// INSERT_BOTTOM', bottom).replace('// INSERT_LOOP', loop).replace('// INSERT_PRESENT', present)
+        code = code.replace('// INSERT_CLOCK_COUNTERS',
+            function_body(runtime, 'void runtime_note_timer_event() noexcept') + '\n' +
+            function_body(runtime, 'void runtime_note_logic_callback(bool success) noexcept'))
         source = directory/'loop.cpp'
         source.write_text(code)
         compiler = shutil.which('clang++') or shutil.which('g++')
@@ -2500,8 +2503,8 @@ class U3GeneratedClockTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def run_case(self, stage, failure=0):
-        result = subprocess.run([str(self.binary), str(stage), str(failure)],
+    def run_case(self, stage, failure=0, extra_timers=0):
+        result = subprocess.run([str(self.binary), str(stage), str(failure), str(extra_timers)],
             check=True, capture_output=True, text=True)
         return json.loads(result.stdout)
 
@@ -2509,6 +2512,11 @@ class U3GeneratedClockTests(unittest.TestCase):
         baseline = self.run_case(-1)
         self.assertEqual(baseline['success'], 301)
         self.assertEqual(baseline['count'], 300)
+        self.assertEqual(baseline['timers'], 301)
+        self.assertEqual(baseline['callbacks'], 301)
+        coalesced = self.run_case(-1, extra_timers=2)
+        self.assertEqual(coalesced['timers'], 903)
+        self.assertEqual(coalesced['callbacks'], 301)
         for delayed in (2, 3, 4, 5, 7):
             with self.subTest(delayed=delayed):
                 value = self.run_case(delayed)
@@ -2628,6 +2636,7 @@ bool g_top_present_seen=false,g_top_present_ok=false;
 std::string_view dispatch;
 void spend(int stage,std::uint64_t base=1000) {clock_us+=base+(stage==delayed?7000:0);}
 namespace cth3ds {
+std::uint64_t g_timer_events=0,g_logic_callbacks=0,g_logic_failures=0;
 struct RuntimeTimingScope {
  std::uint64_t token;
  explicit RuntimeTimingScope(TimingStage stage):token(g_timing.begin_span(stage,clock_us)){}
@@ -2643,6 +2652,7 @@ bool runtime_consume_sdl_event(const SDL_Event&){spend(0);return false;}
 void runtime_begin_frame(){g_top_present_seen=g_top_present_ok=false;}
 void runtime_top_present_complete(bool ok){g_top_present_seen=true;g_top_present_ok=ok;}
 void runtime_frame_skipped(){g_timing.present_complete(clock_us,PresentResult::Skipped);}
+// INSERT_CLOCK_COUNTERS
 void runtime_flush_observations(bool=false){}
 enum class MemoryGate{Operation};
 void runtime_observe_memory(const char*,const char*,const char*,MemoryGate){}
@@ -2681,8 +2691,9 @@ struct Fps{bool limit_fps=true,track_fps=false;void count_frame(){}} fps;
 int timer_frame_callback=0;
 int SDL_AddTimer(int,int,void*){return 1;}
 void SDL_RemoveTimer(int){}
-int SDL_WaitEvent(SDL_Event* e){clock_us+=1000;e->type=iterations++<301?SDL_USEREVENT_TICK:SDL_QUIT;return 1;}
-int SDL_PollEvent(SDL_Event*){return 0;}
+int extra_timers=0,remaining_timers=0;
+int SDL_WaitEvent(SDL_Event* e){clock_us+=1000;remaining_timers=extra_timers;e->type=iterations++<301?SDL_USEREVENT_TICK:SDL_QUIT;return 1;}
+int SDL_PollEvent(SDL_Event* e){if(remaining_timers>0){--remaining_timers;e->type=SDL_USEREVENT_TICK;return 1;}return 0;}
 const char* SDL_GetKeyName(int){return "key";}
 void l_push_modifiers_table(lua_State*,int){}
 void push_app_dispatch(lua_State*,std::string_view kind){dispatch=kind;}
@@ -2719,11 +2730,12 @@ constexpr auto dispatch_keydown="keydown"sv,dispatch_keyup="keyup"sv,dispatch_te
 // INSERT_LOOP
 int main(int argc,char** argv){
  delayed=argc>1?std::atoi(argv[1]):-1;failure=argc>2?std::atoi(argv[2]):0;
+ extra_timers=argc>3?std::atoi(argv[3]):0;
  lua_State state;mainloop(&state);const auto s=g_timing.snapshot(clock_us);
  std::cout<<"{\"success\":"<<s.successful_presents<<",\"failed\":"<<s.failed_presents
  <<",\"skipped\":"<<s.skipped_presents<<",\"count\":"<<s.intervals.count
  <<",\"sum\":"<<s.intervals.total_us<<",\"exclusive\":[";
  for(std::size_t i=0;i<10;++i){if(i)std::cout<<",";std::cout<<s.stages[i].exclusive_us;}
- std::cout<<"]}";
+ std::cout<<"],\"timers\":"<<cth3ds::g_timer_events<<",\"callbacks\":"<<cth3ds::g_logic_callbacks<<"}";
 }
 '''

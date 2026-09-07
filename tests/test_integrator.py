@@ -5,6 +5,7 @@ import contextlib
 import io
 import inspect
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +33,42 @@ OVERLAY = ROOT
 
 
 class IntegratorTests(unittest.TestCase):
+    def test_platform_registry_is_shared_by_copy_host_and_arm(self) -> None:
+        from integrate_corsixth import iter_overlay_files
+        from integration.platform_sources import platform_files
+        sources, headers = platform_files(ROOT / 'src/3ds')
+        copied = {str(target): str(source.relative_to(ROOT)) for source, target in iter_overlay_files(ROOT)}
+        for name in [*sources, *headers, 'sources.cmake']:
+            self.assertEqual(copied['CorsixTH/Src/3ds/' + name], 'src/3ds/' + name)
+        self.assertIn('runtime/game_view.cpp', sources)
+        self.assertIn('include(src/3ds/sources.cmake)', (ROOT/'CMakeLists.txt').read_text())
+        self.assertIn('integration/platform_sources.py', (ROOT/'scripts/check_arm_codegen.sh').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            upstream = self.make_upstream(Path(directory)/'upstream')
+            code, _, error = self.run_main(str(upstream))
+            self.assertEqual(code, 0, error)
+            cmake = (upstream/'CorsixTH/Src/3ds/corsixth_3ds_sources.cmake').read_text()
+            self.assertIn('include("${CTH3DS_PLATFORM_ROOT}/sources.cmake")', cmake)
+            for name in sources + headers:
+                self.assertEqual((upstream/'CorsixTH/Src/3ds'/name).read_bytes(), (ROOT/'src/3ds'/name).read_bytes())
+
+    def test_platform_registry_rejects_missing_extra_and_duplicate_files(self) -> None:
+        from integration.platform_sources import platform_files
+        with tempfile.TemporaryDirectory() as directory:
+            native = Path(directory)/'native'
+            shutil.copytree(ROOT/'src/3ds', native)
+            registry = native/'sources.cmake'
+            original = registry.read_text()
+            for replacement in ('missing.cpp', 'runtime_3ds.cpp', '../game_view.cpp'):
+                with self.subTest(replacement=replacement):
+                    registry.write_text(original.replace('runtime/game_view.cpp', replacement))
+                    with self.assertRaises(ValueError):
+                        platform_files(native)
+            registry.write_text(original)
+            (native/'unregistered.cpp').write_text('// new module must be registered\n')
+            with self.assertRaises(ValueError):
+                platform_files(native)
+
     def test_writer_uses_python39_exact_lf_atomic_publish(self) -> None:
         from integrate_corsixth import write_text
         source = inspect.getsource(write_text)

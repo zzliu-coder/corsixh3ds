@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from .platform_sources import platform_files
 from typing import Iterable, Sequence
 import shutil
 import subprocess
@@ -82,7 +83,8 @@ def iter_overlay_files(overlay: Path) -> Iterable[tuple[Path, Path]]:
         yield source, Path("CorsixTH/Src/3ds/include/cth3ds") / source.name
     for source in sorted((overlay / "src" / "common").glob("*.cpp")):
         yield source, Path("CorsixTH/Src/3ds/common") / source.name
-    for name in ("runtime_3ds.cpp", "runtime_3ds.hpp", "embedded_platform_lua.hpp"):
+    sources, headers = platform_files(overlay / "src/3ds")
+    for name in [*sources, *headers, "sources.cmake"]:
         source = overlay / "src" / "3ds" / name
         yield source, Path("CorsixTH/Src/3ds") / name
     yield overlay / "lua" / "3ds" / "platform.lua", Path("CorsixTH/Lua/3ds/platform.lua")
@@ -134,9 +136,11 @@ file(GLOB CTH3DS_COMMON_SOURCES CONFIGURE_DEPENDS
   "${CTH3DS_PLATFORM_ROOT}/common/*.cpp")
 
 target_sources(CorsixTH_lib PRIVATE
-  ${CTH3DS_COMMON_SOURCES}
-  "${CTH3DS_PLATFORM_ROOT}/runtime_3ds.cpp"
-  "${CTH3DS_PLATFORM_ROOT}/runtime_3ds.hpp")
+  ${CTH3DS_COMMON_SOURCES})
+include("${CTH3DS_PLATFORM_ROOT}/sources.cmake")
+foreach(CTH3DS_PLATFORM_FILE IN LISTS CTH3DS_PLATFORM_SOURCES CTH3DS_PLATFORM_HEADERS)
+  target_sources(CorsixTH_lib PRIVATE "${CTH3DS_PLATFORM_ROOT}/${CTH3DS_PLATFORM_FILE}")
+endforeach()
 
 target_include_directories(CorsixTH_lib PUBLIC
   "${CTH3DS_PLATFORM_ROOT}"

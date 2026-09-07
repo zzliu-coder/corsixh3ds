@@ -14,16 +14,6 @@ from test_playable_path import original_sources
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def cpp_method(source, signature):
-    start = source.index(signature)
-    brace = source.index('{', start)
-    depth, at = 1, brace + 1
-    while depth:
-        depth += (source[at] == '{') - (source[at] == '}')
-        at += 1
-    return source[start:at]
-
-
 class HandheldControlsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -105,96 +95,13 @@ assert(p:handleAction{type='rotate_object'});assert(rotations==1 and #keys==2)
 ''')
 
     def test_runtime_pointer_authority_view_modes_and_real_pixels(self):
-        runtime = (ROOT/'src/3ds/runtime_3ds.cpp').read_text()
-        signatures = ['  void focus_view(', '  void set_view_context(', '  void toggle_view(',
-                      '  void move_view(', '  bool activation_needs_focus(',
-                      '  bool valid_output_surface(', '  bool present_game(']
-        methods = '\n'.join(cpp_method(runtime, sig) for sig in signatures)
-        members = runtime[runtime.index('  SDL_Window* game_window_{'):runtime.index('  Uint32 game_window_id_')]
-        harness = r'''
-#include <SDL.h>
-#include <algorithm>
-#include <cassert>
-#include <cstdio>
-#include <string>
-#include "cth3ds/events.hpp"
-#include "cth3ds/input_mapper.hpp"
-#include "cth3ds/hid_snapshot.hpp"
-#include "cth3ds/framebuffer_scaler.hpp"
-using namespace cth3ds;
-int g_input_cursor_x=320,g_input_cursor_y=240;
-SDL_Surface* destination{};
-std::uint64_t now_us(){static std::uint64_t t=0;return ++t;}
-void boot_log(const char*,...){}
-#define SDL_GetWindowSurface(window) destination
-#define SDL_UpdateWindowSurface(window) 0
-struct ViewProbe {
-''' + members + r'''
- std::string notice;
- void request_redraw(){}
- void set_notice(std::string text,bool){notice=text;}
- bool display_failure(const char*,const char*){return false;}
-''' + methods + r'''
-};
-int main(){
- destination=SDL_CreateRGBSurfaceWithFormat(0,400,240,32,SDL_PIXELFORMAT_RGBA8888);
- auto* source=SDL_CreateRGBSurfaceWithFormat(0,640,480,32,SDL_PIXELFORMAT_ABGR8888);
- assert(destination && source);
- auto* pixels=static_cast<std::uint32_t*>(source->pixels);
- for(int i=0;i<640*480;++i)pixels[i]=0xff000000U+static_cast<std::uint32_t>(i);
- ViewProbe v;v.game_window_=reinterpret_cast<SDL_Window*>(1);v.game_surface_=source;
- v.set_view_context(InputContext::World);assert(v.present_game(0,0));
- assert(v.top_origin_.x==120 && v.top_origin_.y==120);
- InputMapperConfig c;c.overview_controls=true;InputMapper mapper(c);
- RawInputSnapshot s;s.timestamp_us=8000;s.circle_x=156;s.circle_y=-156;
- InputContext context=InputContext::World;
- auto read=[&]{v.set_view_context(context);return context;};
- auto dispatch=[&](const Action& a){
-   if(a.type==ActionType::MoveViewport)v.move_view(a.vector);
-   if(a.type==ActionType::ToggleView)v.toggle_view();return true;
- };
- assert(mapper.dispatch_mixed(s,.1F,read,dispatch));
- const auto moved=v.top_origin_;assert(moved.x>120 && moved.y>120);
- for(int i=0;i<20;++i)assert(v.present_game(0,0));
- assert(v.top_origin_==moved); // the dead renderer cursor must not reset a manual view
- s.circle_x=s.circle_y=0;
- // Read the real shared-memory parser as well as mapper + viewport + scaler.
- std::uint32_t hid[128]{};hid[4]=hid[46]=1;hid[14]=button_mask(Button::L);
- for(auto ctx:{InputContext::World,InputContext::Menu,InputContext::Dialog,InputContext::TextInput}){
-   context=ctx;read();
-   assert(v.view_width_==400);
-   for(int toggle=0;toggle<2;++toggle){
-     hid[14]=0;assert(read_hid_snapshot(hid,s.timestamp_us+8000,s));
-     assert(mapper.dispatch_mixed(s,.008F,read,dispatch));
-     hid[14]=button_mask(Button::L);assert(read_hid_snapshot(hid,s.timestamp_us+8000,s));
-     assert(mapper.dispatch_mixed(s,.008F,read,dispatch));
-     assert(v.view_width_==(toggle==0?480:400) && v.view_height_==(toggle==0?288:240));
-     assert(v.present_game(0,0));
-     auto* output=static_cast<const std::uint32_t*>(destination->pixels);
-     for(int y=0;y<240;++y)for(int x=0;x<400;++x){
-       const auto word=pixels[(v.top_origin_.y+y*v.view_height_/240)*640+v.top_origin_.x+x*v.view_width_/400];
-       assert(output[y*400+x]==__builtin_bswap32(word));
-     }
-   }
- }
- v.set_view_context(InputContext::World);v.toggle_view();assert(v.view_width_==480);
- v.set_view_context(InputContext::Dialog);assert(v.view_width_==400);
- v.set_view_context(InputContext::World);assert(v.view_width_==480);
- v.toggle_view();g_input_cursor_x=g_input_cursor_y=10;assert(v.present_game(639,479));
- assert(v.top_origin_.x==0 && v.top_origin_.y==0);
- v.move_view({300,300});assert(v.present_game(0,0));
- assert(v.top_origin_.x==240 && v.top_origin_.y==240);
- Action a;a.type=ActionType::Confirm;assert(v.activation_needs_focus(a));
- v.focus_view(10,10);assert(v.present_game(0,0));assert(!v.activation_needs_focus(a));
- SDL_FreeSurface(source);SDL_FreeSurface(destination);
- std::puts("PASS R49 actual viewport, HID-to-L modes, pixels, offscreen confirmation");
-}
-'''
+        harness = (ROOT/'tests/runtime_support/game_view_probe.cpp').read_text()
         with tempfile.TemporaryDirectory(prefix='cth3ds-r49-view-') as temp:
             source, binary = Path(temp)/'view.cpp', Path(temp)/'view'
             source.write_text(harness)
             flags = shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','sdl2'],text=True))
-            command = [os.environ.get('CXX','c++'),'-std=c++17','-I'+str(ROOT/'include'),str(source),
+            command = [os.environ.get('CXX','c++'),'-std=c++17','-I'+str(ROOT/'include'),'-I'+str(ROOT/'src/3ds'),str(source),
+                       str(ROOT/'src/3ds/runtime/game_view.cpp'),
                        str(ROOT/'src/common/input_mapper.cpp'),str(ROOT/'src/common/screen_layout.cpp'),
                        str(ROOT/'src/common/framebuffer_scaler.cpp'),*flags,'-o',str(binary)]
             if os.environ.get('CTH3DS_SOUND_SANITIZERS'):

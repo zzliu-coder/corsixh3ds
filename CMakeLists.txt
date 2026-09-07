@@ -56,7 +56,10 @@ endif()
 
 
 if(CTH3DS_BUILD_3DS_SYNTAX_CHECK)
-  add_library(cth3ds-3ds-syntax OBJECT src/3ds/runtime_3ds.cpp)
+  include(src/3ds/sources.cmake)
+  set(CTH3DS_NATIVE_SOURCE_PATHS ${CTH3DS_PLATFORM_SOURCES})
+  list(TRANSFORM CTH3DS_NATIVE_SOURCE_PATHS PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/3ds/")
+  add_library(cth3ds-3ds-syntax OBJECT ${CTH3DS_NATIVE_SOURCE_PATHS})
   target_include_directories(cth3ds-3ds-syntax PRIVATE
     tests/stubs
     include

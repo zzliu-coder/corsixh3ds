@@ -4,6 +4,7 @@
 #define _DEFAULT_SOURCE 1
 #endif
 #include "runtime_3ds.hpp"
+#include "runtime/game_view.hpp"
 
 #include <3ds.h>
 #include <SDL.h>
@@ -997,7 +998,7 @@ class Runtime {
             else if (action.type == ActionType::ToggleView) {
               toggle_view();
               boot_log("view-toggle: context=%u source=%dx%d origin=%d,%d cursor=%d,%d",
-                (unsigned)view_context_,view_width_,view_height_,top_origin_.x,top_origin_.y,
+                (unsigned)view_.context(),view_.bounds().w,view_.bounds().h,view_.bounds().x,view_.bounds().y,
                 g_input_cursor_x,g_input_cursor_y);
               trace_next_present_ = true;
             }
@@ -1131,28 +1132,25 @@ class Runtime {
 
   void set_game_canvas(SDL_Surface* surface) noexcept {
     game_surface_ = surface;
-    view_initialized_ = false;
+    view_.reset_canvas(surface ? surface->w : 0, surface ? surface->h : 0);
     if (surface) {
       std::FILE* reference = std::fopen("sdmc:/3ds/corsixth/render-reference.txt", "rb");
       render_work.fast_flip_enabled = reference == nullptr;
       if (reference) std::fclose(reference);
-      top_origin_ = {(surface->w - 400) / 2, (surface->h - 240) / 2};
       boot_log("canvas: owned %dx%d format=%lu pitch=%d top=400x240 native bottom=320x240 half",
                surface->w, surface->h, static_cast<unsigned long>(surface->format->format), surface->pitch);
     }
   }
 
   void focus_view(int x, int y) noexcept {
-    top_origin_ = {std::clamp(x - view_width_ / 2, 0, 640 - view_width_),
-                   std::clamp(y - view_height_ / 2, 0, 480 - view_height_)};
-    view_initialized_ = false;
+    view_.focus(x, y);
     request_redraw();
   }
 
   void set_view_context(InputContext context) {
-    if (context != view_context_) {
-      view_context_ = context;
-      detail_wide_view_ = false; // newly entered dialogs start in readable 1:1
+    const bool entered = context != view_.context();
+    if (view_.set_context(context)) request_redraw();
+    if (entered) {
       if (context == InputContext::PlaceObject)
         set_notice("A: PLACE  X: ROTATE  B: CANCEL", false);
       else if (context == InputContext::BuildRoom)
@@ -1160,38 +1158,16 @@ class Runtime {
       else if (context == InputContext::TextInput)
         set_notice("A: KEYBOARD  B: CANCEL", false);
     }
-    const bool map = context == InputContext::World || context == InputContext::BuildRoom || context == InputContext::PlaceObject;
-    view_map_context_ = map;
-    const bool wide = map ? wide_view_ : detail_wide_view_;
-    const int width = wide ? 480 : 400;
-    const int height = wide ? 288 : 240;
-    if (width != view_width_) {
-      const int x = top_origin_.x + view_width_ / 2, y = top_origin_.y + view_height_ / 2;
-      view_width_ = width; view_height_ = height; focus_view(x, y);
-    }
   }
   void toggle_view() {
-    // L is explicit user intent in every context. Menus start clear, but can
-    // be widened manually without losing the hospital's preferred view mode.
-    if (view_map_context_) wide_view_ = !wide_view_;
-    else detail_wide_view_ = !detail_wide_view_;
-    set_view_context(view_context_);
-    set_notice(view_width_ == 480 ? "WIDE 480x288 - L: CLEAR" : "CLEAR 400x240 - L: WIDE", false);
+    if (view_.toggle()) request_redraw();
+    set_notice(view_.bounds().w == 480 ? "WIDE 480x288 - L: CLEAR" : "CLEAR 400x240 - L: WIDE", false);
   }
   void move_view(Vec2f delta) noexcept {
-    view_remainder_.x += delta.x; view_remainder_.y += delta.y;
-    const int x = static_cast<int>(view_remainder_.x), y = static_cast<int>(view_remainder_.y);
-    view_remainder_.x -= static_cast<float>(x); view_remainder_.y -= static_cast<float>(y);
-    top_origin_.x = std::clamp(top_origin_.x + x, 0, 640 - view_width_);
-    top_origin_.y = std::clamp(top_origin_.y + y, 0, 480 - view_height_);
-    // The pointer is independent. Moving the viewing frame never clicks.
-    previous_pointer_ = {g_input_cursor_x, g_input_cursor_y}; view_initialized_ = true;
+    view_.move(delta, {g_input_cursor_x, g_input_cursor_y});
   }
   bool activation_needs_focus(const Action& action) const noexcept {
-    const bool activates = action.type == ActionType::Confirm || action.type == ActionType::PlaceItem ||
-      action.type == ActionType::RotateObject || action.type == ActionType::ShowDetails;
-    return activates && (g_input_cursor_x < top_origin_.x || g_input_cursor_y < top_origin_.y ||
-      g_input_cursor_x >= top_origin_.x + view_width_ || g_input_cursor_y >= top_origin_.y + view_height_);
+    return view_.activation_needs_focus(action.type, {g_input_cursor_x, g_input_cursor_y});
   }
 
   bool display_failure(const char* code, const char* detail) {
@@ -1207,16 +1183,7 @@ class Runtime {
   }
 
   bool valid_output_surface(const SDL_Surface* surface, int width, int height) const {
-    if (!game_surface_ || !game_surface_->pixels || !game_surface_->format ||
-        game_surface_->w != 640 || game_surface_->h != 480 ||
-        game_surface_->pitch < 640 * 4 || game_surface_->pitch % 4 != 0 ||
-        !surface || !surface->pixels || !surface->format ||
-        surface->w != width || surface->h != height ||
-        surface->pitch < width * 4 || surface->pitch % 4 != 0) return false;
-    const auto src = game_surface_->format->format;
-    const auto dst = surface->format->format;
-    return (src == SDL_PIXELFORMAT_ABGR8888 || src == SDL_PIXELFORMAT_RGBA8888) &&
-           (dst == SDL_PIXELFORMAT_ABGR8888 || dst == SDL_PIXELFORMAT_RGBA8888);
+    return GameView::valid_output(game_surface_, surface, width, height);
   }
 
   bool present_game(int /*legacy_cursor_x*/, int /*legacy_cursor_y*/) {
@@ -1225,18 +1192,12 @@ class Runtime {
     if (!valid_output_surface(output, 400, 240))
       return display_failure("E-DISPLAY", "INVALID TOP CANVAS");
     const Vec2i pointer{g_input_cursor_x, g_input_cursor_y};
-    if (!view_initialized_ || pointer.x != previous_pointer_.x || pointer.y != previous_pointer_.y)
-      top_origin_ = follow_pointer_viewport(top_origin_, pointer, 640, 480, view_width_, view_height_);
-    previous_pointer_ = pointer;
-    view_initialized_ = true;
+    view_.follow(pointer);
     const bool lock = SDL_MUSTLOCK(output) != 0;
     if (lock && SDL_LockSurface(output) != 0)
       return display_failure("E-DISPLAY", "TOP LOCK FAILED");
     const auto before = now_us();
-    const bool copied = scale_rgba_view(static_cast<const std::uint32_t*>(game_surface_->pixels),
-        640, 480, game_surface_->pitch / 4, {top_origin_.x, top_origin_.y, view_width_, view_height_},
-        static_cast<std::uint32_t*>(output->pixels), 400, 240, output->pitch / 4,
-        game_surface_->format->format != output->format->format);
+    const bool copied = view_.copy_top(game_surface_, output);
     top_copy_us_ += now_us() - before;
     if (lock) SDL_UnlockSurface(output);
     const auto submitted_at = now_us();
@@ -1246,7 +1207,7 @@ class Runtime {
     if (!submitted) return display_failure("E-DISPLAY", "TOP PRESENT FAILED");
     if (trace_next_present_) {
       boot_log("view-present: source=%dx%d origin=%d,%d cursor=%d,%d submitted=1",
-        view_width_,view_height_,top_origin_.x,top_origin_.y,pointer.x,pointer.y);
+        view_.bounds().w,view_.bounds().h,view_.bounds().x,view_.bounds().y,pointer.x,pointer.y);
       trace_next_present_ = false;
     }
     return true;
@@ -1258,8 +1219,8 @@ class Runtime {
         static_cast<unsigned long long>(top_attempts_),
         static_cast<unsigned long long>(top_copy_us_),
         static_cast<unsigned long long>(top_submit_us_),
-        static_cast<unsigned long long>(display_error_count_), top_origin_.x, top_origin_.y,
-        view_width_,view_height_,(unsigned)view_context_);
+        static_cast<unsigned long long>(display_error_count_), view_.bounds().x, view_.bounds().y,
+        view_.bounds().w,view_.bounds().h,(unsigned)view_.context());
     top_attempts_ = top_copy_us_ = top_submit_us_ = display_error_count_ = 0;
     boot_log("bottom-stats: attempts=%llu copy_us=%llu submit_us=%llu",
       static_cast<unsigned long long>(bottom_attempts_),static_cast<unsigned long long>(bottom_copy_us_),
@@ -1720,29 +1681,8 @@ class Runtime {
     }
 
     const auto copy_started = now_us();
-    const bool scaled = halve_rgba(static_cast<const std::uint32_t*>(source->pixels), source->w,
-                     source->h, source->pitch / 4,
-                     static_cast<std::uint32_t*>(bottom_surface_->pixels),
-                     bottom_surface_->pitch / 4,
-                     source->format->format != bottom_surface_->format->format);
-
-    if (scaled) {
-      // The overview's outline identifies exactly what is visible above.
-      auto* pixels = static_cast<std::uint32_t*>(bottom_surface_->pixels);
-      const int pitch = bottom_surface_->pitch / 4;
-      const int x = top_origin_.x / 2, y = top_origin_.y / 2;
-      const auto color = SDL_MapRGBA(bottom_surface_->format, 255, 255, 255, 255);
-      const int width = view_width_ / 2, height = view_height_ / 2;
-      for (int dx = 0; dx < width; ++dx) {
-        pixels[y * pitch + x + dx] = color;
-        pixels[(y + height - 1) * pitch + x + dx] = color;
-      }
-      for (int dy = 0; dy < height; ++dy) {
-        pixels[(y + dy) * pitch + x] = color;
-        pixels[(y + dy) * pitch + x + width - 1] = color;
-      }
-      draw_overlay_strip();
-    }
+    const bool scaled = view_.copy_bottom(source, bottom_surface_);
+    if (scaled) draw_overlay_strip();
 
     if (lock_destination) {
       SDL_UnlockSurface(bottom_surface_);
@@ -1770,7 +1710,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R49 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R50 " + state.build_tag;
     if (text.empty()) {
       return;
     }
@@ -1857,7 +1797,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R49 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R50 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -1950,15 +1890,9 @@ class Runtime {
   lua_State* lua_state_{nullptr};
   SDL_Window* game_window_{nullptr};
   SDL_Surface* game_surface_{nullptr}; // borrowed; render_target owns the pixels
-  Vec2i top_origin_{120, 120};
-  Vec2f view_remainder_{};
-  int view_width_{400}, view_height_{240};
-  bool wide_view_{false}, view_map_context_{false}, detail_wide_view_{false};
+  GameView view_{};
   bool trace_next_present_{false};
   std::uint32_t traced_held_{0};
-  InputContext view_context_{InputContext::World};
-  Vec2i previous_pointer_{};
-  bool view_initialized_{false};
   const char* display_error_{nullptr};
   std::uint64_t display_error_count_{0}, top_attempts_{0}, top_copy_us_{0}, top_submit_us_{0};
   std::uint64_t bottom_attempts_{0}, bottom_copy_us_{0}, bottom_submit_us_{0};
@@ -2430,7 +2364,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R49 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
+  boot_log("diagnostics: revision=R50 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(

@@ -15,6 +15,8 @@ PREFIX=r"""
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/memory_telemetry.hpp"
 #include "cth3ds/bounded_log.hpp"
+#include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/cpu_work.hpp"
 #include <cstdarg>
 #include <cstdio>
 #include <string>
@@ -33,11 +35,17 @@ Display& runtime() {static Display d;return d;}
 MAIN=r"""
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n%s",__LINE__,#x,output.c_str());return 1;}}while(0)
 int main() {
+  cpu_work.rows[static_cast<size_t>(CpuWork::Temperature)]={2,3000,1800,32768};
+  g_simulation_clock.begin(1);g_simulation_clock.begin(36001);
+  CHECK(g_simulation_clock.take_step(36001));
   std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"level:1");
   g_timing.present_complete(1,PresentResult::Success);
   g_timing.present_complete(10001,PresentResult::Success);
   clock_us=10000000;runtime_flush_observations(false);
   CHECK(output.find("perf:")!=std::string::npos);
+  CHECK(output.find("name=temperature calls=2 total_us=3000 max_us=1800 units=32768")!=std::string::npos);
+  CHECK(output.find("simulation-budget: steps=1 debt_us=18000 dropped_us=0")!=std::string::npos);
+  CHECK(cpu_work.rows[static_cast<size_t>(CpuWork::Temperature)].calls==0);
   CHECK(output.find("frames:")==std::string::npos);
   CHECK(g_timing.snapshot(clock_us).intervals.count==1);
   clock_us=11000000;

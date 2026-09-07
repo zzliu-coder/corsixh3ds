@@ -26,6 +26,7 @@ HARNESS = r"""
 #include <stdexcept>
 #include <string>
 #include "cth3ds/framebuffer_scaler.hpp"
+#include "cth3ds/sdl_blitter.hpp"
 #define FrameMark
 static SDL_Surface* borrowed = nullptr;
 static SDL_Window* registered_window = nullptr;
@@ -76,6 +77,7 @@ int main() {
     {
       render_target target{render_target_creation_params{}};
       CHECK(borrowed==target.game_surface && registered_window==target.window);
+      CHECK(cth3ds::blit_counters.probe_ran && cth3ds::blit_counters.probe_pixels);
       CHECK(borrowed->w==640 && borrowed->h==480 && borrowed->pitch==640*4);
       int rw=0,rh=0; CHECK(SDL_GetRendererOutputSize(target.renderer,&rw,&rh)==0);
       CHECK(rw==640 && rh==480);
@@ -105,6 +107,9 @@ int main() {
       allow_present=false; CHECK(!target.end_frame()); allow_present=true;
     }
     CHECK(borrowed==nullptr && registered_window==nullptr);
+    CHECK(cth3ds::blit_detail::images==nullptr);
+    CHECK(cth3ds::blit_counters.live_images==0 && cth3ds::blit_counters.live_bytes==0);
+    CHECK(cth3ds::blit_counters.span_bytes==0);
   }
   SDL_Quit();
   printf("PASS real-SDL native-strokes crop overview pointer failure detach; lifetimes=20\n");

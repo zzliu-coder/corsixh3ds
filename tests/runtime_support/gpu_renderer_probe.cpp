@@ -17,9 +17,21 @@ C3D_RenderTarget* current{};C3D_RenderTarget* outputs[2]{};
 SDL_Rect clip{};bool clipped{},in_frame{},ready{};
 unsigned offset{},cost=64,objects{},max_objects{},waits{},allocations{},live{},fail_at{};
 bool allocation(){return ++allocations!=fail_at;}
+bool corrupt_sampling{};
 void finish(){for(auto& call:pending)call();pending.clear();++waits;}
 u32& raw(C3D_Tex* tex,int x,int y){return static_cast<u32*>(tex->data)[cth3ds::gpu_tile_offset(x,tex->height-1-y,tex->width)];}
 u32 pixel(C3D_Tex* tex,int x,int y){return cth3ds::gpu_pixel(raw(tex,x,y));}
+// PICA sampling and framebuffer rasterization use opposite Y origins.
+// Independent tex3ds RGBA8 output stores source row zero in memory row zero.
+// Never call the framebuffer accessor from this texture sampler.
+u32 texture_pixel(C3D_Tex* tex,int x,int y){
+  if(corrupt_sampling)y=tex->height-1-y;
+  static constexpr unsigned mx[]={0,1,4,5,16,17,20,21};
+  static constexpr unsigned my[]={0,2,8,10,32,34,40,42};
+  const auto index=((y/8)*(tex->width/8)+x/8)*64+mx[x%8]+my[y%8];
+  const auto* p=static_cast<const unsigned char*>(tex->data)+index*4;
+  return (u32(p[0])<<24U)|(u32(p[1])<<16U)|(u32(p[2])<<8U)|p[3];
+}
 u32 blend(u32 src,u32 dst){
   u32 result=0,a=src>>24U;
   for(unsigned s=0;s<24;s+=8)result|=(((((src>>s)&255U)*a+((dst>>s)&255U)*(255U-a))/255U)<<s);
@@ -71,7 +83,7 @@ bool C2D_DrawImage(C2D_Image image,const C2D_DrawParams* p,const C2D_ImageTint* 
     if(params.pos.w<0)u=1-u;if(params.pos.h<0)v=1-v;
     int x=std::clamp(int((sub.left+u*(sub.right-sub.left))*tex->width),0,tex->width-1);
     int y=std::clamp(int((1-sub.top+v*(sub.top-sub.bottom))*tex->height),0,tex->height-1);
-    u32 value=pixel(tex,x,y),result=0;for(unsigned s=0;s<32;s+=8)result|=(((((value>>s)&255U)*((tint>>s)&255U))/255U)<<s);return result;
+    u32 value=texture_pixel(tex,x,y),result=0;for(unsigned s=0;s<32;s+=8)result|=(((((value>>s)&255U)*((tint>>s)&255U))/255U)<<s);return result;
   });});return true;
 }
 bool C2D_DrawRectSolid(float x,float y,float,float w,float h,u32 c){emitted();auto* t=current;auto cut=bounds();commands.emplace_back([=]{raster(t,x,y,w,h,cut,[=](float,float){return c;});});return true;}
@@ -85,7 +97,8 @@ int main(){
   // Every partial initialization must release its own objects.
   allocations=0;fail_at=0;assert(gpu_initialize());const unsigned allocation_steps=allocations;gpu_shutdown();
   for(unsigned failure=1;failure<=allocation_steps;++failure){allocations=0;fail_at=failure;assert(!gpu_initialize());assert(live==0);}
-  fail_at=0;assert(gpu_initialize());
+  fail_at=0;corrupt_sampling=true;assert(!gpu_initialize());assert(!gpu_active()&&live==0);
+  corrupt_sampling=false;assert(gpu_initialize());
   std::vector<u32> colours(640*480);for(int y=0;y<480;++y)for(int x=0;x<640;++x)colours[y*640+x]=0xff000000U|u32(x%256)|u32(y%256)<<8U|u32((x+y)%256)<<16U;
   auto* background=gpu_image_create(renderer,640,480,colours.data());assert(background);
   auto draw=[&](SDL_Texture* tex,SDL_Rect src,SDL_FRect dest,int flip){assert(gpu_image_draw(tex,&src,&dest,static_cast<SDL_RendererFlip>(flip))==0);};
@@ -124,7 +137,27 @@ int main(){
   assert(gpu_top({100,80,400,240}));assert(gpu_bottom({100,80,400,240},nullptr,0));
   auto* top=outputs[GFX_TOP];auto* bottom=outputs[GFX_BOTTOM];gpu_quiesce();
   for(int y=0;y<240;++y)for(int x=0;x<400;++x)assert(pixel(top->tex,x,y)==colours[(y+80)*640+x+100]);
-  for(int y=5;y<30;++y)for(int x=5;x<30;++x)assert(pixel(bottom->tex,x,y)==colours[(2*y+1)*640+2*x+1]);
+  // At exact half-scale texel boundaries, decreasing V selects the lower
+  // source-row neighbour; both neighbours are equidistant under nearest.
+  for(int y=5;y<30;++y)for(int x=5;x<30;++x)assert(pixel(bottom->tex,x,y)==colours[(2*y)*640+2*x+1]);
+  // Wide crop uses the same framebuffer-to-texture conversion. An asymmetric
+  // CPU overlay independently exercises the short non-square texture upload.
+  std::vector<u32> overlay(320*12);
+  for(int y=0;y<12;++y)for(int x=0;x<320;++x)overlay[y*320+x]=0xff000000U|u32(x%256)|u32(y*17)<<8U;
+  assert(gpu_begin());assert(gpu_clear(0xff000000U));draw(background,{0,0,640,480},full,0);
+  assert(gpu_top({160,150,480,288}));assert(gpu_bottom({160,150,480,288},overlay.data(),12));
+  top=outputs[GFX_TOP];bottom=outputs[GFX_BOTTOM];gpu_quiesce();
+  for(int y=0;y<240;++y)for(int x=0;x<400;++x){
+    const double sx=(x+0.5)*1.2,sy=(y+0.5)*1.2;
+    const int ix=int(std::floor(sx)),iy=int(std::floor(sy));
+    const bool tie_x=std::abs(sx-std::round(sx))<0.00001;
+    const bool tie_y=std::abs(sy-std::round(sy))<0.00001;
+    bool match=false;
+    for(int dx=0;dx<=(tie_x?1:0);++dx)for(int dy=0;dy<=(tie_y?1:0);++dy)
+      match|=pixel(top->tex,x,y)==colours[(150+iy-dy)*640+160+ix-dx];
+    assert(match);
+  }
+  for(int y=0;y<12;++y)for(int x=0;x<320;++x)assert(pixel(bottom->tex,x,y)==overlay[y*320+x]);
   gpu_image_destroy(background);gpu_images_release(renderer);gpu_log_statistics();gpu_shutdown();assert(live==0);
   SDL_DestroyRenderer(renderer);SDL_FreeSurface(out);SDL_Quit();
   std::printf("PASS production GPU: four flips, multi-piece images, clipping, alpha, delayed eviction, command and vertex bounds, dual outputs, %u init failures\n",allocation_steps);

@@ -28,4 +28,12 @@ inline std::uint32_t gpu_pixel(std::uint32_t abgr) noexcept {
   return ((abgr&255U)<<24U)|((abgr&0xff00U)<<8U)|
     ((abgr&0xff0000U)>>8U)|(abgr>>24U);
 }
+inline void gpu_upload_rgba(std::uint32_t* output,unsigned texture_width,
+                           unsigned x,unsigned y,const std::uint32_t* source,
+                           unsigned stride,unsigned width,unsigned height) noexcept {
+  // tex3ds/PICA texture storage: source top row is memory row zero; UV top=1.
+  // Render targets have a separate, bottom-origin raster convention.
+  for(unsigned row=0;row<height;++row)for(unsigned col=0;col<width;++col)
+    output[gpu_tile_offset(x+col,y+row,texture_width)]=gpu_pixel(source[row*stride+col]);
+}
 } // namespace cth3ds

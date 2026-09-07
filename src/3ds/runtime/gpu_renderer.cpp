@@ -131,10 +131,8 @@ bool place(Image& image,Piece& piece) noexcept {
   auto* output=static_cast<std::uint32_t*>(page.texture.data);
   // Each page is immutable while the GPU reads it. Appends touch disjoint
   // tiles; eviction is allowed only after a completed queue boundary.
-  for(int row=0;row<piece.h;++row)for(int col=0;col<piece.w;++col){
-    const auto value=image.pixels[(piece.sy+row)*image.width+piece.sx+col];
-    output[gpu_tile_offset(x+col,511U-static_cast<unsigned>(y+row),512)]=gpu_pixel(value);
-  }
+  gpu_upload_rgba(output,512,x,y,image.pixels.get()+piece.sy*image.width+piece.sx,
+    image.width,piece.w,piece.h);
   piece.page=selected;piece.generation=page.generation;piece.x=x;piece.y=y;
   page.used=epoch;++stats.uploads;stats.upload_bytes+=piece.w*piece.h*4U;
   return true;
@@ -152,13 +150,44 @@ bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height) no
   if(!in_frame)return false;
   C2D_SceneBegin(target); C2D_ViewReset(); C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);
   C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
+  // Framebuffer raster Y runs upward; texture storage row zero is UV top.
+  // Select the framebuffer's corresponding memory rows, then flip V using
+  // DrawParams. Keep top >= bottom: Tex3DS uses top < bottom for atlas rotation.
   Tex3DS_SubTexture sub{static_cast<u16>(source.w),static_cast<u16>(source.h),
-    source.x/1024.0f,1.0f-source.y/512.0f,(source.x+source.w)/1024.0f,1.0f-(source.y+source.h)/512.0f};
+    source.x/1024.0f,(source.y+source.h)/512.0f,(source.x+source.w)/1024.0f,source.y/512.0f};
   // Reserve screen objects before switching target: room_for_draw must never
   // split after top is submitted and accidentally resume on the canvas.
   C2D_ImageTint tint;C2D_PlainImageTint(&tint,0xffffffffU,1.0f);
-  C2D_DrawParams params{};params.pos={0,0,static_cast<float>(width),static_cast<float>(height)};
+  C2D_DrawParams params{};params.pos={0,0,static_cast<float>(width),-static_cast<float>(height)};
   return C2D_DrawImage({&canvas,&sub},&params,&tint);
+}
+bool startup_self_test() noexcept {
+  // Exercise real PICA texture sampling before any game resource is created.
+  // Four asymmetric crops/flips have independent expected pixel values.
+  std::array<std::uint32_t,16*16> pattern{};
+  for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
+    pattern[y*16+x]=C2D_Color32(x*13U,y*11U,37U^x^y,255);
+  gpu_upload_rgba(static_cast<std::uint32_t*>(pages[0].texture.data),512,
+    24,40,pattern.data(),16,16,16);
+  if(!begin_job())return false;
+  C2D_TargetClear(canvas_target,0xff000000U);
+  const Tex3DS_SubTexture sub{16,16,24/512.0f,1-40/512.0f,40/512.0f,1-56/512.0f};
+  bool submitted=true;
+  for(unsigned flip=0;flip<4;++flip)
+    submitted=draw_image(pages[0].texture,sub,{12.0f+flip*24,20,16,16},
+      0xffffffffU,(flip&1)!=0,(flip&2)!=0)&&submitted;
+  end_job();outputs(false);record_completion();
+  const auto* data=static_cast<const std::uint32_t*>(canvas.data);
+  unsigned mismatches=0;
+  for(unsigned flip=0;flip<4;++flip)for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x){
+    const auto actual=gpu_pixel(data[gpu_tile_offset(12+flip*24+x,511-(20+y),1024)]);
+    const auto expected=pattern[((flip&2)?15-y:y)*16+((flip&1)?15-x:x)];
+    if(actual!=expected)++mismatches;
+  }
+  boot_log("gpu-self-test: result=%s pixels=1024 mismatches=%u checks=atlas-crop-four-flips-canvas-readback lcd_visual=NOT_PROVEN",
+    submitted&&mismatches==0?"PASS":"FAIL",mismatches);
+  stats={};epoch=1;objects=0;
+  return submitted&&mismatches==0;
 }
 void forget(Image* image) noexcept {
   if(image->previous)image->previous->next=image->next;else images=image->next;
@@ -191,6 +220,9 @@ bool gpu_initialize() noexcept {
     texture_settings(page.texture);}
   if(!C3D_TexInit(&overlay,512,16,GPU_RGBA8))goto failed;
   texture_settings(overlay);active=true;
+  if(!startup_self_test()){
+    gpu_shutdown();boot_log("gpu: selected=software reason=startup-pixel-contract-failed");return false;
+  }
   boot_log("gpu: selected=citro2d canvas=1024x512 logical=640x480 atlas_pages=3 atlas_linear_bytes=3145728 canvas_vram_bytes=2097152 screens_vram_bytes=691200 depth_bytes=0 stereo=0 linear_free=%lu vram_free=%lu",
     static_cast<unsigned long>(linearSpaceFree()),static_cast<unsigned long>(vramSpaceFree()));
   boot_log("gpu: existing_lcd_format_top=%u bottom=%u SDL_owns_framebuffers=1",
@@ -317,8 +349,7 @@ bool gpu_bottom(RectI view,const std::uint32_t* rgba,int height) noexcept {
   ok=C2D_DrawRectSolid(x+w-1,y,0,1,h,0xffffffffU)&&ok;
   if(rgba&&height>0&&height<=16){
     auto* out=static_cast<std::uint32_t*>(overlay.data);
-    for(int row=0;row<height;++row)for(int col=0;col<320;++col)
-      out[gpu_tile_offset(col,15U-static_cast<unsigned>(row),512)]=gpu_pixel(rgba[row*320+col]);
+    gpu_upload_rgba(out,512,0,0,rgba,320,320,height);
     Tex3DS_SubTexture sub{320,static_cast<u16>(height),0,1,320/512.0f,1-height/16.0f};
     C2D_DrawParams params{};params.pos={0,0,320,static_cast<float>(height)};
     C2D_ImageTint tint;C2D_PlainImageTint(&tint,0xffffffffU,1.0f);

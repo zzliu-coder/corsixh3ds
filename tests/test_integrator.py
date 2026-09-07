@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import contextlib
 import io
+import inspect
 import json
 import tempfile
 import unittest
@@ -32,7 +33,8 @@ OVERLAY = ROOT
 
 class IntegratorTests(unittest.TestCase):
     def test_writer_uses_python39_exact_lf_atomic_publish(self) -> None:
-        source = (ROOT / "tools/integrate_corsixth.py").read_text(encoding="utf-8")
+        from integrate_corsixth import write_text
+        source = inspect.getsource(write_text)
         self.assertIn('temporary.open("w", encoding="utf-8", newline="\\n")', source)
         self.assertIn("temporary.replace(path)", source)
         self.assertNotIn("temporary.write_text(text", source)

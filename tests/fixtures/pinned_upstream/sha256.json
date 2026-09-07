@@ -18,6 +18,7 @@
   "CorsixTH/Src/th_gfx_sdl.h": "e5b396bfbd1a1d6ea544005e381bbb209da7c96457fec35d622d0c506b4def3a",
   "CorsixTH/Src/th_lua_sound.cpp": "c2ba1c9f2687ea30457cdd48f7869508a9d07849ff0b6dafc3b3b2d5ce89daac",
   "CorsixTH/Src/th_map.cpp": "fde9a75dc62d8e8b5b4c086a360d23db78e92138fb1643a03c1d74e27fb0e86d",
+  "CorsixTH/Src/th_map.h": "d6f0730d38a4ee5892fc65f5c535a92901326aa72fffff2052ec2e65f47dc6d0",
   "CorsixTH/Src/th_pathfind.cpp": "019820afbd3d6410b31ef1348f20c3727c9f246c45f1a797978599309cdb37cb",
   "CorsixTH/Src/th_sound.cpp": "4b4c69c861bbcedab20c7c4a1623778fe0c92774b875101ef3f63f904441dbf9",
   "CorsixTH/Src/th_sound.h": "baa849c935ec137560ef497d8b592b78a852012a4e019ccfc5d31c1155f3bfde",

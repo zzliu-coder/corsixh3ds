@@ -155,9 +155,10 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 215,
-  "selected_sorted_ids_sha256": "471931f2f72b1cce4db4c1e649ce5cbe34fcb55bfaea415d5b4f4c4ad7529582",
+  "selected_count": 217,
+  "selected_sorted_ids_sha256": "fc317aa5b5183836ed7894aa4c0954e5aca34478ec38e7204c6f65635a8432d9",
   "test_ids": [
+    "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
     "test_build_scripts.BuildScriptTests.test_all_shell_scripts_parse_and_have_no_placeholders",
     "test_build_scripts.BuildScriptTests.test_ci_matrices_are_isolated_and_failure_evidence_is_always_uploaded",
@@ -186,6 +187,7 @@
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_cross_build_gate_requires_real_call_edge_without_whole_archive",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_current_cross_build_proof_when_supplied",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_production_runtime_constructs_and_owns_the_session",
+    "test_gpu_renderer.GpuRendererTests.test_production_backend_delayed_queue",
     "test_handheld_controls.HandheldControlsTests.test_camera_sign_and_placement_cancel_vs_rotate",
     "test_handheld_controls.HandheldControlsTests.test_named_speed_cycle_pause_and_rejected_change",
     "test_handheld_controls.HandheldControlsTests.test_runtime_pointer_authority_view_modes_and_real_pixels",

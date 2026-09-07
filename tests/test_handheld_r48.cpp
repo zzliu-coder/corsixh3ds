@@ -8,6 +8,15 @@
 #include <vector>
 using namespace cth3ds;
 
+TEST(input_age_percentile_preserves_long_tail_and_no_samples) {
+  InputQueue q;EXPECT_EQ(q.statistics().age_p95_upper_us(),0U);
+  RawInputSnapshot sample;
+  for(unsigned i=0;i<100;++i){sample.timestamp_us=i*1000;sample.touching=i%2;
+    q.push(sample);EXPECT_TRUE(q.pop(sample,sample.timestamp_us+(i<95?55000:400000)));}
+  EXPECT_EQ(q.statistics().age_p95_upper_us(),60000U);
+  EXPECT_EQ(q.statistics().max_age_us,400000U);
+}
+
 TEST(queue_retains_taps_and_edges_during_400ms_draw) {
   InputQueue q; RawInputSnapshot s;
   for (unsigned i=0; i<=50; ++i) {

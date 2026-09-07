@@ -24,6 +24,8 @@ void runtime_tick(lua_State* state);
 
 //! Register the physical upper window. It has no SDL_Renderer attached.
 void runtime_set_game_window(SDL_Window* window) noexcept;
+//! Shared bounded diagnostic sink; renderer never opens another log file.
+void runtime_diagnostic_line(const char* line) noexcept;
 //! Borrow the native-resolution source owned by render_target. Clear before free.
 void runtime_set_game_canvas(SDL_Surface* surface) noexcept;
 //! Present an already-flushed source, following the current App.ui snapshot.
@@ -55,6 +57,7 @@ void runtime_frame_skipped() noexcept;
 void runtime_note_timer_event() noexcept;
 void runtime_simulation_begin() noexcept;
 bool runtime_simulation_step() noexcept;
+bool runtime_frame_due(bool changed) noexcept;
 void runtime_note_logic_callback(bool success) noexcept;
 void runtime_flush_observations(bool force = false) noexcept;
 void runtime_observe_memory(const char* checkpoint, const char* phase,

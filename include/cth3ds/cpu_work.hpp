@@ -4,11 +4,11 @@
 #include <cstdint>
 
 namespace cth3ds {
-enum class CpuWork : std::uint8_t { Temperature, Pathfind, InputState, InputAction, Count };
-inline constexpr std::array<const char*,4> kCpuWorkNames{{"temperature","pathfind","input_state","input_action"}};
+enum class CpuWork : std::uint8_t { Temperature, Pathfind, InputState, InputAction, World, UI, Count };
+inline constexpr std::array<const char*,6> kCpuWorkNames{{"temperature","pathfind","input_state","input_action","world","ui"}};
 struct CpuCounter { std::uint64_t calls{}, total_us{}, max_us{}, units{}; };
 struct CpuWorkCounters {
-  std::array<CpuCounter,4> rows{};
+  std::array<CpuCounter,6> rows{};
   std::uint64_t (*clock_us)() noexcept = nullptr;
   bool enabled{true};
 };

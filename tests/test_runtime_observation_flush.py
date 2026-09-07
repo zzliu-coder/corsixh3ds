@@ -16,6 +16,7 @@ PREFIX=r"""
 #include "cth3ds/memory_telemetry.hpp"
 #include "cth3ds/bounded_log.hpp"
 #include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/presentation_clock.hpp"
 #include "cth3ds/cpu_work.hpp"
 #include <cstdarg>
 #include <cstdio>

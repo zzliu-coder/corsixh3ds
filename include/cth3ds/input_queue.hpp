@@ -15,6 +15,15 @@ class InputQueue {
     std::uint64_t sampled{}, coalesced{}, popped{}, overflows{}, discarded{};
     std::uint64_t touch_down{}, touch_up{}, max_age_us{}, max_sample_gap_us{};
     std::size_t peak_depth{};
+    std::array<std::uint64_t,32> age_histogram{}; // 10ms bins; final is >=310ms
+    std::uint64_t age_p95_upper_us() const noexcept {
+      if(!popped)return 0;
+      const auto target=popped-popped/20;std::uint64_t count=0;
+      for(std::size_t i=0;i<age_histogram.size();++i){
+        count+=age_histogram[i];
+        if(count>=target)return i==31?max_age_us:(i+1)*10000U;
+      }return max_age_us;
+    }
   };
   void push(const RawInputSnapshot& sample) noexcept {
     ++stats_.sampled;
@@ -46,7 +55,9 @@ class InputQueue {
     if (!size_) return false;
     out = data_[head_].sample;
     head_ = (head_ + 1U) % capacity; --size_; ++stats_.popped;
-    if (now >= out.timestamp_us) stats_.max_age_us = std::max(stats_.max_age_us, now - out.timestamp_us);
+    const auto age=now>=out.timestamp_us?now-out.timestamp_us:0;
+    stats_.max_age_us=std::max(stats_.max_age_us,age);
+    ++stats_.age_histogram[std::min<std::uint64_t>(31,age/10000U)];
     return true;
   }
   void discard() noexcept {

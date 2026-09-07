@@ -1,6 +1,6 @@
 """Verified original upstream fixtures and disposable assembly for product tests.
 
-All 23 source hashes and repeated-generation checks are preserved. No game data.
+All 24 source hashes and repeated-generation checks are preserved. No game data.
 The integrator may write only the disposable overlay, never the checkout under test.
 """
 import base64
@@ -19,6 +19,7 @@ SOURCE_HASHES = json.loads((FIXTURE / 'sha256.json').read_text())
 def original_sources(root):
     files=json.loads(zlib.decompress(base64.b64decode((FIXTURE / 'sources.zlib.b64').read_bytes())))
     files['CorsixTH/Src/th_gfx_sdl.h'] = (ROOT/'tests/fixtures/th_gfx_sdl.h.pinned').read_text(encoding='utf-8')
+    files['CorsixTH/Src/th_map.h'] = (ROOT/'tests/fixtures/th_map.h.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Src/th_pathfind.cpp'] = (ROOT/'tests/fixtures/th_pathfind.cpp.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua'] = (ROOT/'tests/fixtures/save_game.lua.pinned').read_text(encoding='utf-8')
     for name,text in files.items():
@@ -33,7 +34,7 @@ def generated_sources(directory):
     generated = original_sources(directory / 'upstream')
     originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in generated.rglob('*') if path.is_file()}
-    if originals != SOURCE_HASHES or len(originals) != 23:
+    if originals != SOURCE_HASHES or len(originals) != 24:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
     tracked = subprocess.check_output(

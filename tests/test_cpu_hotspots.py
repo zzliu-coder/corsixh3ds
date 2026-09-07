@@ -13,6 +13,7 @@ DECL='''struct level_map {
   int width,height,current_temperature_index;map_tile* cells;
   uint32_t thermal_neighbour(uint32_t&,bool,std::ptrdiff_t,map_tile*,int) const;
   void update_temperatures(uint16_t,uint16_t);
+  cth3ds::ThermalGrid thermal_cache;
 };'''
 
 class CpuHotspotTests(unittest.TestCase):
@@ -42,5 +43,23 @@ class CpuHotspotTests(unittest.TestCase):
             self.assertIn('InputRefreshGate input_state;',runtime)
             self.assertEqual(runtime.count('input_state.invalidate();'),2)
             self.assertIn('cpu_scope(cth3ds::CpuWork::Pathfind)',(generated/'CorsixTH/Src/th_pathfind.cpp').read_text())
+            app=(generated/'CorsixTH/Lua/app.lua').read_text()
+            begin=app.index('function App:onTick(')
+            tick=app[begin:app.index('\nend',begin)+4]
+            import test_lua_runtime
+            test_lua_runtime.LuaRuntimeTests.setUpClass()
+            test_lua_runtime.LuaRuntimeTests().run_lua('App={}\n'+tick+r'''
+local w,u=0,0
+local ui={onTick=function()u=u+1;return false end}
+local a=setmetatable({moviePlayer={playing=false},ui=ui},{__index=App})
+assert(a:onTick()==true and u==1) -- unchanged desktop contract
+a._3ds={native={cpu_profile=function(_,fn,...)return fn(...)end}}
+assert(a:onTick()==false and u==2) -- idle menu, independent compatibility refresh
+a.world={onTick=function()w=w+1 end}
+assert(a:onTick()==true and w==1 and u==3)
+a.world=nil;ui.onTick=function()u=u+1;return true end
+assert(a:onTick()==true and u==4) -- tooltip timer still requests painting
+a.moviePlayer.playing=true;assert(a:onTick()==true and u==4)
+''')
 
 if __name__=='__main__':unittest.main()

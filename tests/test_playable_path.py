@@ -207,6 +207,7 @@ class U3GeneratedClockTests(unittest.TestCase):
         code = code.replace('// INSERT_CLOCK_COUNTERS',
             function_body(runtime, 'void runtime_simulation_begin() noexcept') + '\n' +
             function_body(runtime, 'bool runtime_simulation_step() noexcept') + '\n' +
+            function_body(runtime, 'bool runtime_frame_due(bool changed) noexcept') + '\n' +
             function_body(runtime, 'void runtime_note_timer_event() noexcept') + '\n' +
             function_body(runtime, 'void runtime_note_logic_callback(bool success) noexcept'))
         source = directory/'loop.cpp'
@@ -309,7 +310,7 @@ App = {_loadLevel=function() end,loadMainMenu=function() end,
        save=function(_, mode) if mode=='throw' then error('write failure') end; commit_called=true; if mode=='commit-fail' then error('commit failed') end; return mode=='ok' end,
        load=function() return false,'incompatible' end}
 '''+block+'''
-Platform.installOperationSpans({app=App,native=TH3DS})
+Platform.installOperationSpans({app=App,native=TH3DS,syncScene=function() end})
 assert(App:save('ok') == true and ended[#ended] == true)
 assert(App:save('no') == false and ended[#ended] == false)
 assert(not pcall(App.save, App, 'throw') and ended[#ended] == false)
@@ -324,6 +325,9 @@ local ok, err=App:load(); assert(ok==false and err=='incompatible' and ended[#en
 HARNESS = r'''
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/presentation_clock.hpp"
+#include <array>
+#include <cstring>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -338,7 +342,7 @@ using Uint32=unsigned;
 using SDL_TimerID=int;
 struct lua_State {};
 constexpr int LUA_OK=0,LUA_GCSTEP=5,usertick_period_ms=18;
-enum {SDL_QUIT=1, SDL_KEYDOWN,SDL_KEYUP,SDL_TEXTINPUT,SDL_TEXTEDITING,SDL_MOUSEBUTTONDOWN,
+enum {SDL_FIRSTEVENT=0,SDL_QUIT=1, SDL_KEYDOWN,SDL_KEYUP,SDL_TEXTINPUT,SDL_TEXTEDITING,SDL_MOUSEBUTTONDOWN,
  SDL_MOUSEBUTTONUP,SDL_MOUSEWHEEL,SDL_MOUSEMOTION,SDL_MULTIGESTURE,SDL_WINDOWEVENT,
  SDL_WINDOWEVENT_FOCUS_GAINED,SDL_WINDOWEVENT_FOCUS_LOST,SDL_WINDOWEVENT_SIZE_CHANGED,
  SDL_USEREVENT_MUSIC_OVER,SDL_USEREVENT_MUSIC_LOADED,SDL_USEREVENT_TICK,
@@ -370,6 +374,8 @@ void spend(int stage,std::uint64_t base=1000) {++work[stage];clock_us+=base+(sta
 namespace cth3ds {
 std::uint64_t g_timer_events=0,g_logic_callbacks=0,g_logic_failures=0;
 SimulationClock g_simulation_clock;
+PresentationClock g_presentation_clock;
+std::array<char,96> g_scene_identity{{'l','e','v','e','l',':','1'}};
 std::uint64_t now_us();
 struct RuntimeTimingScope {
  std::uint64_t token;
@@ -427,6 +433,7 @@ int SDL_AddTimer(int,int,void*){return 1;}
 void SDL_RemoveTimer(int){}
 int extra_timers=0,remaining_timers=0;
 int SDL_WaitEvent(SDL_Event* e){clock_us+=1000;remaining_timers=extra_timers;e->type=iterations++<301?SDL_USEREVENT_TICK:SDL_QUIT;return 1;}
+int SDL_WaitEventTimeout(SDL_Event* e,int){return SDL_WaitEvent(e);}
 int SDL_PollEvent(SDL_Event* e){if(remaining_timers>0){--remaining_timers;e->type=SDL_USEREVENT_TICK;return 1;}return 0;}
 const char* SDL_GetKeyName(int){return "key";}
 void l_push_modifiers_table(lua_State*,int){}

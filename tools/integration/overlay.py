@@ -88,6 +88,7 @@ def iter_overlay_files(overlay: Path) -> Iterable[tuple[Path, Path]]:
         source = overlay / "src" / "3ds" / name
         yield source, Path("CorsixTH/Src/3ds") / name
     yield overlay / "lua" / "3ds" / "platform.lua", Path("CorsixTH/Lua/3ds/platform.lua")
+    yield overlay / "lua" / "3ds" / "benchmark.lua", Path("CorsixTH/Lua/3ds/benchmark.lua")
     yield overlay / "assets" / "3ds" / "icon.png", Path("CorsixTH/Src/3ds/icon.png")
 
 
@@ -155,6 +156,7 @@ set(CTH3DS_LUA_INTEGER_LIMITS
   ULLONG_MAX=ULONG_LONG_MAX)
 target_compile_definitions(CorsixTH_lib PUBLIC CORSIXTH_3DS=1 ${CTH3DS_LUA_INTEGER_LIMITS})
 target_compile_definitions(CorsixTH PRIVATE CORSIXTH_3DS=1 ${CTH3DS_LUA_INTEGER_LIMITS})
+target_compile_definitions(CorsixTH_lib PUBLIC CORSIXTH_3DS_GPU=1)
 # R51: retain size optimisation globally, favour speed at measured CPU sites.
 # OFF provides the same-source -Oz comparison; never enable fast-math.
 option(CORSIXTH_3DS_HOTSPOT_O2 "Optimise measured drawing/map hot paths for speed" ON)
@@ -167,6 +169,7 @@ if(CORSIXTH_3DS_HOTSPOT_O2)
     "${CTH3DS_PLATFORM_ROOT}/../th_map.cpp"
     "${CTH3DS_PLATFORM_ROOT}/../th_pathfind.cpp"
     "${CTH3DS_PLATFORM_ROOT}/common/framebuffer_scaler.cpp"
+    "${CTH3DS_PLATFORM_ROOT}/runtime/gpu_renderer.cpp"
     TARGET_DIRECTORY CorsixTH_lib
     PROPERTIES COMPILE_OPTIONS "-O2")
 endif()
@@ -185,7 +188,7 @@ add_library(cth3ds_lfs STATIC IMPORTED GLOBAL)
 set_target_properties(cth3ds_lfs PROPERTIES IMPORTED_LOCATION "${CTH3DS_LFS_LIBRARY}")
 add_library(cth3ds_lpeg STATIC IMPORTED GLOBAL)
 set_target_properties(cth3ds_lpeg PROPERTIES IMPORTED_LOCATION "${CTH3DS_LPEG_LIBRARY}")
-target_link_libraries(CorsixTH_lib PUBLIC ctru m PRIVATE cth3ds_lfs cth3ds_lpeg)
+target_link_libraries(CorsixTH_lib PUBLIC citro2d citro3d ctru m PRIVATE cth3ds_lfs cth3ds_lpeg)
 
 if(NOT COMMAND ctr_generate_smdh OR NOT COMMAND ctr_create_3dsx)
   message(FATAL_ERROR "Nintendo 3DS CMake helpers are unavailable; use the devkitPro 3DS toolchain")

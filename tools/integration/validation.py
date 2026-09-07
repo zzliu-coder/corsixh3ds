@@ -11,6 +11,7 @@ from sound_lifetime import (sound_transaction, patch_sound_lifetime,
                             check_sound_lifetime, SoundPatchError)
 from sprite_residency import patch_sprite_residency, check_sprite_residency
 from .render_fast import check_render_fast
+from .render_gpu import check_render_gpu
 from .cpu_hotspots import check_cpu_hotspots
 from .common import (
     APP_ATTACH_MARKER,
@@ -69,6 +70,7 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors: list[str] = check_sound_lifetime(root, SOUND_INIT_R41_TRANSACTION)
     errors.extend(check_dual_screen(root))
     errors.extend(check_render_fast(root))
+    errors.extend(check_render_gpu(root))
     errors.extend(check_cpu_hotspots(root))
     errors.extend(check_sound_callbacks(root))
     errors.extend(check_sprite_residency(root))

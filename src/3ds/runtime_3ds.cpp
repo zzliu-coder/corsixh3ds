@@ -39,7 +39,9 @@
 #include "cth3ds/events.hpp"
 #include "cth3ds/fixed_step.hpp"
 #include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/presentation_clock.hpp"
 #include "cth3ds/cpu_work.hpp"
+#include "cth3ds/gpu_api.hpp"
 #include "cth3ds/framebuffer_scaler.hpp"
 #include "cth3ds/input_mapper.hpp"
 #include "cth3ds/input_collector_3ds.hpp"
@@ -153,6 +155,8 @@ bool g_terminal_observation = false, g_terminal_observation_saved = false;
 int g_input_cursor_x = 0, g_input_cursor_y = 0;
 std::uint64_t g_timer_events = 0, g_logic_callbacks = 0, g_logic_failures = 0;
 SimulationClock g_simulation_clock;
+PresentationClock g_presentation_clock;
+bool g_benchmark_active=false;
 std::uint64_t g_input_owner_epoch = 0;
 std::uint64_t now_us() noexcept;
 bool g_log_attempted = false;
@@ -838,7 +842,11 @@ class Runtime {
              ScreenLayout::kBottomWidth, ScreenLayout::kBottomHeight);
     boot_log_memory("S90");
     {
-      boot_log("present: logical=640x480 top=400x240 native-crop bottom=320x240 half renderer=software gpu_utilization=unknown cpu_utilization=unknown");
+      const char* renderer="software";
+#ifdef CORSIXTH_3DS_GPU
+      if(gpu_active())renderer="citro2d-ordered-canvas";
+#endif
+      boot_log("present: logical=640x480 top=400x240 native-crop bottom=320x240 half renderer=%s gpu_utilization=unknown cpu_utilization=unknown",renderer);
     }
 
     boot_log("runtime: dependencies initialized mode=%s epoch=%llu",asset_mode_.c_str(),static_cast<unsigned long long>(epoch_));
@@ -861,6 +869,9 @@ class Runtime {
   std::uint64_t epoch() const {return epoch_;}
 
   void shutdown() noexcept {
+#ifdef CORSIXTH_3DS_GPU
+    gpu_quiesce();
+#endif
     if (!initialized_ && !lua_state_ && !bottom_window_) return;
     boot_log("runtime: shutdown requested");
     if (!input_collector_.stop()) boot_log("input: sampler join failed; retained until process exit");
@@ -960,7 +971,18 @@ class Runtime {
       snapshot.touch = {static_cast<int>(touch.px), static_cast<int>(touch.py)};
     }
 
-    if (bottom_mode_ == BottomScreenMode::Game) {
+    if(g_benchmark_active){
+      std::string benchmark_error;
+      const char* method=(raw_held&KEY_B)?"benchmarkCancel":"benchmarkTick";
+      if(!call_platform_method(state,method,nullptr,&benchmark_error)){
+        g_benchmark_active=false;report_fatal(benchmark_error.c_str());input_failed_=true;return;
+      }
+      input_collector_.discard();
+    }
+    if (g_benchmark_active) {
+      // Benchmark runs have no user input. B is handled above; lifecycle stays
+      // active below. The stylus never gets synthetic mouse commands.
+    } else if (bottom_mode_ == BottomScreenMode::Game) {
 #ifdef CTH3DS_STUB_BUILD
       input_collector_.push_for_host(snapshot);
 #endif
@@ -1154,8 +1176,14 @@ class Runtime {
     if (surface) {
       std::FILE* reference = std::fopen("sdmc:/3ds/corsixth/render-reference.txt", "rb");
       render_work.fast_flip_enabled = reference == nullptr;
+#ifdef CORSIXTH_3DS_GPU
+      if(gpu_active())render_work.fast_flip_enabled=false; // UV flips share one decoded source
+#endif
       std::FILE* blit_reference = std::fopen("sdmc:/3ds/corsixth/blit-reference.txt", "rb");
       blit_counters.enabled = blit_reference == nullptr;
+#ifdef CORSIXTH_3DS_GPU
+      if(gpu_active())blit_counters.enabled=false;
+#endif
       blit_counters.reference_forced = blit_reference != nullptr;
       if (blit_reference) std::fclose(blit_reference);
       if (reference) std::fclose(reference);
@@ -1211,6 +1239,19 @@ class Runtime {
   }
 
   bool present_game(int /*legacy_cursor_x*/, int /*legacy_cursor_y*/) {
+#ifdef CORSIXTH_3DS_GPU
+    if(gpu_active()){
+      view_.follow({g_input_cursor_x,g_input_cursor_y});
+      ++top_attempts_;
+      const bool top_ok=gpu_top(view_.bounds());
+      // Loading screens also end frames before the main loop is running.
+      // Publish the two outputs as one GPU job on every engine end_frame.
+      RuntimeTimingScope bottom(TimingStage::Bottom);
+      const bool bottom_ok=mirror_game_to_bottom();
+      bottom.finish(bottom_ok);
+      return top_ok&&bottom_ok;
+    }
+#endif
     if (!game_window_ || !game_surface_) return false;
     SDL_Surface* output = SDL_GetWindowSurface(game_window_);
     if (!valid_output_surface(output, 400, 240))
@@ -1238,6 +1279,9 @@ class Runtime {
   }
 
   void log_display_stats() noexcept {
+#ifdef CORSIXTH_3DS_GPU
+    gpu_log_statistics();
+#endif
     if (!top_attempts_ && !display_error_count_) return;
     boot_log("display-stats: attempts=%llu copy_us=%llu submit_us=%llu errors=%llu view_x=%d view_y=%d view_w=%d view_h=%d context=%u",
         static_cast<unsigned long long>(top_attempts_),
@@ -1256,6 +1300,8 @@ class Runtime {
       (unsigned long long)q.touch_down,(unsigned long long)q.touch_up,(unsigned long long)q.overflows,
       (unsigned long long)q.discarded,(unsigned long long)q.max_age_us,(unsigned long long)q.max_sample_gap_us,
       (unsigned long)q.peak_depth,(unsigned long)input_collector_.size());
+    boot_log("input-latency: cumulative_samples=%llu age_p95_upper_us=%llu visible_latency_not_measured=1",
+      (unsigned long long)q.popped,(unsigned long long)q.age_p95_upper_us());
     boot_log("render-work: fast_flip=%d draws=%llu fallback_flip=%llu creates=%llu decoded_pixels=%llu flip_hits=%llu flip_misses=%llu avoided_flip_pixels=%llu evictions=%llu cache_bytes=%llu cache_peak=%llu cache_budget=6291456",
       render_work.fast_flip_enabled,(unsigned long long)render_work.draws,(unsigned long long)render_work.flipped_fallback,
       (unsigned long long)render_work.texture_creates,(unsigned long long)render_work.decoded_pixels,
@@ -1306,10 +1352,16 @@ class Runtime {
     if (!draw_success || (g_top_present_seen && !g_top_present_ok)) {
       result = PresentResult::Failed;
     } else if (initialized_ && bottom_mode_ == BottomScreenMode::Game && g_top_present_seen) {
+#ifdef CORSIXTH_3DS_GPU
+      if(gpu_active())result=PresentResult::Success;
+      else
+#endif
+      {
       RuntimeTimingScope bottom(TimingStage::Bottom);
       const bool ok = mirror_game_to_bottom();
       bottom.finish(ok);
       result = ok ? PresentResult::Success : PresentResult::Failed;
+      }
     }
     g_timing.present_complete(now_us(), result);
     g_top_present_seen = g_top_present_ok = false;
@@ -1329,6 +1381,9 @@ class Runtime {
   }
 
   bool text_keyboard(const char* initial, int limit, char* output, std::size_t capacity) {
+#ifdef CORSIXTH_3DS_GPU
+    gpu_quiesce();
+#endif
 #ifndef CTH3DS_STUB_BUILD
     input_collector_.pause(true);
     g_window_has_operation = true;
@@ -1493,7 +1548,7 @@ class Runtime {
   }
 
   void cancel_input(lua_State* state) {
-    g_simulation_clock.interrupt();
+    if(g_benchmark_active)(void)call_platform_method(state,"benchmarkCancel");
     std::string error;
     const bool released=input_mapper_.cancel_mixed([&](const Action& action){return call_platform_method(state,"handleAction",&action,&error);});
     const bool cleared=call_platform_method(state,"cancelPointer",nullptr,&error);
@@ -1536,6 +1591,7 @@ class Runtime {
   void process_lifecycle(lua_State* state, std::uint64_t current) {
     const std::uint32_t flags = pending_lifecycle_.exchange(0U, std::memory_order_relaxed);
     if (flags != 0U) {
+      g_simulation_clock.interrupt();
       boot_log("lifecycle: flags=0x%08lx", static_cast<unsigned long>(flags));
     }
     if(flags && bottom_mode_==BottomScreenMode::Game) { input_collector_.discard(); cancel_input(state); }
@@ -1566,6 +1622,9 @@ class Runtime {
                                 bool is_resume) {
     const auto restore_token=is_resume?runtime_span_begin(TimingStage::Restore):0;
     if (decision.pause_audio && !lifecycle_audio_suspended_) {
+#ifdef CORSIXTH_3DS_GPU
+      gpu_quiesce();
+#endif
       input_collector_.pause(true);
       lifecycle_audio_suspended_ = true;
 #ifndef CTH3DS_STUB_BUILD
@@ -1696,6 +1755,15 @@ class Runtime {
   //! every second pixel. Both surfaces are RGBA8888, so this is a straight
   //! pixel move with no format conversion.
   bool mirror_game_to_bottom() {
+#ifdef CORSIXTH_3DS_GPU
+    if(gpu_active()){
+      ++bottom_attempts_;
+      const auto* pixels=overlay_pixels();
+      const bool ok=gpu_bottom(view_.bounds(),pixels,pixels?kOverlayHeight:0);
+      if(ok){dirty_=false;display_error_=nullptr;}
+      return ok;
+    }
+#endif
     if (bottom_window_ == nullptr || game_window_ == nullptr) {
       return false;
     }
@@ -1738,24 +1806,28 @@ class Runtime {
   //! A short status strip over the mirrored frame: the build stamp for the
   //! first few seconds after boot, and any error notice for as long as it
   //! stands. Everything else on the lower screen is the game itself.
-  void draw_overlay_strip() {
+  const std::uint32_t* overlay_pixels() {
     const BottomUiState& state = bottom_ui_.state();
     const bool has_error = state.notice_is_error && !state.notice.empty();
     const bool show_stamp = last_tick_us_ < overlay_until_us_;
     const bool show_notice = !state.notice.empty() && now_us() < notice_until_us_;
     if (!has_error && !show_stamp && !show_notice) {
-      return;
+      return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R51 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R52 " + state.build_tag;
     if (text.empty()) {
-      return;
+      return nullptr;
     }
     overlay_canvas_.clear(has_error ? Rgba{176, 46, 40, 255}
                                     : Rgba{18, 25, 32, 255});
     overlay_canvas_.text(3, 3, text, Rgba{239, 242, 244, 255});
 
     const auto& bytes = overlay_canvas_.rgba_bytes();
-    const auto* source = reinterpret_cast<const std::uint32_t*>(bytes.data());
+    return reinterpret_cast<const std::uint32_t*>(bytes.data());
+  }
+  void draw_overlay_strip() {
+    const auto* source=overlay_pixels();
+    if(!source)return;
     auto* destination = static_cast<std::uint8_t*>(bottom_surface_->pixels);
     for (int y = 0; y < kOverlayHeight; ++y) {
       auto* row = reinterpret_cast<std::uint32_t*>(
@@ -1820,6 +1892,9 @@ class Runtime {
   }
 
   void render_boot_page(bool error) {
+#ifdef CORSIXTH_3DS_GPU
+    gpu_quiesce();
+#endif
     if (bottom_surface_ == nullptr) {
       return;
     }
@@ -1833,7 +1908,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R51 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R52 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2136,6 +2211,40 @@ int l_request_observation_flush(lua_State*) {
   g_observation_flush_requested = true;
   return 0;
 }
+int l_cpu_profile(lua_State* state) {
+  const char* name=luaL_checkstring(state,1);
+  const auto kind=std::strcmp(name,"world")==0?CpuWork::World:CpuWork::UI;
+  if(std::strcmp(name,"world")&&std::strcmp(name,"ui"))return luaL_error(state,"unknown CPU profile");
+  luaL_checktype(state,2,LUA_TFUNCTION);lua_remove(state,1);
+  int status;
+  {CpuWorkScope scope(kind);status=lua_pcall(state,lua_gettop(state)-1,LUA_MULTRET,0);}
+  if(status!=LUA_OK)return lua_error(state);
+  return lua_gettop(state);
+}
+int l_clock_ms(lua_State* state){lua_pushinteger(state,static_cast<lua_Integer>(now_us()/1000));return 1;}
+int l_benchmark_state(lua_State* state){g_benchmark_active=lua_toboolean(state,1)!=0;return 0;}
+int l_benchmark_enabled(lua_State* state){
+  constexpr const char* marker="sdmc:/3ds/corsixth/benchmark-run.txt";
+  bool enabled=false;
+  if(auto* file=std::fopen(marker,"rb")){
+    char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
+    if(length==4&&!std::memcmp(magic,"R52\n",4)){
+      if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
+        std::fclose(input);
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r52.txt")==0;
+      }
+    }
+    boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
+  }
+  lua_pushboolean(state,enabled);return 1;
+}
+int l_benchmark_mark(lua_State* state){
+  const char* event=luaL_checkstring(state,1);const char* speed=luaL_checkstring(state,2);
+  const char* date=luaL_checkstring(state,3);
+  boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
+    (unsigned long long)now_us(),event,speed,date);
+  return 0;
+}
 int l_span_begin(lua_State* state) {
   const char* name = luaL_checkstring(state, 1);
   for (std::size_t i = 0; i < kTimingStageNames.size(); ++i) {
@@ -2243,6 +2352,15 @@ int l_focus_view(lua_State* state) {
   return 0;
 }
 
+int l_scene(lua_State* state) {
+  const auto* identity=luaL_checkstring(state,1);
+  if(std::strncmp(identity,"level:",6)!=0 && std::strcmp(identity,"menu")!=0)
+    return luaL_error(state,"invalid game scene identity");
+  if(std::strlen(identity)>=g_scene_identity.size())return luaL_error(state,"scene identity too long");
+  if(std::strcmp(g_scene_identity.data(),identity))g_window_scene_changed=true;
+  std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"%s",identity);
+  return 0;
+}
 int l_workload(lua_State* state) {
   luaL_checktype(state,1,LUA_TTABLE);
   const auto language = table_string(state,1,"language","unknown");
@@ -2382,14 +2500,21 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "begin_critical_io", l_begin_critical_io);
   set_function(state, "end_critical_io", l_end_critical_io);
   set_function(state, "resource_event", l_resource_event);
+  set_function(state, "scene", l_scene);
   set_function(state, "set_notice", l_set_notice);
   set_function(state, "performance", l_performance);
+  set_function(state, "cpu_profile", l_cpu_profile);
+  set_function(state, "clock_ms", l_clock_ms);
+  set_function(state, "benchmark_enabled", l_benchmark_enabled);
+  set_function(state, "benchmark_state", l_benchmark_state);
+  set_function(state, "benchmark_mark", l_benchmark_mark);
   return 1;
 }
 
 void register_lua_module(lua_State* state) {
   g_compact_flush_us=now_us();g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
+  g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
   g_timer_events=g_logic_callbacks=g_logic_failures=0;
   g_terminal_observation=g_terminal_observation_saved=false;
@@ -2402,7 +2527,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R51 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 software_submission_only=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
+  boot_log("diagnostics: revision=R52 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2482,6 +2607,7 @@ std::shared_ptr<ResourceBudgetGate> make_runtime_resource_budget_gate() {
 void runtime_set_game_window(SDL_Window* window) noexcept {
   runtime().set_game_window(window);
 }
+void runtime_diagnostic_line(const char* line) noexcept {boot_log("%s",line?line:"");}
 
 void runtime_set_game_canvas(SDL_Surface* surface) noexcept {
   runtime().set_game_canvas(surface);
@@ -2498,10 +2624,8 @@ bool runtime_present_game(int cursor_x, int cursor_y) noexcept {
 }
 
 std::uint64_t runtime_span_begin(TimingStage stage) noexcept {
-  if(stage==TimingStage::Save||stage==TimingStage::Load||stage==TimingStage::Restore) {
-    g_window_has_operation=true;
-    g_simulation_clock.interrupt();
-  }
+  // Observation only: a sprite/sound Load span is not a game-load operation.
+  // Authoritative save/load/lifecycle boundaries own clock interruption.
   return g_timing.begin_span(stage, now_us());
 }
 bool runtime_span_end(std::uint64_t token, bool success) noexcept {
@@ -2525,6 +2649,13 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
       requested, requested_known, held, held_known, failed, opaque);
   g_memory_observations.observe(checkpoint ? checkpoint : "unknown", o);
   if(checkpoint && phase && resource) {
+    const bool game_operation=!std::strcmp(checkpoint,"save")||!std::strcmp(checkpoint,"reload")||
+      !std::strcmp(checkpoint,"world")||!std::strcmp(checkpoint,"restore")||
+      (!std::strcmp(checkpoint,"release")&&!std::strcmp(resource,"App:loadMainMenu"));
+    if(game_operation && (!std::strcmp(phase,"before")||!std::strcmp(phase,"after")||
+       !std::strcmp(phase,"committed")||!std::strcmp(phase,"failed")||!std::strcmp(phase,"gc-after"))){
+      g_window_has_operation=true;g_simulation_clock.interrupt();
+    }
     const bool operation=!std::strcmp(checkpoint,"save")||!std::strcmp(checkpoint,"reload")||!std::strcmp(checkpoint,"world")||!std::strcmp(checkpoint,"release")||!std::strcmp(checkpoint,"restore");
     const bool boundary=!std::strcmp(phase,"before")||!std::strcmp(phase,"after")||!std::strcmp(phase,"committed")||!std::strcmp(phase,"failed")||!std::strcmp(phase,"gc-before")||!std::strcmp(phase,"gc-after");
     if(operation&&boundary) {
@@ -2536,7 +2667,6 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
     if(!std::strcmp(phase,"after") && (!std::strncmp(resource,"level:",6)||!std::strcmp(resource,"menu"))) {
       if (std::strcmp(g_scene_identity.data(), resource)) {
         g_window_scene_changed=true;
-        g_simulation_clock.interrupt();
       }
       std::snprintf(g_scene_identity.data(),g_scene_identity.size(),"%s",resource);
     }
@@ -2551,6 +2681,10 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
 void runtime_note_timer_event() noexcept { ++g_timer_events; }
 void runtime_simulation_begin() noexcept { g_simulation_clock.begin(now_us()); }
 bool runtime_simulation_step() noexcept { return g_simulation_clock.take_step(now_us()); }
+bool runtime_frame_due(bool changed) noexcept {
+  return g_presentation_clock.take(now_us(),changed,
+    std::strncmp(g_scene_identity.data(),"level:",6)==0);
+}
 void runtime_note_logic_callback(bool success) noexcept {
   ++g_logic_callbacks;
   if (!success) { ++g_logic_failures; g_simulation_clock.interrupt(); }

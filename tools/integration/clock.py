@@ -27,13 +27,31 @@ SIMULATION_CLOCK_SITES = (
      '#else\n    if (do_timer)\n#endif\n    {\n#ifdef CORSIXTH_3DS\n'),
 )
 
+PRESENTATION_SITES = (
+    ('  while ((wait_error = SDL_WaitEvent(&e)) != 0) {',
+     '  // R52: poll input on a bounded wake even if no engine event arrived.\n'
+     '#ifdef CORSIXTH_3DS\n'
+     '  auto u3_wait = [&]() {\n'
+     '    if (SDL_WaitEventTimeout(&e, 8) == 0) e.type = SDL_FIRSTEVENT;\n'
+     '    return 1;\n  };\n'
+     '  while ((wait_error = u3_wait()) != 0) {\n'
+     '#else\n  while ((wait_error = SDL_WaitEvent(&e)) != 0) {\n#endif'),
+    ('    if (do_frame || !fps.limit_fps) {',
+     '#ifdef CORSIXTH_3DS\n'
+     '    do_frame = cth3ds::runtime_frame_due(do_frame || !fps.limit_fps);\n'
+     '#endif\n    if (do_frame\n#ifndef CORSIXTH_3DS\n        || !fps.limit_fps\n#endif\n    ) {'),
+    ('      } while (fps.limit_fps == false && SDL_PollEvent(nullptr) == 0);',
+     '#ifdef CORSIXTH_3DS\n      } while (false); // input and logic own the next turn\n'
+     '#else\n      } while (fps.limit_fps == false && SDL_PollEvent(nullptr) == 0);\n#endif'),
+)
+
 
 def patch_simulation_clock(root: Path) -> list[Change]:
     # This upgrade also accepts a previously integrated R48 tree. Counter calls
     # stay on the main thread; the 18ms SDL timer never writes a log or Lua.
     path = root / "CorsixTH/Src/sdl_core.cpp"
     before = text = read_text(path)
-    for old, new in SIMULATION_CLOCK_SITES:
+    for old, new in SIMULATION_CLOCK_SITES + PRESENTATION_SITES:
         if text.count(new) == 1:
             continue
         if text.count(old) != 1:

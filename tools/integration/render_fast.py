@@ -5,6 +5,7 @@ from sound_lifetime import replace_exact, SoundPatchError
 INCLUDE = '''#ifdef CORSIXTH_3DS
 // CORSIXTH_3DS_FAST_BLIT_R51: private handles never leave this translation unit.
 #include "cth3ds/sdl_blitter.hpp"
+#include "cth3ds/gpu_sdl_bridge.hpp"
 #define SDL_DestroyTexture cth3ds::blit_destroy
 #endif
 '''
@@ -13,6 +14,8 @@ OWNER_INCLUDE = '''#ifdef CORSIXTH_3DS
 #endif'''
 
 def transform(text):
+    legacy_include=INCLUDE.replace('#include "cth3ds/gpu_sdl_bridge.hpp"\n','')
+    if legacy_include in text:text=text.replace(legacy_include,INCLUDE,1)
     if INCLUDE not in text:
         text=replace_exact(text, OWNER_INCLUDE, OWNER_INCLUDE+'\n'+INCLUDE,'blitter owner include')
     old='''      SDL_CreateTexture(renderer, pixel_format->format,

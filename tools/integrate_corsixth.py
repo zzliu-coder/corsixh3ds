@@ -101,6 +101,7 @@ from integration.validation import (
     check_integrated,
 )
 from integration.render_fast import patch_render_fast
+from integration.render_gpu import patch_render_gpu
 from integration.cpu_hotspots import patch_cpu_hotspots
 
 
@@ -168,6 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                            patch_dual_screen(root))
             changes.extend(Change(path, "handheld-ui") for path in patch_handheld_ui(root))
             changes.extend(Change(path, "render-fast") for path in patch_render_fast(root))
+            changes.extend(Change(path, "render-gpu") for path in patch_render_gpu(root))
             changes.extend(Change(path, "cpu-hotspots") for path in patch_cpu_hotspots(root))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)

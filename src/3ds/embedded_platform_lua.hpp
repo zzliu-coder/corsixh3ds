@@ -314,6 +314,7 @@ end
 -- Keep existing geometry and pen coordinates. A new dialog may move the
 -- viewing rectangle, never the authoritative mouse position.
 function Platform:prepareInput()
+  self:syncScene()
   local state = self:inputState()
   local ui, owners = self.app.ui, self.focus_owners
   local window = top_window(ui)
@@ -338,7 +339,9 @@ function Platform:prepareInput()
     end
   end
   if type(self.native.focus_view) == "function" then
-    self.native.focus_view(x, y)
+    -- Odd-sized dialogs have half-pixel centres; native view coordinates are
+    -- integers. Focusing the view must leave the authoritative pen untouched.
+    self.native.focus_view(pixel(x,639), pixel(y,479))
   end
   return true
 end
@@ -447,7 +450,25 @@ end
 
 -- A ten-second diagnostic sample, separate from the per-input lightweight
 -- context. No resource loading, simulation mutation or cached UI collection.
+function Platform:syncScene()
+  local world=self.app.world
+  self.scene_owner=self.scene_owner or setmetatable({}, {__mode="v"})
+  if self.scene_synced and self.scene_owner.world==world then return end
+  if type(self.native.scene)=="function" then
+    self.native.scene(world and ("level:"..tostring(world.map and world.map.level_number or "unknown")) or "menu")
+  end
+  self.scene_owner.world=world;self.scene_synced=true
+end
+function Platform:benchmarkTick()
+  if self.benchmark then self.benchmark:tick() end
+  return true
+end
+function Platform:benchmarkCancel()
+  if self.benchmark then self.benchmark:cancel("user-or-lifecycle") end
+  return true
+end
 function Platform:samplePerformanceContext()
+  self:syncScene()
   if type(self.native.workload) ~= "function" then return true end
   local app, ui = self.app, self.app.ui
   local hospital, world = ui and ui.hospital, app.world
@@ -839,6 +860,7 @@ function Platform:installOperationSpans()
       native.observe_memory(site, success and "committed" or "failed", method, "Operation")
       baseline("gc-after")
       native.span_end(token, success)
+      if method=="load" then self:syncScene() end
       native.flush_observations()
       if not result[1] then error(result[2], 0) end
       return (table.unpack or unpack)(result, 2, result.n)
@@ -877,6 +899,9 @@ function module.attach(app, native, capabilities)
     error(platform,0)
   end
   app._3ds=platform
+  if native.benchmark_enabled and native.benchmark_enabled() then
+    platform.benchmark=require("3ds.benchmark").new(app,native)
+  end
   return platform
 end
 

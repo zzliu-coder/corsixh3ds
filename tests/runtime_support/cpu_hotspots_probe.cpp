@@ -1,6 +1,7 @@
 // Compiled against original and assembled production methods, not a second
 // temperature implementation. Minimal tile containers isolate the arithmetic.
 #include "cth3ds/cpu_work.hpp"
+#include "cth3ds/thermal_grid.hpp"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -36,13 +37,16 @@ int main() {
     if(seed%7==0)tile.objects.push_back(object_type::radiator);
     if(seed%11==0)tile.objects.push_back(object_type::other);
   }
-  b=a;original::level_map ref{128,128,0,a.data()};improved::level_map fast{128,128,0,b.data()};
+  b=a;original::level_map ref{128,128,0,a.data(),{}};improved::level_map fast{128,128,0,b.data(),{}};
   cth3ds::cpu_work.clock_us=clock_now;
   for(unsigned step=0;step<200;++step) {
     // Same boundary/ownership/radiator mutations before each real update.
     const auto index=step*71;
     a[index].flags.room=b[index].flags.room=step%2==0;
     a[index].objects.clear();b[index].objects.clear();
+    if(step%3==0){a[index].objects.push_back(object_type::radiator);b[index].objects=a[index].objects;}
+    a[index].flags.hospital=b[index].flags.hospital=step%5==0;
+    a[index].flags.can_travel_e=b[index].flags.can_travel_e=step%4==0;
     const auto air=static_cast<std::uint16_t>(step*315U),heat=static_cast<std::uint16_t>(65535-step*200);
     ref.update_temperatures(air,heat);fast.update_temperatures(air,heat);
     assert(ref.current_temperature_index==fast.current_temperature_index);

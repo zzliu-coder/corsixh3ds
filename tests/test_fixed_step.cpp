@@ -2,6 +2,19 @@
 
 #include "cth3ds/fixed_step.hpp"
 #include "cth3ds/simulation_clock.hpp"
+#include "cth3ds/presentation_clock.hpp"
+
+TEST(presentation_clock_retains_requests_and_bounds_idle_refresh) {
+  cth3ds::PresentationClock clock;
+  EXPECT_TRUE(clock.take(0,false,false));
+  EXPECT_FALSE(clock.take(5000,true,false));
+  EXPECT_TRUE(clock.take(16667,false,false));
+  EXPECT_FALSE(clock.take(34000,false,false));
+  EXPECT_TRUE(clock.take(116667,false,false));
+  EXPECT_FALSE(clock.take(216667,false,true));
+  EXPECT_TRUE(clock.take(216668,true,true));
+  EXPECT_TRUE(clock.take(5,true,true));
+}
 
 TEST(simulation_clock_uses_elapsed_time_with_original_18ms_tick) {
   cth3ds::SimulationClock clock;

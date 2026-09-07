@@ -11,6 +11,7 @@
 #include <memory>
 #include <new>
 #include "cth3ds/render_work.hpp"
+#include "cth3ds/gpu_api.hpp"
 
 namespace cth3ds {
 namespace blit_detail {
@@ -62,6 +63,9 @@ inline SDL_Texture* promote(Image* image) {
 
 inline SDL_Texture* blit_create(SDL_Renderer* renderer, int width, int height,
                                 const std::uint32_t* pixels) {
+#ifdef CORSIXTH_3DS_GPU
+  if(gpu_active())return gpu_image_create(renderer,width,height,pixels);
+#endif
   if (!pixels || width<=0 || height<=0 || width>4096 || height>4096) {
     SDL_SetError("Invalid CorsixTH blit image"); return nullptr;
   }
@@ -139,10 +143,16 @@ inline SDL_Texture* blit_create(SDL_Renderer* renderer, int width, int height,
 }
 
 inline void blit_destroy(SDL_Texture* texture) noexcept {
+#ifdef CORSIXTH_3DS_GPU
+  if(gpu_active()){gpu_image_destroy(texture);return;}
+#endif
   if(auto* image=blit_detail::get(texture))blit_detail::forget(image);
   SDL_DestroyTexture(texture);
 }
 inline void blit_release_renderer(SDL_Renderer* renderer) noexcept {
+#ifdef CORSIXTH_3DS_GPU
+  if(gpu_active()){gpu_images_release(renderer);gpu_shutdown();return;}
+#endif
   // Renderer destruction also destroys SDL handles, but not user data.
   auto* image=blit_detail::images;
   while(image) { auto* next=image->next;
@@ -153,6 +163,9 @@ inline void blit_release_renderer(SDL_Renderer* renderer) noexcept {
 
 inline int blit_draw(SDL_Renderer* renderer, SDL_Surface* canvas, SDL_Texture* texture,
     const SDL_Rect* source, const SDL_FRect* destination, SDL_RendererFlip flip) {
+#ifdef CORSIXTH_3DS_GPU
+  if(gpu_active())return gpu_image_draw(texture,source,destination,flip);
+#endif
   auto* image=blit_detail::get(texture);
   if(!image) {
     ++blit_counters.fallback;
@@ -244,6 +257,9 @@ namespace cth3ds {
 // selects a path only when both same-workload samples improve. This is a small
 // software microbenchmark, not proof of game FPS or complete pixel correctness.
 inline void blit_calibrate(SDL_Renderer* renderer, SDL_Surface* canvas) noexcept {
+#ifdef CORSIXTH_3DS_GPU
+  if(gpu_active())return;
+#endif
   if(blit_counters.reference_forced || !canvas || canvas->w<160 || canvas->h<100 ||
      canvas->format->format!=SDL_PIXELFORMAT_ABGR8888 || SDL_MUSTLOCK(canvas) ||
      blit_counters.live_images || SDL_GetRenderTarget(renderer)) {

@@ -33,14 +33,22 @@ extern "C" {
 }
 #include "cth3ds/input_mapper.hpp"
 #include "cth3ds/action_codec.hpp"
+#include "cth3ds/cpu_work.hpp"
+#include "cth3ds/telemetry.hpp"
+#include "cth3ds/simulation_clock.hpp"
 #include <cstring>
 #include <cstdio>
 static_assert(LUA_VERSION_NUM==504,"test requires Lua 5.4");
 using namespace cth3ds;
+std::array<char,96> g_scene_identity{};bool g_window_scene_changed=false;
+Telemetry g_timing;SimulationClock g_simulation_clock;
+std::uint64_t now_us() noexcept {static std::uint64_t clock=100;return ++clock;}
 struct render_target {};
 template<class T> T* luaT_testuserdata(lua_State*,int,int) { static T c;return &c; }
 #define luaT_upvalueindex lua_upvalueindex
 namespace cursor { bool set_position(render_target*,int,int) { return true; } }
+struct ViewProbe { void focus_view(int,int) {} };
+static ViewProbe& runtime() { static ViewProbe instance; return instance; }
 """
 MAIN = r"""
 int action_for_sample(lua_State* L) {
@@ -64,13 +72,31 @@ int main(int argc,char** argv) {
   lua_newtable(L);
   lua_pushcfunction(L,l_cursor_position);lua_setfield(L,-2,"cursor_position");
   lua_pushcfunction(L,action_for_sample);lua_setfield(L,-2,"action_for_sample");
+  lua_pushcfunction(L,l_focus_view);lua_setfield(L,-2,"focus_view");
+  lua_pushcfunction(L,l_cpu_profile);lua_setfield(L,-2,"profile");
+  lua_pushcfunction(L,l_scene);lua_setfield(L,-2,"scene");
   lua_setglobal(L,"probe");
+  cpu_work.clock_us=now_us;
+  g_simulation_clock.begin(0);g_simulation_clock.begin(36000);
+  const auto debt=g_simulation_clock.statistics().debt_us;
+  auto token=runtime_span_begin(TimingStage::Load);
+  if(!runtime_span_end(token,true)||g_simulation_clock.statistics().debt_us!=debt)return 4;
   const int result=luaL_dofile(L,argv[1]);
   if(result)std::fprintf(stderr,"%s\n",lua_tostring(L,-1));
+  if(cpu_work.rows[static_cast<std::size_t>(CpuWork::World)].calls<2)return 5;
   lua_close(L);return result?1:0;
 }
 """
 EXTRA = r"""
+do
+ local a,b,c=probe.profile('world',function(x)return nil,x,false end,27)
+ assert(a==nil and b==27 and c==false)
+ assert(not pcall(probe.profile,'world',function()error('profile failure retained')end))
+ assert(not pcall(probe.profile,'invalid',function()end))
+ probe.scene('level:1');probe.scene('menu')
+ assert(not pcall(probe.scene,'invalid'))
+ assert(not pcall(probe.scene,'level:'..string.rep('x',100)))
+end
 -- The pinned conversion must reject a fractional control, proving this test
 -- would catch the original failure independently of the adapter.
 assert(not pcall(probe.cursor_position,{},200.5,200))
@@ -123,7 +149,7 @@ do
  local focused,selected,saved_config=0,0,0
  local focus_x,focus_y
  app.saveConfig=function()saved_config=saved_config+1 end
- p.native.focus_view=function(x,y) focused=focused+1;focus_x,focus_y=x,y end
+ p.native.focus_view=function(x,y) probe.focus_view(x,y);focused=focused+1;focus_x,focus_y=x,y end
  ui.sendToTop=function()end;ui.sendToBottom=function()end;ui.playSound=function()end
  local root={x=0,width=64,level=1,items={{handler=function()selected=selected+1 end}}}
  root.hitTest=function(_,x,y) if y<16 then return false end;if y<48 then return 1 end;return false end
@@ -158,6 +184,21 @@ do
  assert(p:prepareInput());assert(ui.cursor_x==300 and ui.cursor_y==300)
  assert(p:handlePointer{kind='up'});assert(p:prepareInput())
  assert(focus_x==50 and focus_y==40 and ui.cursor_x==300 and ui.cursor_y==300)
+ -- Actual UIConfirmDialog width, centred with Window:setDefaultPosition.
+ -- Test clear, scaled, clipped and off-canvas windows through real checkinteger.
+ assert(not pcall(probe.focus_view,320.5,240))
+ for _,scale in ipairs({1,1.25,1.5}) do
+  for _,width in ipairs({183,185,640,901}) do
+   app.config.ui_scale=scale
+   ui.cursor_x,ui.cursor_y=0,479
+   ui.windows={{visible=true,x=math.floor((640-width)/2+0.5),y=175,
+     width=width,height=129,apply_ui_scale=true}}
+   assert(p:prepareInput())
+   assert(math.tointeger(focus_x) and math.tointeger(focus_y))
+   assert(focus_x>=0 and focus_x<640 and focus_y>=0 and focus_y<480)
+   assert(ui.cursor_x==0 and ui.cursor_y==479,'view changed pen')
+  end
+ end
 end
 do
  local p,app,ui=fresh();local samples=0
@@ -190,6 +231,10 @@ class InputNativeBoundaryTests(unittest.TestCase):
         script="local menu_methods="+repr(str(ROOT/'tests/fixtures/menu_input.lua'))+"\n"+script+EXTRA
         runtime=(ROOT/'src/3ds/runtime_3ds.cpp').read_text()
         push=re.search(r'(?ms)^void push_action\(.*?^\}',runtime).group()
+        focus=re.search(r'(?ms)^int l_focus_view\(.*?^\}',runtime).group()
+        functions='\n'.join(re.search(pattern,runtime).group() for pattern in (
+            r'(?ms)^int l_cpu_profile\(.*?^\}',r'(?ms)^int l_scene\(.*?^\}',
+            r'(?ms)^std::uint64_t runtime_span_begin\(.*?^\}',r'(?ms)^bool runtime_span_end\(.*?^\}'))
         pkg=next((x for x in ('lua5.4','lua-5.4','lua') if subprocess.run(['pkg-config','--exists',x]).returncode==0),None)
         self.assertIsNotNone(pkg,'Lua development package required')
         include=os.environ.get('CTH3DS_LUA_INCLUDE')
@@ -198,9 +243,10 @@ class InputNativeBoundaryTests(unittest.TestCase):
         links=[library] if library else shlex.split(subprocess.check_output(['pkg-config','--libs',pkg],text=True))
         with tempfile.TemporaryDirectory(prefix='cth3ds-input-native-') as temp:
             temp=Path(temp);source=temp/'probe.cpp';binary=temp/'probe';lua=temp/'probe.lua'
-            source.write_text(CPP+CURSOR+push+MAIN);lua.write_text(script)
+            source.write_text(CPP+CURSOR+push+focus+functions+MAIN);lua.write_text(script)
             cmd=[os.environ.get('CXX','c++'),'-std=c++17','-O1','-g','-I'+str(ROOT/'include'),*flags,
                  str(source),str(ROOT/'src/common/input_mapper.cpp'),str(ROOT/'src/common/action_codec.cpp'),
+                 str(ROOT/'src/common/telemetry.cpp'),
                  str(ROOT/'src/common/screen_layout.cpp'),*links,'-o',str(binary)]
             if os.environ.get('CTH3DS_SOUND_SANITIZERS'):
                 cmd[1:1]=['-fsanitize='+os.environ['CTH3DS_SOUND_SANITIZERS'],'-fno-omit-frame-pointer']

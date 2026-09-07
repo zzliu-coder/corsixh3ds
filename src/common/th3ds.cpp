@@ -508,7 +508,9 @@ ResourceResult<Sha256Digest> hash_file(const std::filesystem::path& path,
         error(ResourceErrorCode::Io, "cannot hash " + path.string()));
   }
   stream.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
-  std::array<std::uint8_t, 64U * 1024U> buffer{};
+  // Streaming hash result is independent of chunk size. The 3DS main stack
+  // is 32 KiB; retain a small chunk instead of a 64 KiB automatic buffer.
+  std::array<std::uint8_t, 4U * 1024U> buffer{};
   Sha256 hash;
   std::uint64_t consumed = 0U;
   while (consumed < size) {

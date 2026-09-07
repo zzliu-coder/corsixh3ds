@@ -18,6 +18,11 @@ class SlowEvents {
     std::array<char,64> owner{};
     bool success{};
   };
+  void clear() noexcept {
+    head_ = count_ = 0;
+    dropped_ = 0;
+    owner_.fill(0);
+  }
   void record(std::uint64_t begin, std::uint64_t end, const char* kind,
               const char* identity, bool success=true, bool force=false) noexcept {
     if(end<begin || (!force && success && end-begin<threshold_us)) return;

@@ -1820,7 +1820,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R56 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R57 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1914,7 +1914,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R56 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R57 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2269,10 +2269,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R56\n",4)){
+    if(length==4&&!std::memcmp(magic,"R57\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r56.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r57.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
@@ -2561,16 +2561,12 @@ int luaopen_th3ds(lua_State* state) {
 }
 
 void register_lua_module(lua_State* state) {
-  g_observations = {};
-  g_observations.compact_us=now_us();g_log_time_us=g_workload_time_us=0;
+  g_observations.reset(now_us());
+  g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
   g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
-  g_observations.timer_events=g_observations.logic_callbacks=g_observations.logic_failures=0;
-  g_observations.terminal=g_observations.terminal_saved=false;
-  g_observations.window_scene_changed=false;
-  g_observation_state=state;g_observations.timing.clear();g_observations.timing.reset_window(now_us());
-  g_observations.memory.clear();g_observations.full_us=now_us();g_observations.flush_requested=false;
+  g_observation_state=state;
   boot_log_open();
   // Diagnostic switches are sampled only at native startup.
   // Reference mode retains the full weighted thermal arithmetic for A/B runs.
@@ -2587,7 +2583,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R56 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000");
+  boot_log("diagnostics: revision=R57 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(

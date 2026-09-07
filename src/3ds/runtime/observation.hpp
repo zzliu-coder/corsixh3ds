@@ -24,6 +24,12 @@ struct ObservationOutput {
 };
 class RuntimeObservations {
  public:
+  RuntimeObservations() = default;
+  RuntimeObservations(const RuntimeObservations&) = delete;
+  RuntimeObservations& operator=(const RuntimeObservations&) = delete;
+  // Keep this 52 KiB owner in permanent storage. Reset in place: value
+  // assignment creates a temporary larger than the Old 3DS main stack.
+  void reset(std::uint64_t now) noexcept;
   Telemetry timing;
   MemoryTelemetry memory;
   SlowEvents slow;

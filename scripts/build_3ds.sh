@@ -107,6 +107,10 @@ pathlib.Path(report).write_text(json.dumps(result, indent=2, sort_keys=True) + "
 if not result["pass"]:
     raise SystemExit(f"linear heap value is {value}, expected 8388608")
 PY
+ci_diag_step final-elf-stack-proof "${BUILD}/runtime-stack-proof.json"
+python3 "${CTH3DS_ROOT}/tools/check_runtime_stack.py" \
+  --elf "${ELF}" --tool-prefix "${DEVKITARM}/bin/arm-none-eabi-" \
+  --output "${BUILD}/runtime-stack-proof.json"
 ARCHIVE="$(find "${BUILD}" -name 'libCorsixTH_lib.a' -type f -print -quit)"
 [[ -n "${ARCHIVE}" && -s "${ARCHIVE}" ]] || \
   die 'CorsixTH_lib archive was not produced'
@@ -205,6 +209,7 @@ sha256_file "${OUTPUT}" > "${OUTPUT}.sha256"
 python3 - "${CTH3DS_ROOT}" "${BUILD_EVIDENCE_DIR}/artifact-manifest.json" \
   "${OUTPUT}" "${ELF}" "${BUILD}/heap-budget.json" \
   "${BUILD}/runtime-core-link-proof.json" \
+  "${BUILD}/runtime-stack-proof.json" \
   "${UPSTREAM_DIR}/CorsixTH/Src/3ds/integration-manifest.json" \
   "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" <<'PY'
 from __future__ import annotations
@@ -245,6 +250,7 @@ PY
 ci_diag_step complete "${BUILD_EVIDENCE_DIR}/configure.log" \
   "${BUILD_EVIDENCE_DIR}/build.log" "${BUILD}/heap-budget.json" \
   "${BUILD}/runtime-core-link-proof.json" "${OUTPUT}.sha256" \
+  "${BUILD}/runtime-stack-proof.json" \
   "${BUILD_EVIDENCE_DIR}/artifact-manifest.json"
 ci_diag_mark_pass
 log "Nintendo 3DS build complete: ${OUTPUT}"

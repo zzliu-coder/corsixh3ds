@@ -23,3 +23,4 @@ class RuntimeObservationFlushTests(unittest.TestCase):
             result=subprocess.run([str(binary)],capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('PASS compact throttle',result.stdout)
+            self.assertIn('PASS in-place reset stale records retired tokens invalidated',result.stdout)

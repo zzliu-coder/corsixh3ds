@@ -4,6 +4,21 @@
 #include "cth3ds/cpu_work.hpp"
 
 namespace cth3ds {
+void RuntimeObservations::reset(std::uint64_t now) noexcept {
+  timing.clear();
+  timing.reset_window(now);
+  memory.clear();
+  slow.clear();
+  scene.fill(0);
+  window_has_operation = window_scene_changed = false;
+  terminal = terminal_saved = flush_requested = false;
+  compact_us = full_us = now;
+  timer_events = logic_callbacks = logic_failures = 0;
+  // Rows beyond count are unreachable; no large aggregate temporary or
+  // duplicated buffer is needed to retire the previous session's records.
+  operation_count = 0;
+  operation_overflow = 0;
+}
 bool RuntimeObservations::due(std::uint64_t now, bool force) const noexcept {
   return !terminal_saved && (force || flush_requested || now-full_us>=60000000U || now-compact_us>=10000000U);
 }

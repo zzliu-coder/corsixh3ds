@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 227,
-  "selected_sorted_ids_sha256": "07f60a62fbc57f139214e13d659b4ad09471178166ff9ae16caff1776c794c5f",
+  "selected_count": 230,
+  "selected_sorted_ids_sha256": "500b8609d8d453fe5fd4224f38834b84f040385f15f552ae06c1b71257626423",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_build_scripts.BuildScriptTests.test_all_host_python_entries_use_one_runner_and_manifest",
@@ -280,6 +280,9 @@
     "test_runtime_hotspots_r56.RuntimeHotspotsTests.test_real_thermal_mutation_owners_and_reuse",
     "test_runtime_hotspots_r56.RuntimeHotspotsTests.test_real_world_tick_preserves_calls_dates_rates_and_returns",
     "test_runtime_observation_flush.RuntimeObservationFlushTests.test_production_short_run_and_terminal_open_span_are_retained",
+    "test_runtime_stack.RuntimeStackTests.test_bounded_frames_pass_and_hidden_r56_temporary_is_rejected",
+    "test_runtime_stack.RuntimeStackTests.test_missing_and_unknown_frames_fail_closed",
+    "test_runtime_stack.RuntimeStackTests.test_non_observer_port_frames_are_also_checked",
     "test_runtime_static.RuntimeStaticTests.test_hid_scan_is_owned_by_sdl_event_pump",
     "test_runtime_static.RuntimeStaticTests.test_legacy_panel_buffer_is_lazy",
     "test_runtime_static.RuntimeStaticTests.test_lifecycle_and_hardware_status_are_connected",

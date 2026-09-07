@@ -4,11 +4,15 @@
 #include <cstdio>
 #include <string>
 #include <cstring>
+#include <type_traits>
 using namespace cth3ds;
 static std::uint64_t clock_us=0;
 static std::string output;
 static unsigned flush_count=0;
 RuntimeObservations observations;
+static_assert(!std::is_copy_constructible_v<RuntimeObservations>);
+static_assert(!std::is_copy_assignable_v<RuntimeObservations>);
+static_assert(!std::is_move_assignable_v<RuntimeObservations>);
 SimulationClock g_simulation_clock;
 void log_line(const char* format,...) {
   char b[4096];va_list args;va_start(args,format);
@@ -88,5 +92,36 @@ int main() {
   CHECK(g_simulation_clock.statistics().debt_us==clock_before.debt_us);
   const auto final=output.size();clock_us+=10000000;runtime_flush_observations(true);
   CHECK(output.size()==final);
+  // Exercise the exact production reset after dirty terminal/operation/ring
+  // state, including a still-open span. Repeat without allocating a new owner.
+  for(unsigned round=0;round<3;++round) {
+    observations.slow.owner(clock_us,"stale-window");
+    for(unsigned i=0;i<40;++i) observations.slow.record(1,100001,"read","stale-resource");
+    observations.window_has_operation=observations.window_scene_changed=true;
+    observations.flush_requested=observations.terminal=observations.terminal_saved=true;
+    observations.timer_events=observations.logic_callbacks=observations.logic_failures=99;
+    observations.reset(clock_us);
+    CHECK(observations.scene[0]==0);
+    CHECK(!observations.window_has_operation && !observations.window_scene_changed);
+    CHECK(!observations.terminal && !observations.terminal_saved && !observations.flush_requested);
+    CHECK(observations.compact_us==clock_us && observations.full_us==clock_us);
+    CHECK(observations.timer_events==0 && observations.logic_callbacks==0 && observations.logic_failures==0);
+    for(const auto& checkpoint:observations.memory.checkpoints()) CHECK(checkpoint.samples==0);
+    CHECK(!observations.memory.has_failure() && observations.memory.invalid_events()==0);
+    CHECK(!observations.timing.end_span(save,clock_us));
+    const auto token=observations.timing.begin_span(TimingStage::Logic,clock_us);
+    CHECK(token!=0 && token!=save);
+    CHECK(observations.timing.end_span(token,clock_us));
+    output.clear();observations.slow.drain(log_line);CHECK(output.empty());
+    observations.slow.record(1,100001,"read","fresh-resource");
+    observations.slow.drain(log_line);
+    CHECK(output.find("owner=\"\"")!=std::string::npos);
+    CHECK(output.find("stale-")==std::string::npos);
+    output.clear();runtime_flush_observations(true);
+    CHECK(output.find("operation_rows=0 overflow=0")!=std::string::npos);
+    CHECK(output.find("operation-memory:")==std::string::npos);
+    CHECK(output.find("scene= stable_eligible=0")!=std::string::npos);
+  }
+  std::puts("PASS in-place reset stale records retired tokens invalidated");
   std::puts("PASS compact throttle terminal partial spans retained no false completion");
 }

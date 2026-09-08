@@ -2593,7 +2593,8 @@ void register_lua_module(lua_State* state) {
   const auto allocator=lua_getallocf(state,&allocator_context);
   if(allocator!=AllocationWatch::allocate) {
     g_lua_allocations.reset(allocator,allocator_context,
-        static_cast<std::uint64_t>(lua_gc(state,LUA_GCCOUNT,0))*1024U+lua_gc(state,LUA_GCCOUNTB,0));
+        static_cast<std::uint64_t>(lua_gc(state,LUA_GCCOUNT,0))*1024U+
+        static_cast<std::uint64_t>(lua_gc(state,LUA_GCCOUNTB,0)));
     lua_setallocf(state,AllocationWatch::allocate,&g_lua_allocations);
   }
   boot_log_open();

@@ -1,0 +1,54 @@
+{
+  "schema": "corsixth.r63-install-summary.v1",
+  "installed_at": "2026-09-09T04:32:16+08:00",
+  "installed_source": {
+    "commit": "2135006cee431d773cf05e5077c1db1992943e46",
+    "tree": "58b21260f72a3d19a889c7fffdc8d895e2b50e48"
+  },
+  "program": {
+    "path": "sdmc:/3ds/corsixth/CorsixTH-3DS.3dsx",
+    "bytes": 2760136,
+    "sha256": "8d11f0fec0b955bbc75f62b19da406acd44c85852ef7153cd611ce145ed16eb6"
+  },
+  "local_complete_suite": {
+    "selected": 248,
+    "passed": 247,
+    "failed": 0,
+    "errors": 0,
+    "expected_skips": 1,
+    "skip_reason": "case-insensitive macOS filesystem cannot create filename collision fixture"
+  },
+  "ci": {
+    "url": "https://github.com/zzliu-coder/corsixh3ds/actions/runs/34273914012",
+    "head": "2135006cee431d773cf05e5077c1db1992943e46",
+    "required_jobs": 10,
+    "conclusion": "success",
+    "conditional_fresh_bundle": "not requested"
+  },
+  "arm_build": "PASS",
+  "package_validation": "PASS",
+  "upload_and_readback": "PASS",
+  "delta": {
+    "files": 17,
+    "bytes": 4007011,
+    "unchanged_content_files": 809,
+    "unchanged_content_bytes": 456668448
+  },
+  "preservation": {
+    "original_save_files": 23,
+    "original_config": "unchanged",
+    "original_slot1_sha256": "d1c6502287adbdf0e64a0ea559843452b23318e83182b48d0673b5e2ad520c32",
+    "recovery_input_copies_added": 2,
+    "old_runtime_local_rollback": "hash verified",
+    "transaction_temp_files_removed": true
+  },
+  "device_acceptance": {
+    "old_slot1_recovery": "NOT_PROVEN",
+    "healthy_simulation": "NOT_PROVEN",
+    "save_reload": "NOT_PROVEN",
+    "performance_benefit": "NOT_PROVEN",
+    "fps_30_plus": "NOT_PROVEN",
+    "large_level_and_soak": "NOT_PROVEN"
+  },
+  "note": "This summary excludes original game assets and private saves. Later documentation-only commits do not alter the installed source/runtime identity."
+}

@@ -12,6 +12,7 @@ using lua_Alloc = void* (*)(void*,void*,std::size_t,std::size_t);
 // the real checked Lua library and never use this header.
 lua_Alloc lua_getallocf(lua_State*,void**);
 void lua_setallocf(lua_State*,lua_Alloc,void*);
+int lua_checkstack(lua_State*,int);
 const char* luaL_checklstring(lua_State*,int,std::size_t*);
 
 constexpr int LUA_OK = 0;
@@ -24,6 +25,8 @@ inline int lua_type(lua_State*,int){return 0;}
 inline lua_Number lua_tonumber(lua_State*,int){return 0;}
 constexpr int LUA_GCCOUNT = 3;
 constexpr int LUA_GCCOUNTB = 4;
+constexpr int LUA_GCCOLLECT = 2;
+constexpr int LUA_GCISRUNNING = 9;
 
 inline int lua_gettop(lua_State*) { return 0; }
 inline int lua_gc(lua_State*, int what, ...) { return what == LUA_GCCOUNT ? 512 : 0; }

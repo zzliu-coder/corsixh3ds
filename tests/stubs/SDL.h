@@ -84,6 +84,7 @@ inline Uint32 SDL_MapRGBA(SDL_PixelFormat*, Uint8 r, Uint8 g, Uint8 b, Uint8 a) 
 inline int SDL_FillRect(SDL_Surface*, const void*, Uint32) { return 0; }
 inline int SDL_UpdateWindowSurface(SDL_Window*) { return 0; }
 inline const char* SDL_GetError() { return "stub"; }
+int SDL_SetError(const char*, ...);
 inline Uint64 SDL_GetPerformanceFrequency() { return 1000000U; }
 inline Uint64 SDL_GetPerformanceCounter() { static Uint64 counter = 0; return counter += 16666U; }
 inline Uint32 SDL_GetTicks() { return 1U; }

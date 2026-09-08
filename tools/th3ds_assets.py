@@ -13,7 +13,11 @@ try:
 except ModuleNotFoundError:
     from .th3ds_resource import ResourceError, canonical_json, read_stable, safe_relative, sha256_bytes
 
-LANGUAGE_RE = re.compile(r"\bLanguage\s*\(([^\n)]*)\)")
+# Parentheses inside quoted aliases ("Chinese (simplified)", "zh(s)")
+# belong to the name; only an unquoted closing parenthesis ends the call.
+_LANGUAGE_STRING = r'''(?:"[^"\r\n]*"|'[^'\r\n]*')'''
+LANGUAGE_RE = re.compile(r"\bLanguage\s*\(\s*(" + _LANGUAGE_STRING +
+                         r"(?:\s*,\s*" + _LANGUAGE_STRING + r")*)\s*\)")
 INHERIT_RE = re.compile(r"\bInherit\s*\(\s*(['\"])([^'\"]+)\1\s*(?:,\s*(\d+)\s*)?\)")
 STRING_RE = re.compile(r"(['\"])(.*?)\1")
 

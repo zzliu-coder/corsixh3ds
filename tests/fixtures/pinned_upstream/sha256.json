@@ -1,4 +1,9 @@
 {
+  "CorsixTH/Src/th_strings.cpp": "8fd88cb2f5b1340fa21ab18665bf3cd1617528eb2b570c114cc61ccdddbf27ec",
+  "CorsixTH/Src/th_strings.h": "5e9846b838e4093062389aa2555c90c886e4f01f5e2ac4c880e7c07de14db475",
+  "CorsixTH/Src/sdl_audio.cpp": "b10af00835aa2d45d4660b33f4a2a72bbf2467d251df1437c640cdc78117d9fb",
+  "CorsixTH/Src/th_gfx_font.h": "f23a195f9d48cf6695a761c20c02fca64469ac830ea58f119f01497803cd7046",
+  "CorsixTH/Src/th_gfx_font.cpp": "6f8231a03d0b51392eb9cf9bdde5eed87ccb49376548c0de12b3031ff9fa4f68",
   "CorsixTH/Src/th_lua_map.cpp": "2630268a6391effa511cbdcfeb858e41d401c9fd3cec8f6ad006646a71ce17f5",
   "CorsixTH/Lua/world.lua": "bbd640fa9b58b0953b950a3532d0ef78c9124f765b6131f3b78a677cd6edb91a",
   "CMakeLists.txt": "eb86ade939fac2f20297a6c2c63d317752c1314df4facc0c42e0721138ca9fe0",

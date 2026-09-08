@@ -63,7 +63,8 @@ class RuntimeHotspotsTests(unittest.TestCase):
         def method(root):
             text=(root/'CorsixTH/Lua/world.lua').read_text()
             begin=text.index('function World:onTick()')
-            return text[begin:text.index('\nend',begin)+4]
+            prefix='local entity_profile_iteration = 0\n' if 'local entity_profile_iteration = 0' in text else ''
+            return prefix+text[begin:text.index('\nend',begin)+4]
         # The mock supplies dependencies; the complete World:onTick is actual
         # pinned/generated code. Every downstream call/order/date is compared.
         setup=r'''
@@ -108,7 +109,7 @@ for _,mode in ipairs({{0,1},{1,3},{1,1},{2,1},{5,1}})do
   calls={};local ra=reference(a);local expected=table.concat(calls,',')
   calls={};phases={}
   TheApp={_3ds={native={cpu_phase=function(n,start)
-    if n then assert(type(start)=='number');phases[#phases+1]=n end
+    if n then assert(type(start)=='number');if not n:match('^sample_entity_') then phases[#phases+1]=n end end
     return #phases+1
   end}}}
   local rb=improved(b)
@@ -154,7 +155,7 @@ local g=setmetatable({cache={raw={},tabled={}}},{__index=Graphics})
 local raw=g:loadRaw('Face',65);assert(raw[2]==65)
 local sheet=g:loadSpriteTable('QData','Req',true);assert(sheet[3]==true)
 assert(#traces==4);assert(g:loadRaw('Face')==raw and g:loadSpriteTable('QData','Req')==sheet)
-assert(#traces==4 and calls==6)
+assert(#traces==4 and calls==4) -- hot hits do not enter the wrapped loader at all
 TH3DS=nil;g:loadRaw('Other');assert(#traces==4)
 ''')
 

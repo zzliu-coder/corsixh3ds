@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the original English consumer paths in an owned staging tree.
+"""Prepare original consumer paths and the supported language closure in staging.
 
 Inputs are read-only. Whole-bank RNC expansion is host-only, using the pinned
 upstream CLI; the device receives the same DAT format, never a new container.
@@ -56,12 +56,17 @@ def parse_original_sound(data):
     return [validated[k] for _,k in mapping],[i for i,_ in mapping],first
 
 def prepare(runtime: Path, game: Path, stage: Path, language='English', upstream=None):
-    if language.casefold() not in ('english', 'en'):
-        raise ResourceError('First playable candidate requires English')
+    if language.casefold() not in ('english', 'en', '简体中文', 'chinese (simplified)', 'zh(s)', 'chi(s)', 'zho(s)'):
+        raise ResourceError('3DS product currently supports English and Simplified Chinese')
     for source in (runtime, game):
         if stage.resolve() == source.resolve() or stage.resolve() in source.resolve().parents or source.resolve() in stage.resolve().parents:
             raise ResourceError('staging must be separate from input trees')
-    closure = build_language_bundle(runtime / 'Lua/languages', 'English', game)
+    closure = build_language_bundle(runtime / 'Lua/languages', language, game)
+    # Keep both selectable languages when supplied by the real pinned runtime.
+    # This preserves the English inheritance closure and does not load all
+    # upstream translations. Small English-only test fixtures remain valid.
+    chinese_path = runtime / 'Lua/languages/simplified_chinese.lua'
+    chinese = build_language_bundle(runtime / 'Lua/languages', 'Chinese (simplified)', game) if chinese_path.is_file() else None
     sound = _find_case_insensitive(game, 'SOUND/DATA/SOUND-0.DAT')
     if sound is None:
         raise ResourceError('missing SOUND/DATA/SOUND-0.DAT')
@@ -104,6 +109,8 @@ def prepare(runtime: Path, game: Path, stage: Path, language='English', upstream
         raise ResourceError('staged language directory may not be symlink')
     language_dir.mkdir(parents=True, exist_ok=True)
     selected = {Path(name).name:payload for name,payload in closure.files if name.endswith('.lua')}
+    if chinese:
+        selected.update({Path(name).name:payload for name,payload in chinese.files if name.endswith('.lua')})
     for path in language_dir.glob('*.lua'):
         path.unlink()
     for name,payload in selected.items():

@@ -1820,7 +1820,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R57 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R58 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1914,7 +1914,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R57 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R58 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2269,10 +2269,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R57\n",4)){
+    if(length==4&&!std::memcmp(magic,"R58\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r57.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r58.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
@@ -2583,7 +2583,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R57 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place");
+  boot_log("diagnostics: revision=R58 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 text_cache_limit=2097152 music=file_wav");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2705,6 +2705,7 @@ void runtime_operation_boundary() noexcept {
 void runtime_observe_memory(const char* checkpoint, const char* phase, const char* resource,
     MemoryGate gate, std::uint64_t requested, bool requested_known,
     std::uint64_t held, bool held_known, bool failed, bool opaque) noexcept {
+  CpuWorkScope observation_cost(CpuWork::MemoryObserve);
   update_lua_memory(g_observation_state);
   const auto h = heap_snapshot();
   MemorySample sample{now_us(), h.heap_total, h.arena, h.uordblks, h.fordblks,

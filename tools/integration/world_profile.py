@@ -28,4 +28,24 @@ def transforms(root):
                             ('      self.dispatcher:onTick()','world_ui')):
             method=replace_exact(method,anchor,'      if mark then phase = mark("'+name+'", phase) end\n'+anchor,name)
         text=text[:begin]+method+text[end:]
+    if '-- CORSIXTH_3DS_ENTITY_SAMPLE_R58' not in text:
+        text=replace_exact(text,'function World:onTick()', '''-- CORSIXTH_3DS_ENTITY_SAMPLE_R58
+-- One in sixteen real update passes, outside persisted World state. The other
+-- fifteen retain the direct entity call. Classification never changes order.
+local entity_profile_iteration = 0
+function World:onTick()''','entity sample counter')
+        text=replace_exact(text,'    local phase = mark and mark()', '''    local phase = mark and mark()
+    entity_profile_iteration = (entity_profile_iteration + 1) % 16
+    local sample_entities = mark and entity_profile_iteration == 0''','entity sample cadence')
+        text=replace_exact(text,'          entity:tick()', '''          if sample_entities then
+            local kind = Staff and class.is(entity, Staff) and "sample_entity_staff"
+              or Patient and class.is(entity, Patient) and "sample_entity_patient"
+              or Object and class.is(entity, Object) and "sample_entity_object"
+              or "sample_entity_other"
+            local began = mark()
+            entity:tick()
+            mark(kind, began)
+          else
+            entity:tick()
+          end''','real entity sample')
     yield path,text

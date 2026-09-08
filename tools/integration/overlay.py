@@ -89,6 +89,7 @@ def iter_overlay_files(overlay: Path) -> Iterable[tuple[Path, Path]]:
         yield source, Path("CorsixTH/Src/3ds") / name
     yield overlay / "lua" / "3ds" / "platform.lua", Path("CorsixTH/Lua/3ds/platform.lua")
     yield overlay / "lua" / "3ds" / "benchmark.lua", Path("CorsixTH/Lua/3ds/benchmark.lua")
+    yield overlay / "lua" / "3ds" / "media.lua", Path("CorsixTH/Lua/3ds/media.lua")
     yield overlay / "assets" / "3ds" / "icon.png", Path("CorsixTH/Src/3ds/icon.png")
 
 

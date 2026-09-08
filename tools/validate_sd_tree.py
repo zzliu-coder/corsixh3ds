@@ -267,11 +267,49 @@ def _contract_required(root: Path, asset_mode: str) -> tuple[list[FileRecord], l
                      "game/DATA/LANG-0.DAT", "game/SOUND/DATA/SOUND-0.DAT", "loose-assets.json"):
             required_files.append(_record(root,name,nonempty=True))
         assets = json.loads((root/"loose-assets.json").read_text(encoding="utf-8"))
-        if assets.get("language") != "English" or assets.get("device") != "NOT_PROVEN":
-            raise ValidationError("loose assets require English and explicit device NOT_PROVEN")
+        selected = assets.get("language")
+        if selected not in ("English", "简体中文", "Chinese (simplified)") or assets.get("device") != "NOT_PROVEN":
+            raise ValidationError("loose assets require a supported language and device NOT_PROVEN")
         actual_languages={path.name for path in (root/"Lua/languages").glob("*.lua")}
-        if actual_languages != {"english.lua","original_strings.lua"}:
-            raise ValidationError("loose language closure must contain only English and original strings")
+        english = {"english.lua", "original_strings.lua"}
+        bilingual = english | {"simplified_chinese.lua"}
+        if actual_languages not in (english, bilingual) or (selected != "English" and actual_languages != bilingual):
+            raise ValidationError("loose language closure must be English or English with Simplified Chinese")
+        declared = assets.get("language_files")
+        if declared is not None or actual_languages == bilingual:
+            if not isinstance(declared, dict) or set(declared) != actual_languages:
+                raise ValidationError("loose language file declarations differ")
+            for name, digest in declared.items():
+                if sha256_path(_regular_file(root, "Lua/languages/"+name, nonempty=True)) != digest:
+                    raise ValidationError("loose language hash differs: "+name)
+        if actual_languages == bilingual:
+            required_files.append(_record(root,"Lua/languages/simplified_chinese.lua",nonempty=True))
+        if selected != "English":
+            required_files.append(_record(root,"CorsixTH-SC-subset.ttf",nonempty=True))
+        if (root/"private-media.json").exists():
+            media = _load_json(_regular_file(root,"private-media.json",nonempty=True),"private media")
+            if media.get("schema") != "corsixth.private-media.v1" or media.get("device") != "NOT_PROVEN":
+                raise ValidationError("private media schema or device verdict differs")
+            rows = media.get("files")
+            if not isinstance(rows,list) or not rows:
+                raise ValidationError("private media files missing")
+            seen=set()
+            for item in rows:
+                if not isinstance(item,dict):
+                    raise ValidationError("private media file record differs")
+                name = _safe_relative(item.get("path"))
+                if name in seen or not (name == "CorsixTH-SC-subset.ttf" or
+                    (name.startswith("Music/") and len(PurePosixPath(name).parts)==2 and name.endswith(".wav"))):
+                    raise ValidationError("private media path differs: "+name)
+                seen.add(name)
+                record = _record(root,name,nonempty=True)
+                if record.size != item.get("bytes") or record.sha256 != item.get("sha256"):
+                    raise ValidationError("private media hash/size differs: "+name)
+                if name != "CorsixTH-SC-subset.ttf" or selected == "English":
+                    required_files.append(record)
+            if "CorsixTH-SC-subset.ttf" not in seen:
+                raise ValidationError("private media font missing")
+            required_files.append(_record(root,"private-media.json",nonempty=True))
         forbidden = list(LOOSE_FORBIDDEN)
     else:
         raise ValidationError(f"unsupported asset mode: {asset_mode!r}")

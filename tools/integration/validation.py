@@ -13,6 +13,7 @@ from sprite_residency import patch_sprite_residency, check_sprite_residency
 from .render_fast import check_render_fast
 from .render_gpu import check_render_gpu
 from .cpu_hotspots import check_cpu_hotspots
+from .media import check_media
 from .common import (
     APP_ATTACH_MARKER,
     APP_BOOT_MARKER,
@@ -72,6 +73,7 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors.extend(check_render_fast(root))
     errors.extend(check_render_gpu(root))
     errors.extend(check_cpu_hotspots(root))
+    errors.extend(check_media(root))
     errors.extend(check_sound_callbacks(root))
     errors.extend(check_sprite_residency(root))
     errors.extend(check_handheld_ui(root))

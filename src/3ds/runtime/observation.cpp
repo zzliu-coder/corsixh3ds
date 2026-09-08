@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include "cth3ds/cpu_work.hpp"
+#include "cth3ds/text_cache.hpp"
 
 namespace cth3ds {
 void RuntimeObservations::reset(std::uint64_t now) noexcept {
@@ -77,6 +78,11 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
         (unsigned long long)row.total_us,(unsigned long long)row.max_us,(unsigned long long)row.units,cpu_work.enabled);
     }
     cpu_work.rows = {};
+    output.line("entity-profile: sample_period=16 sampled_passes_only=1 preserve_order=1");
+    output.line("text-cache: charged_bytes=%llu peak_charged_bytes=%llu retained_limit=%llu evictions=%llu oversized_transients=%llu gpu_source_included=1",
+      (unsigned long long)text_cache.bytes,(unsigned long long)text_cache.peak,
+      (unsigned long long)TextCacheBudget::limit,(unsigned long long)text_cache.evictions,
+      (unsigned long long)text_cache.oversize);
     output.line("thermal-cache: updates=%llu scans=%llu rebuilt_cells=%llu scratch_bytes=%llu structure_fast=%u",
       (unsigned long long)cpu_work.thermal_updates,(unsigned long long)cpu_work.thermal_scans,
       (unsigned long long)cpu_work.thermal_rebuilds,(unsigned long long)cpu_work.thermal_bytes,

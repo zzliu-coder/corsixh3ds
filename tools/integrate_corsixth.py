@@ -103,6 +103,7 @@ from integration.validation import (
 from integration.render_fast import patch_render_fast
 from integration.render_gpu import patch_render_gpu
 from integration.cpu_hotspots import patch_cpu_hotspots
+from integration.media import patch_media
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -171,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             changes.extend(Change(path, "render-fast") for path in patch_render_fast(root))
             changes.extend(Change(path, "render-gpu") for path in patch_render_gpu(root))
             changes.extend(Change(path, "cpu-hotspots") for path in patch_cpu_hotspots(root))
+            changes.extend(Change(path, "media") for path in patch_media(root))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)
             manifest_path = root / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"

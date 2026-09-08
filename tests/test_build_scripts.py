@@ -298,8 +298,13 @@ class BuildScriptTests(unittest.TestCase):
         )
         self.assertEqual(
             workflow.count("--require-hashes --only-binary=:all:"),
-            2,
+            3,
         )
+        media = workflow.split("  media-host:\n",1)[1].split("  host-python:\n",1)[0]
+        self.assertIn("-r requirements/media.lock",media)
+        self.assertIn("media_runtime.check_media",media)
+        self.assertIn("if: always()",media)
+        self.assertNotIn("requirements/verifier.lock",media)
         self.assertIn('python3 -m venv "$test_env"', workflow)
         self.assertIn('echo "$test_env/bin" >> "$GITHUB_PATH"', workflow)
         host_matrix = workflow.split("  host:\n", 1)[1].split(
@@ -319,10 +324,10 @@ class BuildScriptTests(unittest.TestCase):
             Counter(action_references),
             Counter(
                 {
-                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": 6,
-                    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97": 3,
+                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": 7,
+                    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97": 4,
                     "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c": 1,
-                    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a": 6,
+                    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a": 7,
                 }
             ),
         )
@@ -339,7 +344,7 @@ class BuildScriptTests(unittest.TestCase):
                 workflow,
             )
         )
-        self.assertEqual(len(checkouts), 6)
+        self.assertEqual(len(checkouts), 7)
         self.assertEqual(workflow.count("git rev-parse --is-shallow-repository"), 5)
         self.assertEqual(
             len(

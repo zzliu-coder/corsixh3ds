@@ -1,0 +1,3 @@
+# Optional native-media test/tool lane; no change to the frozen verifier venv.
+# Pure Python wheel, Python >=3.9. Source: https://pypi.org/pypi/fonttools/4.59.2/json
+fonttools==4.59.2 --hash=sha256:8bd0f759020e87bb5d323e6283914d9bf4ae35a7307dafb2cbd1e379e720ad37

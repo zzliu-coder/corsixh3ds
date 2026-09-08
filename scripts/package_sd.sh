@@ -5,6 +5,7 @@ source "$(cd "$(dirname "$0")" && pwd)/common.sh"
 THEME_HOSPITAL=""
 ASSET_MODE="loose"
 LANGUAGE="English"
+PRIVATE_MEDIA=""
 NO_BINARY_COPY=0
 NO_DATA_PACK=0
 while [[ $# -gt 0 ]]; do
@@ -18,6 +19,9 @@ while [[ $# -gt 0 ]]; do
     --language)
       [[ $# -ge 2 ]] || die '--language requires a language name or tag'
       LANGUAGE="$2"; shift ;;
+    --private-media)
+      [[ $# -ge 2 ]] || die '--private-media requires a prepared private directory'
+      PRIVATE_MEDIA="$2"; shift ;;
     --no-binary-copy) NO_BINARY_COPY=1 ;;
     --no-data-pack) NO_DATA_PACK=1 ;;
     *) die "unknown argument: $1" ;;
@@ -120,6 +124,11 @@ else
     --runtime "${SOURCE_DATA}" --game "${THEME_HOSPITAL}" \
     --stage "${WORK_DEST}" --language "${LANGUAGE}" \
     --upstream "${UPSTREAM_DIR}"
+fi
+
+if [[ -n "${PRIVATE_MEDIA}" ]]; then
+  python3 "${CTH3DS_ROOT}/tools/prepare_media.py" \
+    --source "${PRIVATE_MEDIA}" --stage "${WORK_DEST}" --runtime "${SOURCE_DATA}"
 fi
 
 python3 "${CTH3DS_ROOT}/tools/validate_sd_tree.py" create-contract "${WORK_DEST}" \

@@ -57,6 +57,7 @@ class TextCacheBudget {
   }
   std::size_t bytes{}, peak{};
   std::uint64_t evictions{}, oversize{};
+  std::uint64_t lookups{}, hits{}, secondary_hits{}, misses{}, conflict_replacements{};
  private:
   void append(TextCacheNode& node, std::size_t amount, void* context,
               void (*release)(void*) noexcept) noexcept {

@@ -48,4 +48,9 @@ function Staff:tick()
         ):
             method=replace_exact(method,anchor,anchor+'\n  if mark then phase = mark("'+label+'", phase) end',label)
         text=text[:begin]+method+text[end:]
+    # Use the already attached platform, as World:onTick does. Staff is loaded
+    # under upstream strict.lua; TH3DS is a module-local name in other files.
+    text=text.replace('  local mark = staff_profile_iteration == 0 and TH3DS and TH3DS.cpu_phase',
+        '  local native = staff_profile_iteration == 0 and TheApp and TheApp._3ds and TheApp._3ds.native\n'
+        '  local mark = native and native.cpu_phase')
     yield name,text

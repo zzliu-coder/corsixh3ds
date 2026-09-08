@@ -9,6 +9,14 @@ class BenchmarkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):test_lua_runtime.LuaRuntimeTests.setUpClass()
 
+    def run_benchmark_lua(self, script):
+        # Existing orchestration fixtures represent healthy, empty worlds.
+        script = script.replace("local app={", "local app={eventHandlers={timer=function()end},")
+        script = script.replace("self.world={", "self.world={entities={},")
+        script = script.replace("app.world={", "app.world={entities={},")
+        prefix = "package.path=" + repr(str(ROOT/'lua/?.lua')+';') + "..package.path\n"
+        test_lua_runtime.LuaRuntimeTests().run_lua(prefix + script)
+
     def test_expanded_profile_handoff_and_failed_cleanup_restore_private_route(self):
         script='local B=dofile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+')\n'+r'''
 local now,active,started,closed=0,false,0,0
@@ -54,7 +62,7 @@ assert(b.phase=='done' and not active and app.savegame_dir=='USER/' and app.conf
 assert(app.config.language=='Chinese (simplified)' and app.config.play_music)
 io.open=original_open
 '''
-        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+        self.run_benchmark_lua(script)
 
     def test_private_stress_sequence_save_reload_and_failure_boundary(self):
         script='local S=dofile('+repr(str(ROOT/'lua/3ds/benchmark_stress.lua'))+')\n'+r'''
@@ -101,7 +109,7 @@ s=S.new(app,native);assert(not pcall(s.saveReload,s))
 app.savegame_dir='USER/';assert(not pcall(S.new,app,native))
 print('PASS private stress orchestration; actual engine/device acceptance remains separate')
 '''
-        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+        self.run_benchmark_lua(script)
 
     def test_menu_music_starts_after_attach_and_pending_cancel_is_untouched(self):
         script='local B=dofile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+')\n'+r'''
@@ -131,7 +139,7 @@ app.audio:stopBackgroundTrack() -- explicit stopped state is preserved too
 b=B.new(app,native);b:tick();b:cancel('B')
 assert(app.config.play_music and app.audio.background_music==nil)
 '''
-        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+        self.run_benchmark_lua(script)
 
     def test_completed_and_cancelled_runs_restore_user_directory(self):
         script='local B=assert(loadfile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+'))()\n'+r'''
@@ -181,7 +189,7 @@ for _,failure in ipairs({'rejected','exception'}) do
  assert(rows[#rows][1]=='FAILED')
 end
 '''
-        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+        self.run_benchmark_lua(script)
 
     def test_media_triplet_and_cancel_restore_user_settings(self):
         script='local B=dofile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+')\n'+r'''
@@ -228,6 +236,6 @@ assert(b.phase=='done' and not active and writes==0 and app.saveConfig==original
 assert(app.savegame_dir=='USER/' and app.config.autosave_frequency==2)
 app:saveConfig();assert(writes==1)
 '''
-        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+        self.run_benchmark_lua(script)
 
 if __name__=='__main__':unittest.main()

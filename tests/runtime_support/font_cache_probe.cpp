@@ -65,6 +65,43 @@ int main(int argc,char** argv) {
   }
   // The first face formerly released the shared library under later faces.
   fonts.erase(fonts.begin());
+  // Find two different complete keys with the original SAME direct-map hash.
+  // Alternating labels must allocate two layouts, then reuse both indefinitely.
+  std::map<std::size_t,std::string> buckets;
+  std::string colliding[2];
+  for(int i=0;i<500;++i) {
+    auto label=std::string("cache-label-")+std::to_string(i);
+    std::size_t hash=label.size()+6+(std::size_t(320)<<3);
+    for(char c:label)hash^=(hash<<5)+(hash>>2)+static_cast<std::size_t>(c);
+    hash&=127;
+    auto old=buckets.find(hash);
+    if(old!=buckets.end()) {colliding[0]=old->second;colliding[1]=label;break;}
+    buckets.emplace(hash,label);
+  }
+  assert(!colliding[0].empty());
+  auto& budget=cth3ds::text_cache;
+  auto misses=budget.misses,hits=budget.hits,secondary=budget.secondary_hits;
+  std::vector<uint32_t> expected[2];
+  for(int i=0;i<200;++i) {
+    auto& label=colliding[i%2];
+    SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+    const auto layout=fonts.front()->draw_text_wrapped(&target,label.c_str(),label.size(),0,0,320,6,0);
+    assert(layout.width>0);
+    auto* pixels=static_cast<uint32_t*>(surface->pixels);
+    if(i<2)expected[i].assign(pixels,pixels+640*480);
+    else assert(std::equal(expected[i%2].begin(),expected[i%2].end(),pixels));
+  }
+  assert(budget.misses-misses==2 && budget.hits-hits==198 && budget.secondary_hits>secondary);
+  // Full keys remain distinct when line limits, skipped rows or alignment vary.
+  for(int skip: {0,1})for(int rows: {1,2})for(auto align:{text_alignment::left,text_alignment::right}) {
+    const std::string text="line one//line two//line three";
+    fonts.front()->clear_cache();
+    auto a=fonts.front()->draw_text_wrapped(&target,text.c_str(),text.size(),0,0,220,rows,skip,align);
+    auto b=fonts.front()->draw_text_wrapped(&target,text.c_str(),text.size(),0,0,220,rows,skip,align);
+    assert(a.width==b.width && a.row_count==b.row_count && a.end_y==b.end_y);
+  }
+  fonts.front()->clear_cache();
+  std::cout<<"PASS text two-way collision: 2 misses / 198 hits, equal repeated pixels, unchanged capacity\n";
   const std::string message=u8"主题医院 医生 护士 保存 123 English//患者就诊与音乐";
   for(int i=0;i<180;++i) {
     auto& font=*fonts[i%fonts.size()];

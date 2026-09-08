@@ -105,3 +105,68 @@ class freetype_font final : public font {''', 'font cache include')
 #endif
   return oDrawArea;''', 'font oversized transient release')
     yield path, text
+
+    # R63 two-way lookup uses the SAME 128 entries per face and global byte
+    # budget. A second candidate prevents two colliding hot labels thrashing.
+    path='CorsixTH/Src/th_gfx_font.h'
+    text=(root/path).read_text()
+    if 'CORSIXTH_3DS_TEXT_WAYS_R63' not in text:
+        text=replace_exact(text,'    int max_rows{}, skip_rows{};',
+            '    int max_rows{}, skip_rows{};\n    std::uint64_t last_use{};', 'text way recency')
+        text=replace_exact(text,'  mutable cached_text cache[1 << cache_size_log2]{};',
+            '''  mutable cached_text cache[1 << cache_size_log2]{};
+#ifdef CORSIXTH_3DS
+  // CORSIXTH_3DS_TEXT_WAYS_R63
+  mutable std::uint64_t cache_use_clock{};
+#endif''','same-capacity text cache recency')
+    yield path,text
+    path='CorsixTH/Src/th_gfx_font.cpp'
+    text=(root/path).read_text()
+    if 'CORSIXTH_3DS_TEXT_WAYS_R63' not in text:
+        old='''  cached_text* pEntry = cache + iHash;
+  if (pEntry->message_length != iMessageLength || pEntry->width > iWidth ||
+      (iWidth != INT_MAX && pEntry->width < iWidth) ||
+#ifdef CORSIXTH_3DS
+      pEntry->max_rows != iMaxRows || pEntry->skip_rows != iSkipRows ||
+#endif
+      pEntry->alignment != eAlign || !pEntry->is_valid ||
+      std::memcmp(pEntry->message, sMessage, iMessageLength) != 0) {'''
+        new='''  cached_text* pEntry = cache + iHash;
+#ifdef CORSIXTH_3DS
+  // CORSIXTH_3DS_TEXT_WAYS_R63: complete keys, fixed capacity, local LRU.
+  const auto matches = [&](const cached_text* entry) {
+    return entry->is_valid && entry->message_length == iMessageLength &&
+      entry->width <= iWidth && (iWidth == INT_MAX || entry->width == iWidth) &&
+      entry->max_rows == iMaxRows && entry->skip_rows == iSkipRows &&
+      entry->alignment == eAlign && entry->message &&
+      std::memcmp(entry->message, sMessage, iMessageLength) == 0;
+  };
+  auto* other = cache + (iHash ^ 1U);
+  bool miss = false;
+  ++cth3ds::text_cache.lookups;
+  if (matches(pEntry)) {
+    ++cth3ds::text_cache.hits;
+  } else if (matches(other)) {
+    pEntry = other;
+    ++cth3ds::text_cache.hits;
+    ++cth3ds::text_cache.secondary_hits;
+  } else {
+    miss = true;
+    ++cth3ds::text_cache.misses;
+    if (pEntry->is_valid && other->is_valid) {
+      ++cth3ds::text_cache.conflict_replacements;
+      if (other->last_use < pEntry->last_use) pEntry = other;
+    } else if (pEntry->is_valid) pEntry = other;
+  }
+#else
+  const bool miss = pEntry->message_length != iMessageLength || pEntry->width > iWidth ||
+      (iWidth != INT_MAX && pEntry->width < iWidth) ||
+      pEntry->alignment != eAlign || !pEntry->is_valid ||
+      std::memcmp(pEntry->message, sMessage, iMessageLength) != 0;
+#endif
+  if (miss) {'''
+        text=replace_exact(text,old,new,'bounded two-way complete-key selection')
+        text=replace_exact(text,'  cth3ds::text_cache.touch(pEntry->budget);',
+            '  pEntry->last_use = ++cache_use_clock;\n  cth3ds::text_cache.touch(pEntry->budget);',
+            'selected way recency')
+    yield path,text

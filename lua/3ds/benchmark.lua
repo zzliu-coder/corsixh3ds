@@ -5,6 +5,7 @@ local Benchmark={}
 Benchmark.__index=Benchmark
 local root="sdmc:/3ds/corsixth/Benchmark/"
 local speeds={"Normal","And then some more"}
+local Health=require("3ds.state_health")
 
 function Benchmark.new(app,native)
   local self=setmetatable({app=app,native=native,phase="pending",index=1,
@@ -25,6 +26,8 @@ function Benchmark.new(app,native)
     self.profiles[#self.profiles+1]={speed="Normal",language="Chinese (simplified)",music=true,
       label="expanded-zh-on",file="expanded.sav"}
   end
+  local recovery=io.open(root.."r62-recovery.sav","rb")
+  if recovery then recovery:close();self.recovery_copy=true end
   native.benchmark_state(true)
   native.set_notice("AUTO BENCHMARK - B CANCEL",false)
   return self
@@ -92,7 +95,7 @@ function Benchmark:restore()
   end
   self.app.savegame_dir=self.original_dir
   self.app.config.autosave_frequency=self.original_autosave_frequency
-  if self.app.world then self.app.world:setSpeed("Normal") end
+  if self.app.world then self.app.world:setSpeed(self.failed and "Pause" or "Normal") end
   self.native.benchmark_state(false)
   if self.media_captured then
     local ok,err=pcall(function()
@@ -122,10 +125,32 @@ function Benchmark:load()
   self.app.savegame_dir=root.."Saves/"
   self.app.config.autosave_frequency=0
   if self.media_profiles then self.app.audio:stopBackgroundTrack();self.app.config.play_music=false end
+  if self.recovery_copy and not self.recovery_verified then
+    -- The installer supplies a byte-identical copy of the affected Slot1.
+    -- Platform only repairs that explicit name; these writes stay private.
+    assert(self.app:load(root.."r62-recovery.sav")==true,"R62 recovery copy rejected")
+    local health=Health.assertActive(self.app)
+    self.app.world:setSpeed("Pause")
+    local fingerprint=require("3ds.benchmark_stress").fingerprint
+    local before=fingerprint(self.app)
+    local output=root.."Saves/r63-recovery-roundtrip.sav"
+    assert(self.app:save(output)==true,"R62 recovery copy save failed")
+    assert(self.app:load(output)==true,"R62 recovery copy reload failed")
+    Health.assertActive(self.app)
+    assert(fingerprint(self.app)==before,"R62 recovery copy roundtrip state changed")
+    self.recovery_verified=true
+    print("benchmark-recovery: status=PASS staff="..health.staff.." patients="..health.patients
+      .." ticks=active action_timer_state=preserved original_slot1=untouched")
+  end
   local profile=self.profiles[self.index]
   local ok,detail=self.app:load(root..(profile.file or "input.sav"))
   assert(ok==true,"benchmark copy load failed: "..tostring(detail))
   assert(self.app.world,"benchmark copy has no world")
+  local health=Health.assertActive(self.app)
+  self.expected_errors=self.app._3ds and self.app._3ds.simulation_errors or 0
+  self.last_health_check=self.native.clock_ms()
+  print("benchmark-health: event=LOAD staff="..health.staff.." patients="..health.patients
+    .." disabled_staff=0 disabled_patients=0 timer=active")
   -- World:onEndDay reads autosave_frequency. A saved pending request also
   -- needs clearing in this private benchmark world, before the first tick.
   self.app.config.autosave_frequency=0
@@ -146,6 +171,13 @@ end
 
 function Benchmark:advance()
   if self.phase=="pending" then self:load();return end
+  assert((self.app._3ds and self.app._3ds.simulation_errors or 0)==self.expected_errors,
+    "engine error occurred; performance sample invalid")
+  assert(self.app.eventHandlers and self.app.eventHandlers.timer,
+    "simulation timer disconnected; performance sample invalid")
+  if self.native.clock_ms()-self.last_health_check>=5000 then
+    Health.assertActive(self.app);self.last_health_check=self.native.clock_ms()
+  end
   if self.phase=="stress" then
     if self.stress:tick() then self:finish() end
     return
@@ -165,6 +197,7 @@ function Benchmark:advance()
     self.deadline=self.native.clock_ms()+60000
     self.native.set_notice("AUTO BENCHMARK - SAMPLING",false)
   elseif self.phase=="sample" then
+    Health.assertActive(self.app)
     self:mark("SAMPLE-END")
     if self.index<#self.profiles then self.index=self.index+1;self:load()
     else
@@ -180,6 +213,7 @@ function Benchmark:finish()
   -- Return a fresh private copy for play; all automated writes have ended.
   local ok,detail=self.app:load(root..(self.expanded and "expanded.sav" or "input.sav"))
   assert(ok==true,"benchmark final reload failed: "..tostring(detail))
+  Health.assertActive(self.app)
   self.phase="done";assert(self:restore(),"benchmark media restore failed");self:mark("COMPLETE")
   self.native.set_notice("BENCHMARK DONE - YOU CAN PLAY",false)
 end
@@ -189,7 +223,7 @@ function Benchmark:tick()
   local ok,err=pcall(self.advance,self)
   if not ok then
     self:mark("FAILED")
-    self.phase="done";self:restore()
+    self.phase="done";self.failed=true;self:restore()
     self.native.set_notice("BENCHMARK FAILED - SEE LOG",true)
     print("benchmark failure: "..tostring(err))
   elseif self.phase~="done" and self.deadline then

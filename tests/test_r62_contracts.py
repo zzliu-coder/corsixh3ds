@@ -102,7 +102,7 @@ visible={};collectgarbage('collect');assert(not alive[1])
 local mutations,prepared,constructed,notices=0,false,false,0
 TH3DS={set_notice=function()notices=notices+1 end}
 UIEditRoom={};UIConfirmDialog=function()error('unused')end
-local panel=setmetatable({ui={app={gfx=gfx}},updateButtonStates=function()end},{__index=UIBottomPanel})
+local panel=setmetatable({ui={app={gfx=gfx,_3ds={native=TH3DS}}},updateButtonStates=function()end},{__index=UIBottomPanel})
 function panel.ui:getWindow()return nil end
 function panel.ui:setEditRoom()assert(prepared);mutations=mutations+1 end
 function panel.ui:addWindow(w)assert(prepared and constructed and w.marker)end

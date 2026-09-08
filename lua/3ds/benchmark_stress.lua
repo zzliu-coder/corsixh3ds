@@ -4,6 +4,7 @@
 local Stress={};Stress.__index=Stress
 local root="sdmc:/3ds/corsixth/Benchmark/"
 local windows={"UIPolicy","UIProgressReport","UIResearch","UIStaffManagement"}
+local Health=require("3ds.state_health")
 
 local function fingerprint(app)
   local w,h=assert(app.world),assert(app.ui.hospital)
@@ -16,8 +17,9 @@ local function fingerprint(app)
       ..":"..tostring(r.width)..":"..tostring(r.height)
   end end
   for i=1,w.map.th:getPlotCount()do rows[#rows+1]="plot:"..i..":"..w.map.th:getPlotOwner(i) end
-  table.sort(rows);return table.concat(rows,"|")
+  table.sort(rows);return table.concat(rows,"|").."\n"..Health.fingerprint(w)
 end
+Stress.fingerprint=fingerprint
 
 function Stress.new(app,native,duration)
   assert(app.savegame_dir==root.."Saves/" and app.config.autosave_frequency==0,
@@ -37,13 +39,15 @@ function Stress:saveReload()
   local app=self.app
   assert(app.savegame_dir==root.."Saves/" and app.config.autosave_frequency==0)
   app.world:setSpeed("Pause")
+  Health.assertActive(app)
   local before=fingerprint(app)
   assert(app:save(root.."Saves/r62-roundtrip.sav")==true,"private save failed")
   assert(app:load(root.."Saves/r62-roundtrip.sav")==true,"private reload failed")
   app.config.autosave_frequency=0;app.world.autosave_next_tick=false
+  Health.assertActive(app)
   assert(fingerprint(app)==before,"private reload hospital fingerprint changed")
   app.world:setSpeed("Normal")
-  print("benchmark-stress: event=SAVE-RELOAD status=PASS cycle="..self.cycle.." checks=date,staff,wages,rooms,balance,plots")
+  print("benchmark-stress: event=SAVE-RELOAD status=PASS cycle="..self.cycle.." checks=date,staff,wages,rooms,balance,plots,humanoids,ticks,timers,actions")
 end
 
 function Stress:tick()

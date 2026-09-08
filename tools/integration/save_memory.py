@@ -48,3 +48,13 @@ def transforms(root):
         text=text[:begin]+writer+text[end:]
         text=replace_exact(text,'#include <cstring>','#include <cstring>\n#include <cstdint>','index integer types')
     yield path,text
+    path='CorsixTH/Src/persist_lua.h'
+    text=(root/path).read_text()
+    if 'CORSIXTH_3DS_VARINT_STACK_R63' not in text:
+        text=replace_exact(text, '      std::vector<uint8_t> bytes(iNumBytes);',
+            '''      // CORSIXTH_3DS_VARINT_STACK_R63: base-128 uses at most ten
+      // bytes for uint64_t. Avoid a heap allocation for every object reference.
+      uint8_t bytes[(sizeof(T) * 8U + 6U) / 7U]{};''', 'bounded integer encoding scratch')
+        text=replace_exact(text, '      write_byte_stream(bytes.data(), iNumBytes);',
+            '      write_byte_stream(bytes, iNumBytes);', 'unchanged varint output')
+    yield path,text

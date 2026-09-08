@@ -21,12 +21,13 @@ PREFLIGHT = '''  -- CORSIXTH_3DS_WINDOW_PREPARE_R62: load the known large pictur
   -- setEditRoom, modal replacement or pause changes. A failed resource request
   -- leaves the current hospital/window usable and records its exact error.
   local raw_name = ({UIResearch="Res01V", UIPolicy="Pol01V", UIProgressReport="Rep01V"})[dialog_class]
-  if TH3DS and raw_name then
+  local native = self.ui.app._3ds and self.ui.app._3ds.native
+  if native and raw_name then
     local gfx = self.ui.app.gfx
     local ok, result = pcall(gfx.loadRaw, gfx, raw_name, 640, 480, "QData", "QData", raw_name..".pal", true)
     if not ok then
       print("window-prepare: class="..dialog_class.." status=FAIL error="..tostring(result))
-      TH3DS.set_notice("WINDOW LOAD FAILED - CLOSE OTHER WINDOWS", true)
+      native.set_notice("WINDOW LOAD FAILED - CLOSE OTHER WINDOWS", true)
       self:updateButtonStates()
       return false
     end
@@ -53,4 +54,8 @@ def transforms(root):
     if 'CORSIXTH_3DS_WINDOW_PREPARE_R62' not in text:
         anchor='function UIBottomPanel:addDialog(dialog_class, extra_function)\n'
         text=replace_exact(text,anchor,anchor+PREFLIGHT,'prepare large window resources before publication')
+    text=text.replace('  if TH3DS and raw_name then',
+        '  local native = self.ui.app._3ds and self.ui.app._3ds.native\n  if native and raw_name then')
+    text=text.replace('      TH3DS.set_notice("WINDOW LOAD FAILED - CLOSE OTHER WINDOWS", true)',
+        '      native.set_notice("WINDOW LOAD FAILED - CLOSE OTHER WINDOWS", true)')
     yield name,text

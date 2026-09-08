@@ -10,6 +10,7 @@ from .entity_index import transforms as entity_transforms
 from .save_phases import transforms as phase_transforms
 from .picture_lifetime import transforms as picture_transforms
 from .staff_hotspots import transforms as staff_transforms
+from .litter_presence import transforms as litter_transforms
 
 def transforms(root):
     path='CorsixTH/Src/th_map.cpp'
@@ -107,6 +108,7 @@ class level_map {
     yield from spatial_transforms(root)
     yield from save_transforms(root)
     yield from entity_transforms(root)
+    yield from litter_transforms(root)
     yield from phase_transforms(root)
     yield from picture_transforms(root)
     yield from staff_transforms(root)

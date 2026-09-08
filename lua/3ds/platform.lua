@@ -172,6 +172,7 @@ function Platform.new(app, native, capabilities)
   }, Platform)
   self:installAtomicSaves()
   self:installLoadTelemetry()
+  self:installErrorTelemetry()
   local language = app.config and app.config.language or "unknown"
   native_checkpoint(native, "language_selected", "observed-at-adapter-attach",
                     tostring(language))
@@ -293,12 +294,37 @@ function Platform:installLoadTelemetry()
       native_checkpoint(native, "save_load", "load-failed", filename)
       return false, message
     end
+    -- The installer creates this separate, hash-verified Slot1 copy. Ordinary
+    -- saves are never migrated automatically, and original bytes stay intact.
+    if filename=="sdmc:/3ds/corsixth/Saves/R62-Recovered.sav" or
+       filename=="sdmc:/3ds/corsixth/Benchmark/r62-recovery.sav" then
+      local repaired,count=pcall(require("3ds.state_health").repairR62,instance.world)
+      if not repaired then
+        if instance.world then instance.world:setSpeed("Pause") end
+        self:showError("RECOVERY REFUSED: "..tostring(count))
+        return false,count
+      end
+      native_checkpoint(native,"save_load","r62-recovered",filename,count)
+    end
     native_checkpoint(native, "save_load", "load-complete", filename)
     native_notice(native, "LOAD COMPLETE", false)
     return true
   end
   app.quickLoad = function(instance)
     return instance:load(instance.savegame_dir .. "quicksave.qs")
+  end
+end
+
+function Platform:installErrorTelemetry()
+  local original=self.app.errorHandler
+  self.simulation_errors=0
+  if type(original)~="function" then return end
+  self.app.errorHandler=function(app,event,detail)
+    self.simulation_errors=self.simulation_errors+1
+    print("engine-error: sequence="..self.simulation_errors.." event="..tostring(event)
+      .." detail="..tostring(detail))
+    native_checkpoint(self.native,"simulation","error",tostring(event))
+    return original(app,event,detail)
   end
 end
 

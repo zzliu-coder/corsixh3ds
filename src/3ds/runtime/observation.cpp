@@ -131,6 +131,10 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
       (unsigned long long)text_cache.bytes,(unsigned long long)text_cache.peak,
       (unsigned long long)TextCacheBudget::limit,(unsigned long long)text_cache.evictions,
       (unsigned long long)text_cache.oversize);
+    output.line("text-cache-lookup: lookups=%llu hits=%llu secondary_hits=%llu misses=%llu conflicts=%llu entries_per_face=128 ways=2 cumulative=1",
+      (unsigned long long)text_cache.lookups,(unsigned long long)text_cache.hits,
+      (unsigned long long)text_cache.secondary_hits,(unsigned long long)text_cache.misses,
+      (unsigned long long)text_cache.conflict_replacements);
     output.line("thermal-cache: updates=%llu scans=%llu rebuilt_cells=%llu scratch_bytes=%llu structure_fast=%u",
       (unsigned long long)cpu_work.thermal_updates,(unsigned long long)cpu_work.thermal_scans,
       (unsigned long long)cpu_work.thermal_rebuilds,(unsigned long long)cpu_work.thermal_bytes,

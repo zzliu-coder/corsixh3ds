@@ -120,6 +120,7 @@ class freetype_font final : public font {''', 'font cache include')
   mutable std::uint64_t cache_use_clock{};
 #endif''','same-capacity text cache recency')
     yield path,text
+
     path='CorsixTH/Src/th_gfx_font.cpp'
     text=(root/path).read_text()
     if 'CORSIXTH_3DS_TEXT_WAYS_R63' not in text:
@@ -169,4 +170,23 @@ class freetype_font final : public font {''', 'font cache include')
         text=replace_exact(text,'  cth3ds::text_cache.touch(pEntry->budget);',
             '  pEntry->last_use = ++cache_use_clock;\n  cth3ds::text_cache.touch(pEntry->budget);',
             'selected way recency')
+    yield path,text
+
+    # Keep requested wrapping width independent of the actual glyph extent.
+    path='CorsixTH/Src/th_gfx_font.h'
+    text=(root/path).read_text()
+    if 'int request_width{};' not in text:
+        text=replace_exact(text,'    int max_rows{}, skip_rows{};',
+            '    int max_rows{}, skip_rows{};\n    int request_width{};', 'text request identity')
+    yield path,text
+    path='CorsixTH/Src/th_gfx_font.cpp'
+    text=(root/path).read_text()
+    if 'CORSIXTH_3DS_TEXT_REQUEST_KEY_R63' not in text:
+        text=replace_exact(text,
+            '      entry->width <= iWidth && (iWidth == INT_MAX || entry->width == iWidth) &&',
+            '      entry->request_width == iWidth &&', 'exact requested wrapping width')
+        text=replace_exact(text,'    pEntry->max_rows = iMaxRows;',
+            '    // CORSIXTH_3DS_TEXT_REQUEST_KEY_R63\n'
+            '    pEntry->request_width = iWidth;\n    pEntry->max_rows = iMaxRows;',
+            'preserve requested width before layout')
     yield path,text

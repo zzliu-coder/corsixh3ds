@@ -52,7 +52,24 @@ local s=setmetatable({base=0,world={},hospital={},speed=0,rest=0,raise=0,litter=
   findObjectsInSquare=function(s,size,kind,visit)
     assert(size==2 and kind=='litter' and type(visit)=='function');s.litter=s.litter+1
   end,updateSpeed=function(s)s.speed=s.speed+1 end},{__index=e.Staff})
-for i=1,64 do s:tick()end
+-- Exercise the real rotating sampler contract with sixteen staff, the aliasing
+-- case from the independent review. Every staff must receive four samples.
+local sampled={};local active
+native.cpu_phase=function(label,previous)
+  marks=marks+1;if not label then sampled[active]=(sampled[active] or 0)+1 end
+  return marks
+end
+for pass=1,64 do
+ e.TheApp._3ds.staff_sampler={offset=pass%16,ordinal=0,mark=native.cpu_phase}
+ for index=1,16 do active=index;s:tick()end
+end
+for index=1,16 do assert(sampled[index]==4)end
+assert(s.base==1024 and marks==384)
+s.base=0;s.speed=0;s.rest=0;s.raise=0;s.litter=0;marks=0
+for i=1,64 do
+ e.TheApp._3ds.staff_sampler={offset=i%16,ordinal=0,mark=native.cpu_phase}
+ s:tick()
+end
 assert(s.base==64 and s.speed==64 and s.rest==64 and s.raise==64 and s.litter==64)
 assert(marks==24,'four full six-mark staff samples')
 e.TheApp._3ds=nil
@@ -78,7 +95,7 @@ assert(panel:addDialog('UIResearch')==false and mutations==0 and notices==1)
 gfx.loadRaw=function(_,name)assert(name=='Res01V');prepared=true end
 panel:addDialog('UIResearch');assert(mutations==1)
 ui.app._3ds=nil;panel:addDialog('UIResearch');assert(mutations==2)
-print('PASS complete Staff/BottomPanel modules: strict globals, 128 staff ticks, platform absent, failed and successful window preparation')
+print('PASS complete Staff/BottomPanel modules: strict globals, 16x64 balanced staff sampling, platform absent, failed and successful window preparation')
 '''
         test_lua_runtime.LuaRuntimeTests().run_lua(script)
 
@@ -97,11 +114,14 @@ local header='Error in timer handler: '
 local detail="sdmc:/3ds/corsixth/Lua/entities/humanoids/staff.lua:127: use of undeclared variable 'TH3DS'"
 local recovered='Recovering from error in timer handler...'
 local function world()
- return {game_log={header,detail,recovered},entities={
+ local w={game_log={header,detail,recovered},entities={
   {kind=Staff,ticks=false,timer_time=12,timer_function=math.sin,
    action_queue={{name='walk',must_happen=true},{name='seek_room'}},profile={wage=105}},
   {kind=Patient,ticks=true,action_queue={{name='wait'}}},
   {kind='furniture',ticks=false}}}
+ local hospital={world=w,staff={w.entities[1]}}
+ w.entities[1].world=w;w.entities[1].hospital=hospital
+ return w
 end
 local w=world();local staff=w.entities[1];local queue=staff.action_queue
 local app={world=w,eventHandlers={timer=function()end}}
@@ -124,11 +144,49 @@ for _,mutate in ipairs{
  function(w)w.entities[2].ticks=false end,
  function(w)w.entities[4]={kind=Staff,ticks=false}end,
  function(w)w.game_log={recovered,header,detail,recovered}end,
+ function(w)w.game_log[#w.game_log+1]='Warning: Empty action queue.'end,
+ function(w)w.entities[1].hospital.staff={}end,
+ function(w)w.entities[1].world={}end,
+ function(w)w.entities[1].timer_function=nil end,
+ function(w)w.entities[1].timer_time=0 end,
+ function(w)w.entities[1].action_queue={}end,
+ function(w)w.entities[1].fired=true end,
+ function(w)w.entities[4]=w.entities[1]end,
 }do
  w=world();mutate(w);assert(not pcall(H.repairR62,w),'must refuse ambiguous recovery')
  assert(w.entities[1].ticks==false,'failure must not partially enable entities')
 end
 print('PASS R63 recovery evidence, atomic validation, timer/action preservation, invalid benchmark health')
+'''
+        source=(self.generated/'CorsixTH/Lua/app.lua').read_text()
+        begin=source.index('function App:errorHandler(')
+        handler=source[begin:source.index('\nend',begin)+4]
+        script+='\nApp={}\nEntity={}\n'+handler+'\n'
+        script+=(ROOT/'tests/fixtures/entity_tick.lua.pinned').read_text()+r'''
+local w=world();w.game_log={};local s=w.entities[1]
+s.ticks=true;s.timer_time=1
+local animations,callbacks,confirmed=0,0
+s._tick=function()animations=animations+1 end
+s.timer_function=function(e)
+ callbacks=callbacks+1;table.remove(e.action_queue,1);e.completed=true
+end
+function w:gameLog(text)self.game_log[#self.game_log+1]=text end
+function w:dumpGameLog()end
+UIStaff=function()return {}end
+UIConfirmDialog=function(ui,modal,text,callback)confirmed=callback;return {}end
+local app=setmetatable({world=w,eventHandlers={timer=function()end},
+ video={setCaptureMouse=function()end},ui={addWindow=function()end},
+ drawFrame=function()end},{__index=App})
+-- Exact R62 failure location: before calling the real Entity.tick body.
+w.current_tick_entity=s
+app:errorHandler('timer',detail)
+assert(app.eventHandlers.timer==nil and s.timer_time==1 and callbacks==0)
+confirmed();assert(s.ticks==false and type(app.eventHandlers.timer)=='function')
+assert(H.repairR62(w)==1)
+Entity.tick(s)
+assert(callbacks==1 and animations==1 and s.timer_time==nil and s.timer_function==nil)
+assert(s.completed and s.action_queue[1].name=='seek_room')
+print('PASS actual App:errorHandler recovery closure and Entity.tick future callback, no World replay')
 '''
         test_lua_runtime.LuaRuntimeTests().run_lua(script)
 
@@ -225,6 +283,12 @@ for _,damage in ipairs{false,true}do
  assert(a.savegame_dir=='USER/')
 end
 io.open=open
+-- A live timer plus enabled actors is insufficient: no completed work rejects
+-- a sample, even when frames can still be presented.
+now=0;events={}
+local a=make();local b=B.new(a,native);b:tick()
+now=30000;b:tick();assert(b.phase=='sample')
+now=90000;b:tick();assert(b.failed and events[#events]=='FAILED')
 print('PASS benchmark rejects engine error, missing timer, disabled people and roundtrip timer damage; private-only writes')
 '''
         test_lua_runtime.LuaRuntimeTests().run_lua(script)

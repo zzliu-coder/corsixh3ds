@@ -78,7 +78,14 @@ end'''
   if not native then return true end
   return repaint -- static menus retain a paced compatibility refresh
 end'''
-    if new not in text:text=replace_exact(text,old,new,'real World/UI profile and menu repaint')
+    if new not in text and 'CORSIXTH_3DS_PROFILE_OFF_R63' not in text:
+        text=replace_exact(text,old,new,'real World/UI profile and menu repaint')
+    if 'CORSIXTH_3DS_PROFILE_OFF_R63' not in text:
+        text=text.replace('if native and native.cpu_profile then',
+            'if native and native.profiling_enabled ~= false and native.cpu_profile then')
+        text=text.replace('  -- R52: preserve World/UI tick rules; observe each real call exactly once.',
+            '  -- CORSIXTH_3DS_PROFILE_OFF_R63: disabled profiling takes the direct Lua path.\n'
+            '  -- R52: preserve World/UI tick rules; observe each real call exactly once.')
     yield path,text
     path='CorsixTH/Src/th_map.h'
     text=(root/path).read_text()

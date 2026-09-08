@@ -2255,18 +2255,44 @@ int l_request_observation_flush(lua_State*) {
   g_observations.flush_requested = true;
   return 0;
 }
+// Runs while the failed Lua frames still exist. Preserve non-string error
+// object identity; retain its stack in the log rather than replacing it.
+int preserve_lua_error(lua_State* state) {
+  const bool string_error=lua_type(state,1)==LUA_TSTRING;
+  const char* message=string_error?lua_tostring(state,1):"non-string Lua error";
+  luaL_traceback(state,state,message,1);
+  if(!string_error) {
+    boot_log("lua-error-stack: %s",lua_tostring(state,-1));
+    lua_pushvalue(state,1);
+  }
+  return 1;
+}
+int protected_lua_call(lua_State* state) {
+  const int arguments=lua_gettop(state)-1;
+  lua_pushcfunction(state,preserve_lua_error);
+  lua_insert(state,1);
+  const int status=lua_pcall(state,arguments,LUA_MULTRET,1);
+  lua_remove(state,1);
+  return status;
+}
 int l_cpu_profile(lua_State* state) {
   const char* name=luaL_checkstring(state,1);
   const auto kind=std::strcmp(name,"world")==0?CpuWork::World:CpuWork::UI;
   if(std::strcmp(name,"world")&&std::strcmp(name,"ui"))return luaL_error(state,"unknown CPU profile");
   luaL_checktype(state,2,LUA_TFUNCTION);lua_remove(state,1);
   int status;
-  {CpuWorkScope scope(kind);status=lua_pcall(state,lua_gettop(state)-1,LUA_MULTRET,0);}
+  {CpuWorkScope scope(kind);status=protected_lua_call(state);}
   if(status!=LUA_OK)return lua_error(state);
   return lua_gettop(state);
 }
 int l_clock_ms(lua_State* state){lua_pushinteger(state,static_cast<lua_Integer>(now_us()/1000));return 1;}
+int l_music_state(lua_State* state) {
+  lua_pushboolean(state,Mix_PlayingMusic()!=0);
+  lua_pushboolean(state,Mix_PausedMusic()!=0);
+  return 2;
+}
 int l_cpu_phase(lua_State* state) {
+  if(!cpu_work.enabled){lua_pushnil(state);return 1;}
   const auto now=now_us();
   if(lua_gettop(state)>0) {
     const char* name=luaL_checkstring(state,1);
@@ -2290,7 +2316,7 @@ int l_trace_call(lua_State* state) {
   luaL_checktype(state,3,LUA_TFUNCTION);
   lua_remove(state,1);lua_remove(state,1);
   const auto began=now_us();
-  const int status=lua_pcall(state,lua_gettop(state)-1,LUA_MULTRET,0);
+  const int status=protected_lua_call(state);
   g_observations.slow.record(began,now_us(),kind,identity,status==LUA_OK);
   if(status!=LUA_OK) return lua_error(state);
   return lua_gettop(state);
@@ -2607,8 +2633,11 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "set_notice", l_set_notice);
   set_function(state, "performance", l_performance);
   set_function(state, "cpu_profile", l_cpu_profile);
+  set_function(state, "music_state", l_music_state);
   set_function(state, "clock_ms", l_clock_ms);
   set_function(state, "cpu_phase", l_cpu_phase);
+  lua_pushboolean(state,cpu_work.enabled);
+  lua_setfield(state,-2,"profiling_enabled");
   set_function(state, "trace_call", l_trace_call);
   set_function(state, "window_identity", l_window_identity);
   set_function(state, "benchmark_enabled", l_benchmark_enabled);
@@ -2636,6 +2665,9 @@ void register_lua_module(lua_State* state) {
   }
   boot_log_open();
   // Diagnostic switches are sampled only at native startup.
+  if (auto* marker = std::fopen("sdmc:/3ds/corsixth/profile-off.txt", "rb")) {
+    std::fclose(marker);cpu_work.enabled=false;
+  }
   // Reference mode retains the full weighted thermal arithmetic for A/B runs.
   if (auto* marker = std::fopen("sdmc:/3ds/corsixth/thermal-profile.txt", "rb")) {
     std::fclose(marker); cpu_work.thermal_phase_profile = true;
@@ -2810,6 +2842,7 @@ bool runtime_frame_due(bool changed) noexcept {
 }
 void runtime_note_logic_callback(bool success) noexcept {
   ++g_observations.logic_callbacks;
+  g_simulation_clock.complete_step(success);
   if (!success) { ++g_observations.logic_failures; g_simulation_clock.interrupt(); }
 }
 void runtime_flush_observations(bool force) noexcept {

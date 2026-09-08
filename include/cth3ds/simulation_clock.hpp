@@ -14,6 +14,7 @@ class SimulationClock {
   static constexpr std::uint64_t max_debt_us = step_us * 8;
   struct Statistics {
     std::uint64_t steps{}, dropped_us{}, rebases{}, budget_exits{}, debt_us{};
+    std::uint64_t completed_steps{}, failed_steps{};
   };
   void reset() noexcept { *this = {}; }
   // Save/load, applet, HOME/lid and scene replacement must never be caught up.
@@ -42,6 +43,10 @@ class SimulationClock {
     return true;
   }
   Statistics statistics() const noexcept { auto s=stats_; s.debt_us=debt_us_; return s; }
+  void complete_step(bool success) noexcept {
+    if(success)++stats_.completed_steps;
+    else ++stats_.failed_steps;
+  }
  private:
   std::uint64_t last_us_{}, batch_started_{}, debt_us_{};
   unsigned batch_steps_{};

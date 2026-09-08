@@ -57,12 +57,19 @@ function Health.repairR62(world)
   local log=assert(world.game_log,"R62 recovery requires saved game log")
   local verified,recoveries,pending=0,0,false
   for i,message in ipairs(log)do
+    if type(message)=="string" then
+      local lowered=message:lower()
+      assert(not (lowered:find("warning:",1,true) and
+        (lowered:find("action queue",1,true) or lowered:find("callback",1,true))),
+        "save has action/callback warnings; needs separate object audit")
+    end
     if type(message)=="string" and message:match("^Error in .+ handler:") then
       local detail=log[i+1]
       assert(message:match("^Error in timer handler:") and type(detail)=="string"
         and detail:find("/entities/humanoids/staff.lua:127:",1,true)
         and detail:find("use of undeclared variable 'TH3DS'",1,true),
         "save contains another engine error; automatic R62 recovery refused")
+      assert(not pending,"overlapping errors; R62 recovery refused")
       verified=verified+1;pending=true
     elseif message=="Recovering from error in timer handler..." then
       assert(pending,"unmatched recovery entry; R62 recovery refused")
@@ -74,13 +81,40 @@ function Health.repairR62(world)
   local before=Health.snapshot(world)
   assert(before.disabled_patients==0,"disabled patient has no R62 staff evidence")
   assert(before.disabled_staff<=recoveries,"disabled staff exceed verified recoveries")
+  local seen,eligible={},{}
+  for index,entity in ipairs(world.entities)do
+    assert(not seen[entity],"duplicate entity membership; recovery refused")
+    seen[entity]=true
+    if entity.ticks==false and kind(entity)=="staff" then
+      -- In the R62 Staff inheritance path, ticks=false is written by
+      -- App:errorHandler; Object tick policies have a separate class path.
+      -- Require a live, uniquely owned employee with a
+      -- resumable timer; picked-up/fired/dead/ambiguous objects stay untouched.
+      assert(entity.world==world and not entity.fired and not entity.dead and
+        not entity.pickup and not entity.destroyed,"staff lifecycle ineligible: "..index)
+      local hospital=entity.hospital
+      assert(hospital and hospital.world==world and type(hospital.staff)=="table",
+        "staff hospital ownership missing: "..index)
+      local memberships=0
+      for _,member in ipairs(hospital.staff)do if member==entity then memberships=memberships+1 end end
+      assert(memberships==1,"staff hospital membership ambiguous: "..index)
+      assert(type(entity.timer_time)=="number" and entity.timer_time>=1 and
+        entity.timer_time%1==0 and type(entity.timer_function)=="function",
+        "staff has no resumable timer: "..index)
+      assert(type(entity.action_queue)=="table" and #entity.action_queue>0,
+        "staff has no active action queue: "..index)
+      for _,action in ipairs(entity.action_queue)do
+        assert(type(action)=="table" and type(action.name)=="string" and #action.name>0,
+          "staff action invalid: "..index)
+      end
+      eligible[#eligible+1]=entity
+    end
+  end
   -- Validate every precondition before changing any entity. Do not recreate
   -- entities, change action queues/timers, reset attributes or enable objects.
   local repaired=0
-  for _,entity in ipairs(world.entities)do
-    if entity.ticks==false and kind(entity)=="staff" then
-      entity.ticks=true;repaired=repaired+1
-    end
+  for _,entity in ipairs(eligible)do
+    entity.ticks=true;repaired=repaired+1
   end
   local after=Health.snapshot(world)
   assert(after.disabled_staff==0 and after.staff==before.staff and after.patients==before.patients)

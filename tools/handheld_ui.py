@@ -8,7 +8,8 @@ def transform(text):
         '  self:UIFileBrowser(ui, "game", _S.save_game_window.caption:format(".sav"), ui.app._3ds and 235 or 265,',
         'slot row room')
     anchor = '    --[[persistable:save_game_new_savegame_textbox_abort_callback]] function() self:abortName() end)'
-    text = replace_exact(text, anchor, anchor + '''
+    if '-- CORSIXTH_3DS_SAVE_SLOTS_R48' not in text:
+      text = replace_exact(text, anchor, anchor + '''
   -- CORSIXTH_3DS_SAVE_SLOTS_R48: use the existing overwrite and atomic-save path.
   if ui.app._3ds then
     self:setInputValue("Slot1")
@@ -27,6 +28,15 @@ def transform(text):
     return
   end
   if filename == "" then''', 'portable save names')
+    if '-- CORSIXTH_3DS_RECOVERY_SAVE_TARGET_R63' not in text:
+        text=replace_exact(text,'    self:setInputValue("Slot1")',
+            '''    -- CORSIXTH_3DS_RECOVERY_SAVE_TARGET_R63
+    self:setInputValue((ui.app._3ds.save_prefix or "") .. "Slot1")''',
+            'isolated recovery default name')
+        text=replace_exact(text,
+            'self:trySave(self.ui.app.savegame_dir .. "Slot" .. slot .. ".sav")',
+            'self:trySave(self.ui.app.savegame_dir .. (self.ui.app._3ds.save_prefix or "") .. "Slot" .. slot .. ".sav")',
+            'isolated recovery quick slots')
     return text
 
 def patch_handheld_ui(root: Path, dry_run=False):

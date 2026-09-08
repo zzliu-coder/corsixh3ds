@@ -39,6 +39,7 @@ extern "C" {
 #include "runtime/observation.hpp"
 #include <cstring>
 #include <cstdio>
+void boot_log(const char*,...) {}
 static_assert(LUA_VERSION_NUM==504,"test requires Lua 5.4");
 using namespace cth3ds;
 RuntimeObservations g_observations;
@@ -106,6 +107,14 @@ do
  local a,b,c=probe.profile('world',function(x)return nil,x,false end,27)
  assert(a==nil and b==27 and c==false)
  assert(not pcall(probe.profile,'world',function()error('profile failure retained')end))
+ local function inner_fault()error('nested-profile-fault')end
+ local ok,err=pcall(probe.profile,'world',function()
+   return probe.trace('read','nested',inner_fault)
+ end)
+ assert(not ok and err:find('nested%-profile%-fault') and err:find('stack traceback:'))
+ local token={}
+ local ok,err=pcall(probe.profile,'world',function()error(token)end)
+ assert(not ok and err==token,'non-string error identity must survive wrappers')
  assert(not pcall(probe.profile,'invalid',function()end))
  probe.scene('level:1');probe.scene('menu')
  assert(not pcall(probe.scene,'invalid'))
@@ -247,6 +256,7 @@ class InputNativeBoundaryTests(unittest.TestCase):
         push=re.search(r'(?ms)^void push_action\(.*?^\}',runtime).group()
         focus=re.search(r'(?ms)^int l_focus_view\(.*?^\}',runtime).group()
         functions='\n'.join(re.search(pattern,runtime).group() for pattern in (
+            r'(?ms)^int preserve_lua_error\(.*?^\}',r'(?ms)^int protected_lua_call\(.*?^\}',
             r'(?ms)^std::uint64_t checked_non_negative_integer\(.*?^\}',
             r'(?ms)^int l_cpu_phase\(.*?^\}',r'(?ms)^int l_trace_call\(.*?^\}',
             r'(?ms)^int l_window_identity\(.*?^\}',

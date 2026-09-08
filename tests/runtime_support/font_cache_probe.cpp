@@ -65,6 +65,41 @@ int main(int argc,char** argv) {
   }
   // The first face formerly released the shared library under later faces.
   fonts.erase(fonts.begin());
+  // Exercise the actual renderer with a cross-width collision, in both
+  // directions. Find the collision for the host word size; the audit's fixed
+  // width=217 case additionally checks the 32-bit target hash.
+  const std::string wrapping="This is a very long text that will wrap in a narrow box. "
+    "This is a very long text that will wrap in a narrow box.";
+  const auto hash_width=[&](int width) {
+    std::size_t h=wrapping.size()+std::size_t(INT_MAX)+(std::size_t(width)<<3);
+    for(char c:wrapping)h^=(h<<5)+(h>>2)+static_cast<std::size_t>(c);
+    return h&127;
+  };
+  int narrow=0;
+  for(int w=32;w<500;++w)if(hash_width(w)==hash_width(INT_MAX)){narrow=w;break;}
+  assert(narrow>0);
+  struct Snapshot { text_layout layout; std::vector<uint32_t> pixels; };
+  const auto render=[&](int width) {
+    SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+    const auto layout=fonts.front()->draw_text_wrapped(&target,wrapping.data(),wrapping.size(),0,0,width,INT_MAX,0);
+    auto* pixels=static_cast<uint32_t*>(surface->pixels);
+    return Snapshot{layout,{pixels,pixels+640*480}};
+  };
+  fonts.front()->clear_cache();const auto finite=render(narrow);
+  fonts.front()->clear_cache();const auto unlimited=render(INT_MAX);
+  assert(finite.layout.row_count>unlimited.layout.row_count);
+  for(bool reverse:{false,true}) {
+    fonts.front()->clear_cache();
+    for(int i=0;i<8;++i) {
+      const bool wide=(i%2==0)==reverse;
+      const auto got=render(wide?INT_MAX:narrow);
+      const auto& expected=wide?unlimited:finite;
+      assert(got.layout.width==expected.layout.width && got.layout.end_y==expected.layout.end_y
+        && got.layout.row_count==expected.layout.row_count && got.pixels==expected.pixels);
+    }
+  }
+  fonts.front()->clear_cache();
+  std::cout<<"PASS real cross-width collision: finite/unbounded layouts and pixels remain distinct\n";
   // Find two different complete keys with the original SAME direct-map hash.
   // Alternating labels must allocate two layouts, then reuse both indefinitely.
   std::map<std::size_t,std::string> buckets;

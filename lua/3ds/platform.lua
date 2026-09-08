@@ -255,7 +255,7 @@ function Platform:installAtomicSaves()
   end
   app.quickSave = function(instance)
     if not instance.world then return false, "no world" end
-    return instance:save(instance.savegame_dir .. "quicksave.qs")
+    return instance:save(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
   end
 end
 
@@ -298,6 +298,7 @@ function Platform:installLoadTelemetry()
     -- saves are never migrated automatically, and original bytes stay intact.
     if filename=="sdmc:/3ds/corsixth/Saves/R62-Recovered.sav" or
        filename=="sdmc:/3ds/corsixth/Benchmark/r62-recovery.sav" then
+      self.save_prefix="R63-Recovered-"
       local repaired,count=pcall(require("3ds.state_health").repairR62,instance.world)
       if not repaired then
         if instance.world then instance.world:setSpeed("Pause") end
@@ -305,13 +306,16 @@ function Platform:installLoadTelemetry()
         return false,count
       end
       native_checkpoint(native,"save_load","r62-recovered",filename,count)
+    else
+      local basename=filename:match("([^/]+)$") or ""
+      self.save_prefix=basename:match("^R63%-Recovered%-") and "R63-Recovered-" or nil
     end
     native_checkpoint(native, "save_load", "load-complete", filename)
     native_notice(native, "LOAD COMPLETE", false)
     return true
   end
   app.quickLoad = function(instance)
-    return instance:load(instance.savegame_dir .. "quicksave.qs")
+    return instance:load(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
   end
 end
 
@@ -321,6 +325,7 @@ function Platform:installErrorTelemetry()
   if type(original)~="function" then return end
   self.app.errorHandler=function(app,event,detail)
     self.simulation_errors=self.simulation_errors+1
+    self.staff_sampler=nil
     print("engine-error: sequence="..self.simulation_errors.." event="..tostring(event)
       .." detail="..tostring(detail))
     native_checkpoint(self.native,"simulation","error",tostring(event))
@@ -330,7 +335,8 @@ end
 
 function Platform:saveAndExit()
   if self.app.world then
-    local ok, result = pcall(self.app.save, self.app, self.app.savegame_dir .. "save-and-exit.sav")
+    local ok, result = pcall(self.app.save, self.app,
+      self.app.savegame_dir .. (self.save_prefix or "") .. "save-and-exit.sav")
     if not ok or result ~= true then return false, result end
   end
   self.app:exit()

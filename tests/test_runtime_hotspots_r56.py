@@ -126,6 +126,18 @@ end
 local w=make(1,3);w.map.level_number='MAP EDITOR';calls={}
 assert(improved(w)==nil and #calls==0 and w.game_date.hour==49)
 TheApp=nil;w=make(1,3);improved(w);assert(w.game_date.hour==50)
+-- Completed work counts only calls which returned. Never replay the partially
+-- advanced World after a failed entity. Off mode must not query any phase clock.
+TheApp={_3ds={native={profiling_enabled=false,cpu_phase=function()error('profiling disabled')end}}}
+local w=make(2,1);improved(w)
+local p=TheApp._3ds.simulation_progress
+assert(p.world_completed==1 and p.hours_completed==2 and p.entity_completed==2)
+assert(TheApp._3ds.staff_sampler==nil)
+w.entities[1].tick=function()error('entity failed before completion')end
+w.tick_timer=0
+assert(not pcall(improved,w))
+assert(p.world_completed==1 and p.hours_completed==2 and p.entity_completed==2)
+assert(w.current_tick_entity==w.entities[1],'retain exact error owner')
 '''
         self.lua(script)
 

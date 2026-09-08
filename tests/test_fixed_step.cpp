@@ -28,6 +28,11 @@ TEST(simulation_clock_uses_elapsed_time_with_original_18ms_tick) {
   }
   EXPECT_EQ(steps,100U);
   EXPECT_EQ(clock.statistics().dropped_us,0U);
+  EXPECT_EQ(clock.statistics().completed_steps,0U);
+  clock.complete_step(true);clock.complete_step(false);
+  EXPECT_EQ(clock.statistics().completed_steps,1U);
+  EXPECT_EQ(clock.statistics().failed_steps,1U);
+  EXPECT_EQ(clock.statistics().steps,100U);
 }
 
 TEST(simulation_clock_bounds_debt_steps_and_callback_time) {

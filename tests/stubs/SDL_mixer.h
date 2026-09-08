@@ -8,3 +8,4 @@ inline int Mix_HaltChannel(int) { return 0; }
 
 inline int Mix_Paused(int) {return 0;}
 inline int Mix_PausedMusic() {return 0;}
+inline int Mix_PlayingMusic() {return 0;} // Link seam; real mixer tested separately.

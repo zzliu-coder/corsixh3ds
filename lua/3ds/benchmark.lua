@@ -41,6 +41,7 @@ function Benchmark:captureMedia()
   local app=self.app
   self.original_language=app.config.language
   self.original_music=app.config.play_music
+  self.original_voice=app.config.speech_language or "en"
   self.original_music_playing=app.audio.background_music~=nil
   self.original_music_paused=app.audio.background_paused==true
   for i,info in ipairs(app.audio.background_playlist or {}) do
@@ -62,6 +63,12 @@ function Benchmark:mark(event)
       .." language="..tostring(self.app.config.language).." music="..tostring(self.app.config.play_music)
       .." voice="..tostring(self.app.config.speech_language or "en"))
   end
+  local playing,paused
+  if self.native.music_state then playing,paused=self.native.music_state() end
+  print("benchmark-media-actual: music_playing="..tostring(playing)
+    .." music_paused="..tostring(paused).." voice_bank="
+    ..tostring(self.app.audio and self.app.audio.speech_file_name)
+    .." voice_playback=NOT_PROVEN")
   self.native.flush_observations()
 end
 
@@ -87,6 +94,12 @@ function Benchmark:applyMedia(language, music, selected, stopped)
   end
 end
 
+function Benchmark:progress()
+  local p=self.app._3ds and self.app._3ds.simulation_progress or {}
+  return {world=p.world_completed or 0,hours=p.hours_completed or 0,
+    entities=p.entity_completed or 0,at=self.native.clock_ms()}
+end
+
 function Benchmark:restore()
   local closed=true
   if self.stress then
@@ -101,6 +114,8 @@ function Benchmark:restore()
     local ok,err=pcall(function()
       self:applyMedia(self.original_language,self.original_music,self.original_track,
         not self.original_music_playing)
+      assert(require("3ds.media").setSpeech(self.app,self.original_voice)==true,
+        "voice restore failed")
       if self.original_music_playing and self.original_music_paused then
         assert(self.app.audio:pauseBackgroundTrack()==true,"music pause restore failed")
       end
@@ -128,7 +143,12 @@ function Benchmark:load()
   if self.recovery_copy and not self.recovery_verified then
     -- The installer supplies a byte-identical copy of the affected Slot1.
     -- Platform only repairs that explicit name; these writes stay private.
-    assert(self.app:load(root.."r62-recovery.sav")==true,"R62 recovery copy rejected")
+    local recovered,reason=self.app:load(root.."r62-recovery.sav")
+    self.recovery_copy=false -- one independent qualification attempt
+    if recovered~=true then
+      self.recovery_refused=true
+      print("benchmark-recovery: status=REFUSED original_slot1=untouched reason="..tostring(reason))
+    else
     local health=Health.assertActive(self.app)
     self.app.world:setSpeed("Pause")
     local fingerprint=require("3ds.benchmark_stress").fingerprint
@@ -141,6 +161,7 @@ function Benchmark:load()
     self.recovery_verified=true
     print("benchmark-recovery: status=PASS staff="..health.staff.." patients="..health.patients
       .." ticks=active action_timer_state=preserved original_slot1=untouched")
+    end
   end
   local profile=self.profiles[self.index]
   local ok,detail=self.app:load(root..(profile.file or "input.sav"))
@@ -155,7 +176,13 @@ function Benchmark:load()
   -- needs clearing in this private benchmark world, before the first tick.
   self.app.config.autosave_frequency=0
   self.app.world.autosave_next_tick=false
-  if self.media_profiles then self:applyMedia(profile.language,profile.music) end
+  if self.media_profiles then
+    self:applyMedia(profile.language,profile.music)
+    local choice=profile.language=="English" and "en" or "zh"
+    assert(require("3ds.media").setSpeech(self.app,choice)==true,"benchmark voice bank failed")
+    assert(self.app.audio.speech_file_name==require("3ds.media").speechFile(self.app) and
+      not self.app.audio.not_loaded,"benchmark voice bank not loaded")
+  end
   self.app.world:setSpeed(profile.speed)
   self.expected_language=self.app.config.language
   self.expected_music=self.app.config.play_music
@@ -177,6 +204,10 @@ function Benchmark:advance()
     "simulation timer disconnected; performance sample invalid")
   if self.native.clock_ms()-self.last_health_check>=5000 then
     Health.assertActive(self.app);self.last_health_check=self.native.clock_ms()
+    if self.phase=="sample" and self.native.music_state and self.expected_music then
+      local playing,paused=self.native.music_state()
+      assert(playing and not paused,"benchmark music is not actually playing")
+    end
   end
   if self.phase=="stress" then
     if self.stress:tick() then self:finish() end
@@ -193,11 +224,19 @@ function Benchmark:advance()
     "benchmark camera changed")
   if self.native.clock_ms()<self.deadline then return end
   if self.phase=="warmup" then
+    self.sample_progress=self:progress()
     self:mark("SAMPLE-BEGIN");self.phase="sample"
     self.deadline=self.native.clock_ms()+60000
     self.native.set_notice("AUTO BENCHMARK - SAMPLING",false)
   elseif self.phase=="sample" then
     Health.assertActive(self.app)
+    local start=self.sample_progress;local finish=self:progress()
+    assert(finish.world>start.world and finish.hours>start.hours and finish.entities>start.entities,
+      "no completed simulation work; performance sample invalid")
+    print("benchmark-simulation: mode=fixed-wall-time elapsed_ms="..(finish.at-start.at)
+      .." completed_world="..(finish.world-start.world).." completed_hours="..(finish.hours-start.hours)
+      .." completed_entities="..(finish.entities-start.entities)
+      .." exact_state_ab=NOT_PROVEN")
     self:mark("SAMPLE-END")
     if self.index<#self.profiles then self.index=self.index+1;self:load()
     else
@@ -215,7 +254,8 @@ function Benchmark:finish()
   assert(ok==true,"benchmark final reload failed: "..tostring(detail))
   Health.assertActive(self.app)
   self.phase="done";assert(self:restore(),"benchmark media restore failed");self:mark("COMPLETE")
-  self.native.set_notice("BENCHMARK DONE - YOU CAN PLAY",false)
+  self.native.set_notice(self.recovery_refused and "BENCH DONE - OLD SAVE NEEDS AUDIT"
+    or "BENCHMARK DONE - YOU CAN PLAY",false)
 end
 
 function Benchmark:tick()

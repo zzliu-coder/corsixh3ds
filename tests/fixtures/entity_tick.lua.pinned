@@ -1,0 +1,50 @@
+--[[ Copyright (c) 2009 Peter "Corsix" Cawley
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE. --]]
+
+-- Exact Entity:tick excerpt at upstream 56bd5d00f76331c7f76d7b696726a7926303ca0c.
+function Entity:tick()
+  if self.num_animation_ticks then
+    for _ = 1, self.num_animation_ticks do
+      self:_tick()
+    end
+    if self.num_animation_ticks == 1 then
+      self.num_animation_ticks = nil
+    end
+  else
+    self:_tick()
+  end
+  -- Tick any mood animation
+  if self.mood_info then
+    self.mood_info:tick()
+  end
+
+  local timer = self.timer_time
+  if timer then
+    timer = timer - 1
+    if timer == 0 then
+      self.timer_time = nil
+      local timer_function = self.timer_function
+      self.timer_function = nil
+      timer_function(self)
+    else
+      self.timer_time = timer
+    end
+  end
+end

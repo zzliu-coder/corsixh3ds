@@ -34,13 +34,13 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: '3.12'
+          python-version: '3.9.25'
           cache: pip
           cache-dependency-path: requirements/media.lock
       - name: Install media SDK inputs separately from the frozen verifier environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang pkg-config liblua5.4-0 libsdl2-dev libsdl2-mixer-dev libfreetype-dev
+          sudo apt-get install -y --no-install-recommends clang libclang-rt-18-dev pkg-config liblua5.4-dev libsdl2-dev libsdl2-mixer-dev libfreetype-dev
           python3 -m pip --isolated --disable-pip-version-check install --no-input --require-hashes --only-binary=:all: --index-url https://pypi.org/simple -r requirements/media.lock
       - name: Exercise real FreeType and SDL_mixer plus the bilingual package
         run: ./scripts/run_ci_command.sh media-host artifacts/verification/media-host -- python3 -B -m unittest -v media_runtime.check_media
@@ -83,7 +83,7 @@ jobs:
       - name: Install native host runtime inputs
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3-venv
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ clang libclang-rt-18-dev lua5.4 liblua5.4-dev libsdl2-dev pkg-config python3-venv
           mkdir -p "$RUNNER_TEMP/cth3ds-bin"
           ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua"
           echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"
@@ -350,7 +350,7 @@ jobs:
           ./scripts/run_ci_command.sh host-${{ matrix.name }}-setup
           artifacts/ci/host-${{ matrix.name }}-setup --
           bash -c 'sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3 python3-venv &&
+          cmake ninja-build gcc-13 g++-13 clang libclang-rt-18-dev lua5.4 liblua5.4-dev libsdl2-dev pkg-config python3 python3-venv &&
           mkdir -p "$RUNNER_TEMP/cth3ds-bin" &&
           ln -s "$(command -v lua5.4)" "$RUNNER_TEMP/cth3ds-bin/lua" &&
           echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"'
@@ -369,7 +369,7 @@ jobs:
             echo "runner_image_version=${ImageVersion:-unset}"
             echo "container=$CTH3DS_HOST_CONTAINER"
             cat /etc/os-release
-            dpkg-query -W cmake ninja-build gcc-13 g++-13 clang lua5.4 liblua5.4-0 libsdl2-dev pkg-config python3 python3-venv
+            dpkg-query -W cmake ninja-build gcc-13 g++-13 clang libclang-rt-18-dev lua5.4 liblua5.4-dev libsdl2-dev pkg-config python3 python3-venv
             sha256sum "$(command -v cmake)" "$(command -v ninja)" \
               "$(command -v gcc-13)" "$(command -v g++-13)" "$(command -v clang)" \
               "$(command -v lua)"

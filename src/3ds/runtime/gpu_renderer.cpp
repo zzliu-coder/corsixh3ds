@@ -383,13 +383,19 @@ void gpu_quiesce() noexcept {
 }
 void gpu_shutdown() noexcept {
   if(c3_ready)gpu_quiesce();
-  if(canvas_target)C3D_RenderTargetDelete(canvas_target);canvas_target=nullptr;
-  if(top_target)C3D_RenderTargetDelete(top_target);top_target=nullptr;
-  if(bottom_target)C3D_RenderTargetDelete(bottom_target);bottom_target=nullptr;
-  if(canvas.data)C3D_TexDelete(&canvas);canvas={};
-  if(overlay.data)C3D_TexDelete(&overlay);overlay={};
+  if(canvas_target)C3D_RenderTargetDelete(canvas_target);
+  canvas_target=nullptr;
+  if(top_target)C3D_RenderTargetDelete(top_target);
+  top_target=nullptr;
+  if(bottom_target)C3D_RenderTargetDelete(bottom_target);
+  bottom_target=nullptr;
+  if(canvas.data)C3D_TexDelete(&canvas);
+  canvas={};
+  if(overlay.data)C3D_TexDelete(&overlay);
+  overlay={};
   for(auto& page:pages){if(page.texture.data)C3D_TexDelete(&page.texture);page={};}
-  if(c2_ready)C2D_Fini();if(c3_ready)C3D_Fini();
+  if(c2_ready)C2D_Fini();
+  if(c3_ready)C3D_Fini();
   active=c2_ready=c3_ready=in_frame=pending=false;
 }
 bool gpu_begin() noexcept {

@@ -42,7 +42,7 @@ static void run(lua_State* L,const char* code) {
   if(error){std::fprintf(stderr,"Lua failure: %s\nScript: %.220s\n",lua_tostring(L,-1),code);std::abort();}
 }
 int main(int argc,char** argv) {
-  assert(argc>=2 && argc<=4);
+  assert(argc>=2 && argc<=5);
   Heap heap;auto* L=lua_newstate(allocator,&heap);assert(L);luaL_openlibs(L);
   lua_pushglobaltable(L);lua_pushcclosure(L,reference::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"reference");
   lua_pushglobaltable(L);lua_pushcclosure(L,candidate::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"candidate");
@@ -118,8 +118,12 @@ int main(int argc,char** argv) {
       end
     )");
   }
-  if(argc==4) {
+  if(argc>=4) {
     lua_pushstring(L,argv[3]);lua_setglobal(L,"health_path");
+    if(argc==5) {
+      run(L,"Entity={}");
+      if(luaL_dofile(L,argv[4])) {std::fprintf(stderr,"%s\n",lua_tostring(L,-1));std::abort();}
+    }
     run(L,R"(
       local H=dofile(health_path)
       class={is=function(e,k)return e.kind==k end};Staff='staff';Patient='patient'
@@ -127,10 +131,12 @@ int main(int argc,char** argv) {
       local source={game_log={'Error in timer handler: ',
         "sdmc:/3ds/corsixth/Lua/entities/humanoids/staff.lua:127: use of undeclared variable 'TH3DS'",
         'Recovering from error in timer handler...'},entities={
-        {kind=Staff,ticks=false,timer_time=12,timer_function=math.sin,action_queue=queue,profile={wage=105}},
+        {kind=Staff,ticks=false,timer_time=12,timer_function=make_tick_callback(),action_queue=queue,profile={wage=105}},
         {kind=Patient,ticks=true,action_queue={{name='wait'}}},
         {kind='object',ticks=false}},saved_queue=queue}
-      local permanent={[math.sin]='sin'};local inverse={sin=math.sin}
+      local permanent={[_G]='global',[math.sin]='sin'};local inverse={global=_G,sin=math.sin}
+      source.entities[1].world=source
+      source.entities[1].hospital={world=source,staff={source.entities[1]}}
       local original_bytes=assert(reference.dump(source,permanent))
       local copy=assert(candidate.load(original_bytes,inverse))
       assert(H.repairR62(copy)==1)
@@ -142,8 +148,14 @@ int main(int argc,char** argv) {
         local roundtrip=assert(reader.load(repaired_bytes,inverse))
         assert(H.fingerprint(roundtrip)==repaired_state)
         assert(roundtrip.entities[1].action_queue==roundtrip.saved_queue)
-        assert(roundtrip.entities[1].timer_function==math.sin and roundtrip.entities[1].profile.wage==105)
+        assert(type(roundtrip.entities[1].timer_function)=='function' and roundtrip.entities[1].profile.wage==105)
         assert(roundtrip.entities[2].ticks==true and roundtrip.entities[3].ticks==false)
+        if Entity then
+          local s=roundtrip.entities[1];local anim=0
+          s._tick=function()anim=anim+1 end
+          for i=1,12 do Entity.tick(s)end
+          assert(s.completed==1 and anim==12 and s.timer_time==nil and s.timer_function==nil)
+        end
       end
       print('PASS native R63 synthetic recovery roundtrip: original bytes unchanged, actions/timers/aliases retained')
     )");

@@ -126,7 +126,7 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
         (unsigned long long)row.total_us,(unsigned long long)row.max_us,(unsigned long long)row.units,cpu_work.enabled);
     }
     cpu_work.rows = {};
-    output.line("entity-profile: sample_period=16 sampled_passes_only=1 preserve_order=1");
+    output.line("entity-profile: sample_period=16 sampled_passes_only=1 staff_ordinal_rotation=1 preserve_order=1");
     output.line("text-cache: charged_bytes=%llu peak_charged_bytes=%llu retained_limit=%llu evictions=%llu oversized_transients=%llu gpu_source_included=1",
       (unsigned long long)text_cache.bytes,(unsigned long long)text_cache.peak,
       (unsigned long long)TextCacheBudget::limit,(unsigned long long)text_cache.evictions,
@@ -143,6 +143,9 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
       (unsigned long long)clock.steps,(unsigned long long)clock.debt_us,
       (unsigned long long)clock.dropped_us,(unsigned long long)clock.rebases,
       (unsigned long long)clock.budget_exits);
+    output.line("simulation-completion: dispatched=%llu completed=%llu failed=%llu cumulative=1 world_work=benchmark-simulation",
+      (unsigned long long)clock.steps,(unsigned long long)clock.completed_steps,
+      (unsigned long long)clock.failed_steps);
     compact_us = now;
     output.line("log-buffer: capacity=4096 flushes=%llu failed=%d bytes_accepted=%llu flush_time_in_log_us=1",
       (unsigned long long)inputs.log_flushes,inputs.log_failed,(unsigned long long)inputs.log_bytes);

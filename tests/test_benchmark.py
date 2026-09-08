@@ -10,11 +10,18 @@ class BenchmarkTests(unittest.TestCase):
     def setUpClass(cls):test_lua_runtime.LuaRuntimeTests.setUpClass()
 
     def run_benchmark_lua(self, script):
-        # Existing orchestration fixtures represent healthy, empty worlds.
-        script = script.replace("local app={", "local app={eventHandlers={timer=function()end},")
+        # Orchestration seam: fake simulation work follows the fixture clock.
+        # Actual World completion/failure paths are tested in test_r63_state.
+        script = script.replace("local app={", "local app={_3ds={simulation_progress=setmetatable({},{__index=function()return math.floor(now/18)end})},eventHandlers={timer=function()end},")
         script = script.replace("self.world={", "self.world={entities={},")
         script = script.replace("app.world={", "app.world={entities={},")
         prefix = "package.path=" + repr(str(ROOT/'lua/?.lua')+';') + "..package.path\n"
+        prefix += """package.loaded['3ds.media']={
+ setSpeech=function(app,code)
+  app.config.speech_language=code;app.audio.speech_file_name=code=='zh' and 'Sound-CN.dat' or 'Sound-EN.dat';return true
+ end,
+ speechFile=function(app)return app.config.speech_language=='zh' and 'Sound-CN.dat' or 'Sound-EN.dat' end}
+"""  # The actual bank transaction/decoder is covered in media_runtime.
         test_lua_runtime.LuaRuntimeTests().run_lua(prefix + script)
 
     def test_expanded_profile_handoff_and_failed_cleanup_restore_private_route(self):

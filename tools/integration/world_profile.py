@@ -48,4 +48,50 @@ function World:onTick()''','entity sample counter')
           else
             entity:tick()
           end''','real entity sample')
+    if '-- CORSIXTH_3DS_PROGRESS_R63' not in text:
+        text=replace_exact(text,
+            '    local native = TheApp and TheApp._3ds and TheApp._3ds.native\n'
+            '    local mark = native and native.cpu_phase',
+            '''    -- CORSIXTH_3DS_PROGRESS_R63: counts are outside the saved World.
+    local platform = TheApp and TheApp._3ds
+    local native = platform and platform.native
+    local mark = native and native.profiling_enabled ~= false and native.cpu_phase
+    local progress = platform and platform.simulation_progress
+    if platform and not progress then
+      progress = {world_completed=0, hours_completed=0, entity_completed=0}
+      platform.simulation_progress = progress
+    end''','world completed work counters')
+        text=replace_exact(text,'      for _, entity in ipairs(self.entities) do',
+            '''      if platform then
+        if mark then
+          local sampler = platform.staff_sampler or {offset=0}
+          sampler.offset = (sampler.offset + 1) % 16
+          sampler.ordinal = 0
+          sampler.mark = mark
+          platform.staff_sampler = sampler
+        else platform.staff_sampler = nil end
+      end
+      for _, entity in ipairs(self.entities) do''','rotate sampled ordinal each entity pass')
+        text=replace_exact(text,'''          else
+            entity:tick()
+          end''', '''          else
+            entity:tick()
+          end
+          if progress then progress.entity_completed = progress.entity_completed + 1 end''',
+          'count only successfully completed entities')
+        text=replace_exact(text,'      if mark then phase = mark("world_dispatch", phase) end',
+            '''      if mark then phase = mark("world_dispatch", phase) end
+      if progress then progress.hours_completed = progress.hours_completed + 1 end''',
+            'count completed simulation hours')
+        # Count World callbacks at the very end, after every original side effect.
+        begin=text.index('function World:onTick()')
+        end=text.index('\nend',begin)+4
+        method=text[begin:end]
+        method=replace_exact(method,'  self.tick_timer = self.tick_timer - 1',
+            '''  self.tick_timer = self.tick_timer - 1
+  local platform = TheApp and TheApp._3ds
+  local progress = platform and platform.simulation_progress
+  if progress then progress.world_completed = progress.world_completed + 1 end''',
+            'world callback successful completion')
+        text=text[:begin]+method+text[end:]
     yield path,text

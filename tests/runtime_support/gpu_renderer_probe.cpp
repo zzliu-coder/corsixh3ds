@@ -86,7 +86,8 @@ void emitted(){assert(in_frame);assert(++objects<=max_objects);offset+=cost;asse
 u64 svcGetSystemTick(){static u64 clock;return ++clock;}u32 linearSpaceFree(){return 8000000;}u32 vramSpaceFree(){return 6000000;}
 u8* gfxGetFramebuffer(gfxScreen_t screen,int eye,u16* width,u16* height){
   assert(eye==GFX_LEFT);if(width)*width=wrong_dimensions?239:240;
-  if(height)*height=screen==GFX_TOP?400:320;return lcd[screen].data();
+  if(height)*height=screen==GFX_TOP?400:320;
+  return lcd[screen].data();
 }
 Result GSPGPU_InvalidateDataCache(const void*,u32){assert(pending.empty());return reject_invalidate?-1:0;}
 namespace {
@@ -139,7 +140,8 @@ bool C2D_DrawImage(C2D_Image image,const C2D_DrawParams* p,const C2D_ImageTint* 
   emitted();const auto sub=*image.subtex;const auto params=*p;const auto tint=colour?colour->colour:0xffffffffU;
   const auto cut=bounds();auto* target=current;auto* tex=image.tex;
   commands.emplace_back([=]{raster(target,params.pos.x,params.pos.y,std::fabs(params.pos.w),std::fabs(params.pos.h),cut,[=](float u,float v){
-    if(params.pos.w<0)u=1-u;if(params.pos.h<0)v=1-v;
+    if(params.pos.w<0)u=1-u;
+    if(params.pos.h<0)v=1-v;
     int x=std::clamp(int((sub.left+u*(sub.right-sub.left))*tex->width),0,tex->width-1);
     int y=std::clamp(int((1-sub.top+v*(sub.top-sub.bottom))*tex->height),0,tex->height-1);
     u32 value=texture_pixel(tex,x,y),result=0;for(unsigned s=0;s<32;s+=8)result|=(((((value>>s)&255U)*((tint>>s)&255U))/255U)<<s);return result;

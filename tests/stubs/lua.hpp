@@ -56,6 +56,8 @@ inline void lua_pushcclosure(lua_State*, lua_CFunction, int) {}
 #define lua_pushcfunction(L, f) lua_pushcclosure((L), (f), 0)
 inline int lua_pcall(lua_State*, int, int, int) { return LUA_OK; }
 inline void lua_remove(lua_State*, int) {}
+inline void lua_insert(lua_State*, int) {}
+inline void luaL_traceback(lua_State*,lua_State*,const char*,int) {}
 inline void luaL_checktype(lua_State*, int, int) {}
 inline const char* luaL_checkstring(lua_State*, int) { return "stub"; }
 inline lua_Integer luaL_checkinteger(lua_State*, int) { return 0; }

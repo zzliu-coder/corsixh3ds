@@ -23,15 +23,17 @@ constexpr unsigned page_count=3, max_objects=4096;
 constexpr u32 transfer=GX_TRANSFER_FLIP_VERT(0)|GX_TRANSFER_OUT_TILED(0)|
   GX_TRANSFER_RAW_COPY(0)|GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8)|
   GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
-struct Page { C3D_Tex texture{}; GpuShelf shelf{}; std::uint64_t generation{1},used{}; };
+struct Page { C3D_Tex texture{}; GpuSkyline shelf{}; std::uint64_t generation{1},used{},touched{}; };
 struct Piece {
   int sx{},sy{},w{},h{},x{},y{},page{-1};
   std::uint64_t generation{};
-  std::size_t offset{};
+  std::unique_ptr<std::uint32_t[]> pixels;
+  std::unique_ptr<std::uint8_t[]> indices;
 };
 struct Image {
   SDL_Texture* handle{}; SDL_Renderer* renderer{};
-  int width{},height{}; std::unique_ptr<std::uint32_t[]> pixels;
+  int width{},height{}; std::uint64_t source_bytes{}; bool indexed{};
+  std::unique_ptr<std::array<std::uint32_t,256>> palette;
   std::vector<Piece> pieces; Image* next{}; Image* previous{};
 };
 struct Stats {
@@ -39,13 +41,14 @@ struct Stats {
   std::uint64_t source_bytes{},source_peak{},source_images{},gpu_us{},gpu_jobs{};
   std::uint64_t clip_requests{},clip_skips{},full_sprite_draws{};
   std::uint64_t frame_upload_start{},frame_eviction_start{},frame_upload_peak{},frame_eviction_peak{};
+  std::uint64_t indexed_bytes{},source_block_peak{},source_failures{},indexed_images{};
   float cmd_peak{};
 } stats;
 std::array<Page,page_count> pages;
 C3D_Tex canvas{},overlay{};
 C3D_RenderTarget *canvas_target{},*top_target{},*bottom_target{};
 bool active{},c3_ready{},c2_ready{},in_frame{},pending{},empty_clip{},canvas_clip_active{};
-unsigned objects{};std::uint64_t epoch{1};
+unsigned objects{};std::uint64_t epoch{1},touch_sequence{};
 SDL_Rect clip{0,0,640,480};
 Image* images{};
 
@@ -122,14 +125,14 @@ void texture_settings(C3D_Tex& tex) noexcept {
 }
 bool place(Image& image,Piece& piece) noexcept {
   if(piece.page>=0 && piece.generation==pages[piece.page].generation){
-    pages[piece.page].used=epoch;++stats.hits;return true;
+    pages[piece.page].used=epoch;pages[piece.page].touched=++touch_sequence;++stats.hits;return true;
   }
   int selected=-1,x=0,y=0;
   for(unsigned i=0;i<page_count;++i)
     if(pages[i].shelf.allocate(piece.w,piece.h,x,y)){selected=static_cast<int>(i);break;}
   if(selected<0){
     auto oldest=[&](){unsigned n=0;
-      for(unsigned i=1;i<page_count;++i){if(pages[i].used<pages[n].used)n=i;}
+      for(unsigned i=1;i<page_count;++i){if(pages[i].touched<pages[n].touched)n=i;}
       return n;};
     unsigned n=oldest();
     if(pages[n].used==epoch){if(!checkpoint())return false;n=oldest();}
@@ -143,10 +146,11 @@ bool place(Image& image,Piece& piece) noexcept {
   // tiles; eviction is allowed only after a completed queue boundary.
   {
     CpuWorkScope upload(CpuWork::GpuUpload,static_cast<std::uint64_t>(piece.w)*piece.h*4U);
-    gpu_upload_prepared(output,512,x,y,image.pixels.get()+piece.offset,piece.w,piece.h);
+    if(image.indexed)gpu_upload_indices(output,512,x,y,piece.indices.get(),piece.w,piece.h,image.palette->data());
+    else gpu_upload_prepared(output,512,x,y,piece.pixels.get(),piece.w,piece.h);
   }
   piece.page=selected;piece.generation=page.generation;piece.x=x;piece.y=y;
-  page.used=epoch;++stats.uploads;stats.upload_bytes+=piece.w*piece.h*4U;
+  page.used=epoch;page.touched=++touch_sequence;++stats.uploads;stats.upload_bytes+=piece.w*piece.h*4U;
   return true;
 }
 bool draw_image(C3D_Tex& tex,const Tex3DS_SubTexture& sub,SDL_FRect dst,u32 tint,
@@ -330,7 +334,8 @@ bool startup_self_test() noexcept {
 void forget(Image* image) noexcept {
   if(image->previous)image->previous->next=image->next;else images=image->next;
   if(image->next)image->next->previous=image->previous;
-  stats.source_bytes-=static_cast<std::uint64_t>(image->width)*image->height*4U;
+  stats.source_bytes-=image->source_bytes;
+  if(image->indexed){stats.indexed_bytes-=image->source_bytes;--stats.indexed_images;}
   --stats.source_images;SDL_SetTextureUserData(image->handle,nullptr);delete image;
 }
 } // namespace
@@ -431,15 +436,16 @@ SDL_Texture* gpu_image_create(SDL_Renderer* renderer,int width,int height,const 
   try {
     auto image=std::make_unique<Image>();image->renderer=renderer;image->width=width;image->height=height;
     const std::size_t count=static_cast<std::size_t>(width)*height;
-    image->pixels=std::make_unique<std::uint32_t[]>(count);
+    image->source_bytes=count*4U;
     CpuWorkScope prepare(CpuWork::GpuPrepare,count*4U);
-    std::size_t offset=0;
-    for(int y=0;y<height;y+=512)for(int x=0;x<width;x+=512) {
-      Piece piece{x,y,std::min(512,width-x),std::min(512,height-y)};
-      piece.offset=offset;
-      gpu_prepare_pixels(image->pixels.get()+offset,pixels+y*width+x,width,piece.w,piece.h);
-      offset+=static_cast<std::size_t>(piece.w)*piece.h;
-      image->pieces.push_back(piece);
+    image->pieces.reserve(((width+gpu_source_extent-1)/gpu_source_extent)*((height+gpu_source_extent-1)/gpu_source_extent));
+    for(int y=0;y<height;y+=gpu_source_extent)for(int x=0;x<width;x+=gpu_source_extent) {
+      Piece piece;piece.sx=x;piece.sy=y;piece.w=std::min(gpu_source_extent,width-x);piece.h=std::min(gpu_source_extent,height-y);
+      const auto bytes=static_cast<std::size_t>(piece.w)*piece.h*4U;
+      piece.pixels.reset(new std::uint32_t[bytes/4U]);
+      stats.source_block_peak=std::max<std::uint64_t>(stats.source_block_peak,bytes);
+      gpu_prepare_pixels(piece.pixels.get(),pixels+y*width+x,width,piece.w,piece.h);
+      image->pieces.push_back(std::move(piece));
     }
     image->handle=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ABGR8888,SDL_TEXTUREACCESS_STATIC,1,1);
     if(!image->handle)return nullptr;
@@ -447,7 +453,34 @@ SDL_Texture* gpu_image_create(SDL_Renderer* renderer,int width,int height,const 
     image->next=images;if(images)images->previous=image.get();images=image.get();
     stats.source_bytes+=count*4U;stats.source_peak=std::max(stats.source_peak,stats.source_bytes);++stats.source_images;
     return image.release()->handle;
-  }catch(...){SDL_OutOfMemory();return nullptr;}
+  }catch(...){++stats.source_failures;SDL_OutOfMemory();return nullptr;}
+}
+SDL_Texture* gpu_image_create_indexed(SDL_Renderer* renderer,int width,int height,
+    const std::uint8_t* indices,const std::uint32_t* palette,bool flip_x,bool flip_y) noexcept {
+  if(!indices||!palette||width<1||height<1||width>4096||height>4096){SDL_SetError("Invalid indexed GPU image");return nullptr;}
+  try {
+    auto image=std::make_unique<Image>();image->renderer=renderer;image->width=width;image->height=height;
+    image->indexed=true;image->palette=std::make_unique<std::array<std::uint32_t,256>>();
+    image->source_bytes=static_cast<std::size_t>(width)*height+sizeof(*image->palette);
+    for(unsigned i=0;i<256;++i)(*image->palette)[i]=gpu_pixel(palette[i]);
+    image->pieces.reserve(((width+gpu_source_extent-1)/gpu_source_extent)*((height+gpu_source_extent-1)/gpu_source_extent));
+    CpuWorkScope prepare(CpuWork::GpuPrepare,static_cast<std::uint64_t>(width)*height);
+    for(int y=0;y<height;y+=gpu_source_extent)for(int x=0;x<width;x+=gpu_source_extent){
+      Piece piece;piece.sx=x;piece.sy=y;piece.w=std::min(gpu_source_extent,width-x);piece.h=std::min(gpu_source_extent,height-y);
+      const auto bytes=static_cast<std::size_t>(piece.w)*piece.h;
+      piece.indices.reset(new std::uint8_t[bytes]);
+      stats.source_block_peak=std::max<std::uint64_t>(stats.source_block_peak,bytes);
+      gpu_prepare_indices(piece.indices.get(),indices,width,height,x,y,piece.w,piece.h,flip_x,flip_y);
+      image->pieces.push_back(std::move(piece));
+    }
+    image->handle=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ABGR8888,SDL_TEXTUREACCESS_STATIC,1,1);
+    if(!image->handle)return nullptr;
+    if(SDL_SetTextureUserData(image->handle,image.get())!=0){SDL_DestroyTexture(image->handle);return nullptr;}
+    image->next=images;if(images)images->previous=image.get();images=image.get();
+    stats.source_bytes+=image->source_bytes;stats.source_peak=std::max(stats.source_peak,stats.source_bytes);
+    stats.indexed_bytes+=image->source_bytes;++stats.source_images;++stats.indexed_images;
+    return image.release()->handle;
+  }catch(...){++stats.source_failures;SDL_OutOfMemory();return nullptr;}
 }
 void gpu_image_destroy(SDL_Texture* handle) noexcept {
   if(handle){if(auto* image=static_cast<Image*>(SDL_GetTextureUserData(handle)))forget(image);
@@ -529,6 +562,9 @@ bool gpu_read_pixels(SDL_Surface* surface) noexcept {
 }
 void gpu_log_statistics() noexcept {
   if(!active)return;
+  boot_log("gpu-source: indexed_images=%llu indexed_bytes=%llu block_peak_bytes=%llu allocation_failures=%llu source_block_limit=65536 atlas=skyline-lru",
+    (unsigned long long)stats.indexed_images,(unsigned long long)stats.indexed_bytes,
+    (unsigned long long)stats.source_block_peak,(unsigned long long)stats.source_failures);
   boot_log("gpu-hot-paths: clip_requests=%llu clip_skips=%llu full_sprite_draws=%llu frame_upload_peak_bytes=%llu frame_eviction_peak=%llu scope=session",
     (unsigned long long)stats.clip_requests,(unsigned long long)stats.clip_skips,
     (unsigned long long)stats.full_sprite_draws,(unsigned long long)stats.frame_upload_peak,

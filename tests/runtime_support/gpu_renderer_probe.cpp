@@ -11,9 +11,31 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <cstdlib>
+#include <new>
 #include "cth3ds/gpu_api.hpp"
 #include "cth3ds/gpu_layout.hpp"
 #include "cth3ds/gpu_diagnostics.hpp"
+// Exact source-array ownership, with failure at each partially-created chunk.
+static void* source_arrays[4096];
+static std::size_t source_sizes[4096],source_live;
+static unsigned source_calls,source_fail;
+void* operator new[](std::size_t n){
+  if(source_fail&&++source_calls==source_fail)throw std::bad_alloc();
+  void* p=std::malloc(n);if(!p)throw std::bad_alloc();
+  for(unsigned i=0;i<4096;++i)if(!source_arrays[i]){
+    source_arrays[i]=p;source_sizes[i]=n;source_live+=n;return p;
+  }
+  std::abort();
+}
+void operator delete[](void* p)noexcept{
+  if(!p)return;
+  for(unsigned i=0;i<4096;++i)if(source_arrays[i]==p){
+    source_live-=source_sizes[i];source_arrays[i]=nullptr;std::free(p);return;
+  }
+  std::abort();
+}
+void operator delete[](void* p,std::size_t)noexcept{operator delete[](p);}
 namespace {
 std::vector<std::function<void()>> commands,pending;
 C3D_RenderTarget* current{};C3D_RenderTarget* outputs[2]{};
@@ -161,6 +183,31 @@ int main(){
   auto* background=gpu_image_create(renderer,640,480,colours.data());assert(background);
   auto draw=[&](SDL_Texture* tex,SDL_Rect src,SDL_FRect dest,int flip){assert(gpu_image_draw(tex,&src,&dest,static_cast<SDL_RendererFlip>(flip))==0);};
   SDL_FRect full{0,0,640,480};
+  std::vector<std::uint8_t> indices(640*480);
+  std::uint32_t palette[256];
+  for(unsigned i=0;i<256;++i)palette[i]=(i<<24U)|((i*7919U)&0xffffffU);
+  for(unsigned i=0;i<indices.size();++i)indices[i]=static_cast<std::uint8_t>(i*79U);
+  const auto baseline_source=source_live;
+  for(unsigned failure=1;failure<=20;++failure){
+    source_fail=failure;source_calls=0;
+    assert(!gpu_image_create_indexed(renderer,640,480,indices.data(),palette,false,false));
+    assert(source_live==baseline_source);
+    source_calls=0;
+    assert(!gpu_image_create(renderer,640,480,colours.data()));
+    assert(source_live==baseline_source);
+  }
+  source_fail=0;SDL_ClearError();
+  for(int load_flip=0;load_flip<4;++load_flip){
+    auto* indexed=gpu_image_create_indexed(renderer,640,480,indices.data(),palette,load_flip&1,load_flip&2);
+    assert(indexed&&source_live==baseline_source+640*480);
+    assert(gpu_begin());assert(gpu_clear(0xff102030U));
+    draw(indexed,{0,0,640,480},full,0);gpu_image_destroy(indexed);
+    assert(source_live==baseline_source);assert(gpu_read_pixels(out));
+    for(int y=0;y<480;++y)for(int x=0;x<640;++x){
+      const auto colour=palette[indices[(load_flip&2?479-y:y)*640+(load_flip&1?639-x:x)]];
+      assert(static_cast<u32*>(out->pixels)[y*640+x]==blend(colour,0xff102030U));
+    }
+  }
   // Full small sprites and the general cropped path must produce identical
   // pixels for all flips, scaling, clipping, tint and alpha.
   std::vector<u32> small(17*13),padded(19*15);
@@ -242,5 +289,7 @@ int main(){
   for(int y=0;y<12;++y)for(int x=0;x<320;++x)assert(pixel(bottom->tex,x,y)==overlay[y*320+x]);
   gpu_image_destroy(background);gpu_images_release(renderer);gpu_log_statistics();gpu_shutdown();assert(live==0);
   SDL_DestroyRenderer(renderer);SDL_FreeSurface(out);SDL_Quit();
+  assert(source_live==0);
+  std::puts("PASS indexed background exact alpha/four load flips; 40 chunk failures release all partial arrays");
   std::printf("PASS production GPU: four flips, multi-piece images, clipping, alpha, delayed eviction, command and vertex bounds, dual outputs, %u init failures\n",allocation_steps);
 }

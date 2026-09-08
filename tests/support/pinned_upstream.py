@@ -28,6 +28,7 @@ def original_sources(root):
         files['CorsixTH/Src/' + name] = (ROOT/'tests/fixtures'/ (name + '.pinned')).read_text(encoding='utf-8')
     files['CorsixTH/Lua/entities/humanoid.lua'] = (ROOT/'tests/fixtures/humanoid.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/entity_map.lua'] = (ROOT/'tests/fixtures/entity_map.lua.pinned').read_text(encoding='utf-8')
+    files['CorsixTH/Lua/dialogs/bottom_panel.lua'] = (ROOT/'tests/fixtures/bottom_panel.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/entities/humanoids/staff.lua'] = (ROOT/'tests/fixtures/staff.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/dialogs/resizables/sound_setting.lua'] = (ROOT/'tests/fixtures/sound_setting.lua.pinned').read_text(encoding='utf-8')
     for name,text in files.items():
@@ -42,7 +43,7 @@ def generated_sources(directory):
     generated = original_sources(directory / 'upstream')
     originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in generated.rglob('*') if path.is_file()}
-    if originals != SOURCE_HASHES or len(originals) != 40:
+    if originals != SOURCE_HASHES or len(originals) != 41:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
     tracked = subprocess.check_output(

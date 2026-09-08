@@ -22,6 +22,8 @@ void RuntimeObservations::reset(std::uint64_t now) noexcept {
   sample_intervals.clear();
   sample_active=sample_valid=sample_anchor=false;
   sample_begin=sample_first=sample_last=0;
+  cpu_work.sample_active=false;
+  cpu_work.sample_rows={};
 }
 void RuntimeObservations::sample_present(std::uint64_t now, PresentResult result) noexcept {
   if(!sample_active)return;
@@ -46,11 +48,20 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
       (unsigned long long)sample_first,(unsigned long long)sample_last,
       (unsigned long long)initial,(unsigned long long)tail,(unsigned long long)d.count,
       (unsigned long long)d.total_us,(unsigned long long)d.p95_upper_us,(unsigned long long)d.maximum_us);
+    cpu_work.sample_active=false;
+    for(std::size_t i=0;i<cpu_work.sample_rows.size();++i){
+      const auto& row=cpu_work.sample_rows[i];
+      if(!row.calls)continue;
+      output.line("benchmark-cpu: eligible=%d name=%s calls=%llu total_us=%llu max_us=%llu units=%llu contained_scopes=1 inclusive=1",
+        eligible,kCpuWorkNames[i],(unsigned long long)row.calls,(unsigned long long)row.total_us,
+        (unsigned long long)row.max_us,(unsigned long long)row.units);
+    }
     sample_active=false;
   }
   if(begin){
     sample_intervals.clear();sample_begin=now;sample_first=sample_last=0;
     sample_anchor=false;sample_active=sample_valid=true;
+    cpu_work.sample_rows={};cpu_work.sample_begin=now;cpu_work.sample_active=true;
   }
 }
 bool RuntimeObservations::due(std::uint64_t now, bool force) const noexcept {
@@ -107,6 +118,9 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
     const auto& clock = inputs.clock;
     for(std::size_t i=0;i<cpu_work.rows.size();++i) {
       const auto& row=cpu_work.rows[i];
+      // A missing row means zero calls in this compact interval. Error and
+      // boundary reports keep every row for standalone diagnostics.
+      if (!row.calls && !terminal && !full) continue;
       output.line("cpu-work: at_us=%llu name=%s calls=%llu total_us=%llu max_us=%llu units=%llu enabled=%d inclusive=1",
         (unsigned long long)now,kCpuWorkNames[i],(unsigned long long)row.calls,
         (unsigned long long)row.total_us,(unsigned long long)row.max_us,(unsigned long long)row.units,cpu_work.enabled);

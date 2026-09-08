@@ -16,6 +16,8 @@ bool gpu_fill(const SDL_Rect*,std::uint32_t colour) noexcept;
 bool gpu_line(int,int,int,int,std::uint32_t colour) noexcept;
 void gpu_clip(const SDL_Rect*) noexcept;
 SDL_Texture* gpu_image_create(SDL_Renderer*,int,int,const std::uint32_t*) noexcept;
+SDL_Texture* gpu_image_create_indexed(SDL_Renderer*,int,int,const std::uint8_t*,
+                                    const std::uint32_t*,bool,bool) noexcept;
 void gpu_image_destroy(SDL_Texture*) noexcept;
 void gpu_images_release(SDL_Renderer*) noexcept;
 int gpu_image_draw(SDL_Texture*,const SDL_Rect*,const SDL_FRect*,SDL_RendererFlip) noexcept;

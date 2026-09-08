@@ -6,6 +6,38 @@
 int main(){
   using namespace cth3ds;
   std::uint64_t compared=0;
+  for(int w:{1,7,8,17,127,128})for(int h:{1,8,23,128})for(int flip=0;flip<4;++flip){
+    const int iw=w+23,ih=h+19,sx=11,sy=9;
+    std::vector<std::uint8_t> indices(iw*ih),packed(w*h+2,0xad);
+    std::uint32_t colours[256],pica[256];
+    for(unsigned i=0;i<256;++i)pica[i]=gpu_pixel(colours[i]=0x80204600U+i*7919U);
+    for(int i=0;i<iw*ih;++i)indices[i]=static_cast<std::uint8_t>(i*79U);
+    std::vector<std::uint32_t> reference(w*h),actual(512*512,0xfeedabcd),expected=actual;
+    for(int y=0;y<h;++y)for(int x=0;x<w;++x)
+      reference[y*w+x]=colours[indices[(flip&2?ih-1-sy-y:sy+y)*iw+(flip&1?iw-1-sx-x:sx+x)]];
+    gpu_prepare_indices(packed.data()+1,indices.data(),iw,ih,sx,sy,w,h,flip&1,flip&2);
+    assert(packed.front()==0xad&&packed.back()==0xad);
+    gpu_upload_indices(actual.data(),512,24,16,packed.data()+1,w,h,pica);
+    gpu_upload_rgba(expected.data(),512,24,16,reference.data(),w,w,h);
+    assert(actual==expected);compared+=w*h;
+  }
+  // The skyline owns tile-aligned, non-overlapping regions. Rejected requests
+  // leave it unchanged; mixed heights reuse space left by the old shelf.
+  GpuSkyline skyline;GpuShelf shelf;std::vector<bool> used(64*64);
+  unsigned skyline_count=0,shelf_count=0;
+  for(int n=0;n<300;++n){
+    const int w=n%3==0?128:32,h=n%3==0?128:8;int x{},y{},a{},b{};
+    if(shelf.allocate(w,h,a,b))++shelf_count;
+    const auto before=skyline;
+    if(skyline.allocate(w,h,x,y)){
+      ++skyline_count;assert(x%8==0&&y%8==0&&x+w<=512&&y+h<=512);
+      for(int yy=y/8;yy<(y+h+7)/8;++yy)for(int xx=x/8;xx<(x+w+7)/8;++xx){
+        assert(!used[yy*64+xx]);used[yy*64+xx]=true;
+      }
+    }else for(int i=0;i<64;++i)assert(skyline.heights[i]==before.heights[i]);
+  }
+  assert(skyline_count>shelf_count);
+  std::printf("PASS indexed pixels and skyline mixed_fixture=%u shelf=%u hardware=NOT_PROVEN\n",skyline_count,shelf_count);
   for(unsigned w:{1U,3U,7U,8U,9U,31U,64U,127U,255U,511U,512U})
     for(unsigned h:{1U,7U,8U,9U,23U,64U,129U,512U}) {
       const auto stride=w+13;

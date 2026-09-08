@@ -89,6 +89,7 @@ def iter_overlay_files(overlay: Path) -> Iterable[tuple[Path, Path]]:
         yield source, Path("CorsixTH/Src/3ds") / name
     yield overlay / "lua" / "3ds" / "platform.lua", Path("CorsixTH/Lua/3ds/platform.lua")
     yield overlay / "lua" / "3ds" / "benchmark.lua", Path("CorsixTH/Lua/3ds/benchmark.lua")
+    yield overlay / "lua" / "3ds" / "benchmark_stress.lua", Path("CorsixTH/Lua/3ds/benchmark_stress.lua")
     yield overlay / "lua" / "3ds" / "media.lua", Path("CorsixTH/Lua/3ds/media.lua")
     yield overlay / "assets" / "3ds" / "icon.png", Path("CorsixTH/Src/3ds/icon.png")
 
@@ -169,6 +170,7 @@ if(CORSIXTH_3DS_HOTSPOT_O2)
     "${CTH3DS_PLATFORM_ROOT}/../th_gfx_sdl.cpp"
     "${CTH3DS_PLATFORM_ROOT}/../th_map.cpp"
     "${CTH3DS_PLATFORM_ROOT}/../th_pathfind.cpp"
+    "${CTH3DS_PLATFORM_ROOT}/../persist_lua.cpp"
     "${CTH3DS_PLATFORM_ROOT}/common/framebuffer_scaler.cpp"
     "${CTH3DS_PLATFORM_ROOT}/runtime/gpu_renderer.cpp"
     TARGET_DIRECTORY CorsixTH_lib

@@ -19,6 +19,12 @@ function Benchmark.new(app,native)
       {speed="Normal",language="Chinese (simplified)",music=true,label="zh-on"},
     }
   end
+  local expanded=io.open(root.."expanded.sav","rb")
+  if expanded then
+    expanded:close();self.expanded=true
+    self.profiles[#self.profiles+1]={speed="Normal",language="Chinese (simplified)",music=true,
+      label="expanded-zh-on",file="expanded.sav"}
+  end
   native.benchmark_state(true)
   native.set_notice("AUTO BENCHMARK - B CANCEL",false)
   return self
@@ -79,6 +85,11 @@ function Benchmark:applyMedia(language, music, selected, stopped)
 end
 
 function Benchmark:restore()
+  local closed=true
+  if self.stress then
+    local detail;closed,detail=pcall(self.stress.close,self.stress)
+    if not closed then print("benchmark window cleanup failed: "..tostring(detail)) end
+  end
   self.app.savegame_dir=self.original_dir
   self.app.config.autosave_frequency=self.original_autosave_frequency
   if self.app.world then self.app.world:setSpeed("Normal") end
@@ -94,7 +105,7 @@ function Benchmark:restore()
     self.app.saveConfig=self.original_save_config
     if not ok then print("benchmark media restore failed: "..tostring(err));return false end
   end
-  return true
+  return closed
 end
 
 function Benchmark:cancel(reason)
@@ -111,14 +122,14 @@ function Benchmark:load()
   self.app.savegame_dir=root.."Saves/"
   self.app.config.autosave_frequency=0
   if self.media_profiles then self.app.audio:stopBackgroundTrack();self.app.config.play_music=false end
-  local ok,detail=self.app:load(root.."input.sav")
+  local profile=self.profiles[self.index]
+  local ok,detail=self.app:load(root..(profile.file or "input.sav"))
   assert(ok==true,"benchmark copy load failed: "..tostring(detail))
   assert(self.app.world,"benchmark copy has no world")
   -- World:onEndDay reads autosave_frequency. A saved pending request also
   -- needs clearing in this private benchmark world, before the first tick.
   self.app.config.autosave_frequency=0
   self.app.world.autosave_next_tick=false
-  local profile=self.profiles[self.index]
   if self.media_profiles then self:applyMedia(profile.language,profile.music) end
   self.app.world:setSpeed(profile.speed)
   self.expected_language=self.app.config.language
@@ -135,6 +146,10 @@ end
 
 function Benchmark:advance()
   if self.phase=="pending" then self:load();return end
+  if self.phase=="stress" then
+    if self.stress:tick() then self:finish() end
+    return
+  end
   assert(self.app.world and self.app.world:getCurrentSpeed()==self.profiles[self.index].speed,
     "benchmark speed changed or a mandatory pause window opened")
   assert(self.app.config.language==self.expected_language and
@@ -153,13 +168,20 @@ function Benchmark:advance()
     self:mark("SAMPLE-END")
     if self.index<#self.profiles then self.index=self.index+1;self:load()
     else
-      -- Return a fresh copy of the original hospital for the user's checks.
-      local ok,detail=self.app:load(root.."input.sav")
-      assert(ok==true,"benchmark final reload failed: "..tostring(detail))
-      self.phase="done";assert(self:restore(),"benchmark media restore failed");self:mark("COMPLETE")
-      self.native.set_notice("BENCHMARK DONE - YOU CAN PLAY",false)
+      if self.expanded then
+        self.phase="stress";self.deadline=nil
+        self.stress=require("3ds.benchmark_stress").new(self.app,self.native)
+      else self:finish() end
     end
   end
+end
+
+function Benchmark:finish()
+  -- Return a fresh private copy for play; all automated writes have ended.
+  local ok,detail=self.app:load(root..(self.expanded and "expanded.sav" or "input.sav"))
+  assert(ok==true,"benchmark final reload failed: "..tostring(detail))
+  self.phase="done";assert(self:restore(),"benchmark media restore failed");self:mark("COMPLETE")
+  self.native.set_notice("BENCHMARK DONE - YOU CAN PLAY",false)
 end
 
 function Benchmark:tick()

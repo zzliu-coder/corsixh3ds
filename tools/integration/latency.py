@@ -41,6 +41,9 @@ RETAINED_R60_GRAPHICS = GRAPHICS.replace(
     '  -- CORSIXTH_3DS_HOT_CACHE_R58: cached identities bypass nested observers.',
     '  -- CORSIXTH_3DS_HOT_CACHE_R58: hit returns the original cached identity,\n'
     '  -- before nested pcall/span/allocator observers. Cold loads retain full traces.')
+R58_GRAPHICS = GRAPHICS
+GRAPHICS = GRAPHICS.replace('return self.cache.raw[name] end',
+    'return self._retainRaw and self:_retainRaw(name, self.cache.raw[name]) or self.cache.raw[name] end')
 
 def transforms(root):
     for path,fragment in (('CorsixTH/Lua/graphics.lua',GRAPHICS),
@@ -48,7 +51,7 @@ def transforms(root):
         text=(root/path).read_text()
         if fragment == GRAPHICS:
             # Normalize all known retained wrappers to exactly one owner.
-            for known in (GRAPHICS, LEGACY_GRAPHICS, RETAINED_R60_GRAPHICS):
+            for known in (GRAPHICS, R58_GRAPHICS, LEGACY_GRAPHICS, RETAINED_R60_GRAPHICS):
                 text=text.replace(known.strip(), '')
             if 'CORSIXTH_3DS_COLD_RESOURCE_TRACE_R56' in text:
                 raise SoundPatchError('unknown cold-resource wrapper; cannot normalize safely')

@@ -23,6 +23,11 @@ for x=1,20 do rooms[x]={};cells[x]={};for y=1,17 do
 end end
 local th={size=function()return 20,17 end,getRoomId=function(_,x,y)query_count=query_count+1;return rooms[x][y] end}
 local me={world={map={th=th},entity_map={getObjectsAtCoordinate=function(_,x,y)return cells[x][y]end,peekObjectsAtCoordinate=function(_,x,y)return cells[x][y]end}}}
+local rows={};for x=1,20 do rows[x]={};for y=1,17 do
+ if #cells[x][y]>0 then rows[x][y]={objects=cells[x][y]} end
+end end
+me.world.entity_map.entity_map=rows;me.world.entity_map.width=20;me.world.entity_map.height=17
+me.world.entity_map.peekObjectsAtCoordinate=function()error('sparse query used per-cell bridge')end
 local old_count,new_count=0,0
 for x=1,20 do for y=1,17 do for _,size in ipairs{-2,0,1,2,5,40} do
  for _,spec in ipairs{'litter',{'bench','litter','missing'}} do
@@ -34,6 +39,7 @@ for x=1,20 do for y=1,17 do for _,size in ipairs{-2,0,1,2,5,40} do
 end end end
 assert(new_count<old_count/3,'no material room-query reduction')
 me.tile_x=10;me.tile_y=8;rooms[9][8]=2;cells[9][8]={{id='litter'}}
+rows[9][8]={objects=cells[9][8]}
 local a,b=original(me,2,'litter'),improved(me,2,'litter');assert(#a==#b)
 for i,obj in ipairs(a)do assert(obj==b[i])end
 local visited={}

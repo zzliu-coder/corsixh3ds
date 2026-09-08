@@ -327,8 +327,13 @@ function Platform:inputState()
     native_checkpoint(self.native, "input_policy", "transition",
       context .. ":" .. tostring(window and window.modal_class or "world"))
   end
-  return {cursor_x = ui.cursor_x, cursor_y = ui.cursor_y,
-          input_context = context, input_epoch = self.input_epoch or 0}
+  -- Recompute the actual UI/owner on every call. Only the transport table is
+  -- reused, never a context cached across callbacks which can open a window.
+  local state = self.input_snapshot
+  if not state then state = {}; self.input_snapshot = state end
+  state.cursor_x, state.cursor_y = ui.cursor_x, ui.cursor_y
+  state.input_context, state.input_epoch = context, self.input_epoch or 0
+  return state
 end
 
 function Platform:resetCursorResidual()

@@ -15,7 +15,9 @@ namespace cth3ds {
 // and disables this writer. No directory traversal or unbounded retry.
 class BoundedLog {
  public:
-  static constexpr std::size_t kLimit = 1024U * 1024U;
+  // R61 reached 0.95 MiB after 22 minutes. Keep the expanded-hospital run
+  // and its terminal evidence within a bounded three-run / 6 MiB SD budget.
+  static constexpr std::size_t kLimit = 2U * 1024U * 1024U;
   static constexpr std::size_t kReserve = 16U * 1024U;
   static constexpr std::size_t kBufferSize = 4096U;
   ~BoundedLog() { close(); }

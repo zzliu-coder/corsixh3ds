@@ -80,10 +80,11 @@ class ThermalGrid {
       if(scan)for(int i=0;i<count;++i){observe(i);if(snapshot)old_[i]=tiles[i].aiTemperature[previous];}
       else if(snapshot)for(int i=0;i<count;++i)old_[i]=tiles[i].aiTemperature[previous];
     }
-    CpuWorkScope arithmetic(CpuWork::ThermalArithmetic,static_cast<std::uint64_t>(count),profile);
     // Preserve the pinned engine's linear-array neighbour bounds, including
     // east/west boundary behaviour. Changing that would change game rules.
-    for(int i=0;i<count;++i){
+    // R62: stencil dirtiness is produced only by the scan above. Ordinary
+    // updates need no per-tile dirty branch or rebuild code in their hot loop.
+    if(scan)for(int i=0;i<count;++i){
       auto& cell=stencil_[i];
       if(cell.dirty){
         ++cpu_work.thermal_rebuilds;
@@ -95,8 +96,13 @@ class ThermalGrid {
           cell.weight[side]=static_cast<std::uint8_t>(weight);cell.sum+=weight;
         }cell.dirty=false;
       }
+    }
+    CpuWorkScope arithmetic(CpuWork::ThermalArithmetic,static_cast<std::uint64_t>(count),profile);
+    const bool uniform_fast=cpu_work.thermal_uniform_fast;
+    for(int i=0;i<count;++i){
+      const auto& cell=stencil_[i];
       std::uint32_t value=old_[i];
-      if(cpu_work.thermal_uniform_fast && cell.sum==16) {
+      if(uniform_fast && cell.sum==16) {
         // Four weights of four imply four valid neighbours. Cancelling the
         // common factor is exact, including both original integer truncations.
         // No approximate reciprocal, changed edge rule, or delayed publication.

@@ -1,0 +1,1077 @@
+--[[ Copyright (c) 2009 Peter "Corsix" Cawley
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE. --]]
+
+--! The multi-purpose panel for launching dialogs / screens and dynamic information.
+class "UIBottomPanel" (Window)
+
+---@type UIBottomPanel
+local UIBottomPanel = _G["UIBottomPanel"]
+
+local MESSAGE_DOOR_FULLY_OPEN = 0
+local MESSAGE_DOOR_FULLY_SHUT = 22
+local FACTORY_ICON_WIDTH = 30
+
+function UIBottomPanel:UIBottomPanel(ui)
+  self:Window()
+
+  local app = ui.app
+
+  self.ui = ui
+  self.world = app.world
+  self.on_top = false
+  self:setSize(640, 48)
+  self:setDefaultPosition(0.5, -0.1)
+  self:_initFonts(app.gfx)
+
+  self.message_door = {
+    closed_amount = MESSAGE_DOOR_FULLY_SHUT,
+    next_action_delay = 0
+  }
+
+  -- Visible fax panels on the left side of the bottom panel
+  self.message_windows = {}
+
+  -- Queued fax panels waiting to be shown
+  self.message_queue = {}
+
+  self.default_button_sound = "selectx.wav"
+  self.countdown = 0
+
+  self:drawPanels()
+
+  self:registerKeyHandlers()
+end
+
+function UIBottomPanel:machineMenuButtonExists()
+  local config = self.ui.app.config
+  -- Minimal screen width for a case where machine menu button exists is 676 pixels
+  if config.width / TheApp.config.ui_scale > 676 and config.machine_menu_button then
+    return true
+  end
+
+  return false
+end
+
+function UIBottomPanel:onChangeResolution()
+  Window.onChangeResolution(self)
+  self:removeAllPanels()
+  self:drawPanels()
+end
+
+function UIBottomPanel:drawPanels()
+  self.bank_button = self:addPanel( 1,   0, 0):makeToggleButton(6, 6, 35, 36, 2, self.dialogBankManager, nil, self.dialogBankStats):setTooltip(_S.tooltip.toolbar.bank_button)
+  self:addPanel( 3,  40, 0) -- Background for balance, rep and date
+  self:addPanel( 4, 206, 0):makeButton(6, 6, 35, 36, 5, self.dialogBuildRoom):setTooltip(_S.tooltip.toolbar.rooms)
+  self:addPanel( 6, 248, 0):makeButton(1, 6, 35, 36, 7, self.dialogFurnishCorridor):setTooltip(_S.tooltip.toolbar.objects)
+  self:addPanel( 8, 285, 0):makeButton(1, 6, 35, 36, 9, self.editRoom)
+    :setSound():setTooltip(_S.tooltip.toolbar.edit) -- Remove default sound for this button
+  self:addPanel(10, 322, 0):makeButton(1, 6, 35, 36, 11, self.dialogHireStaff):setTooltip(_S.tooltip.toolbar.hire)
+  -- The dynamic info bar
+  self:addPanel(12, 364, 0)
+
+  -- If there is a machine menu button, then lets adjust bottom panel width so it can fit
+  if self:machineMenuButtonExists() then
+    self.width = 676
+    for x = 377, 660, 10 do
+      self:addPanel(13, x, 0)
+    end
+    self:addPanel(14, 665, 0)
+
+    self.offset = 38
+  else
+    self.width = 640
+    for x = 377, 630, 10 do
+      self:addPanel(13, x, 0)
+    end
+    self:addPanel(14, 627, 0)
+
+    self.offset = 0
+  end
+
+  -- Buttons that are shown instead of the dynamic info bar when hovering over it.
+  local panels = {}
+  local buttons = {}
+  local app = self.ui.app
+  panels[1]  = self:addPanel(15, 364, 0) -- Staff management button
+  buttons[1] = panels[1]:makeToggleButton(6, 6, 35, 36, 16, self.dialogStaffManagement):setTooltip(_S.tooltip.toolbar.staff_list)
+  if self:machineMenuButtonExists() then
+    -- Sprites for machine menu button doesn't exist in original game. Let's import them from aux_ui.dat and draw
+    local aux_sprites = app.gfx:loadSpriteTable("Bitmap", "aux_ui", true)
+    self:addPanel(0, 407, 0):makeToggleButton(2, 6, 36, 36, 0, self.dialogMachineMenu)
+      :setSound() -- override
+      :setTooltip(_S.tooltip.toolbar.machine_menu)
+      .panel_for_sprite.custom_draw = --[[persistable:machine_menu_buttons]] function(panel, canvas, x, y)
+      local s = TheApp.config.ui_scale
+      x = x + panel.x * s
+      y = y + panel.y * s
+      panel.window.panel_sprites:draw(canvas, panel.sprite_index, x, y, { scaleFactor = s })
+      local btn = panel.window.active_button
+      if panels[1].visible then
+        local w = self.ui:getWindow(UIMachineMenu)
+        if w or btn and btn.panel_for_sprite == panel and btn.active then
+          aux_sprites:draw(canvas, 23, x, y, { scaleFactor = s })
+        else
+          aux_sprites:draw(canvas, 22, x, y, { scaleFactor = s })
+        end
+      end
+    end
+  end
+  panels[2]  = self:addPanel(17, 407 + self.offset, 0) -- Town map button
+  buttons[2] = panels[2]:makeToggleButton(1, 6, 35, 36, 18, self.dialogTownMap):setTooltip(_S.tooltip.toolbar.town_map)
+  panels[3]  = self:addPanel(19, 445 + self.offset, 0) -- Casebook button
+  buttons[3] = panels[3]:makeToggleButton(1, 6, 35, 36, 20, self.dialogDrugCasebook):setTooltip(_S.tooltip.toolbar.casebook)
+  panels[4]  = self:addPanel(21, 483 + self.offset, 0) -- Research button
+  buttons[4] = panels[4]:makeToggleButton(1, 6, 35, 36, 22, self.dialogResearch)
+    :setSound():setTooltip(_S.tooltip.toolbar.research) -- Remove default sound for this button
+  panels[5]  = self:addPanel(23, 521 + self.offset, 0) -- Status button
+  buttons[5] = panels[5]:makeToggleButton(1, 6, 35, 36, 24, self.dialogStatus):setTooltip(_S.tooltip.toolbar.status)
+  panels[6]  = self:addPanel(25, 559 + self.offset, 0) -- Charts button
+  buttons[6] = panels[6]:makeToggleButton(1, 6, 35, 36, 26, self.dialogCharts):setTooltip(_S.tooltip.toolbar.charts)
+  panels[7]  = self:addPanel(27, 597 + self.offset, 0) -- Policy button
+  buttons[7] = panels[7]:makeToggleButton(1, 6, 35, 36, 28, self.dialogPolicy):setTooltip(_S.tooltip.toolbar.policy)
+  for _, panel in ipairs(panels) do
+    panel.visible = false
+  end
+  self.additional_panels = panels
+  self.additional_buttons = buttons
+
+  self:makeTooltip(_S.tooltip.toolbar.balance, 41, 5, 137, 28)
+  self:makeTooltip(_S.tooltip.toolbar.date, 140, 5, 200, 42)
+  self:makeDynamicTooltip(--[[persistable:reputation_tooltip]] function()
+  return _S.tooltip.toolbar.reputation .. " (" .. self.ui.hospital.reputation .. ")"
+  end, 41, 30, 137, 42)
+
+end
+
+function UIBottomPanel:_initFonts(gfx)
+  local date_label_color = { red = 175, green = 50, blue = 15 }
+  local pause_label_color = { red = 35, green = 138, blue = 173 }
+  self.panel_sprites = gfx:loadSpriteTable("Data", "Panel02V", true)
+  self.money_font = gfx:loadFontAndSpriteTable("QData", "Font05V", nil, nil, { apply_ui_scale = true })
+  self.date_font = gfx:loadFontAndSpriteTable("QData", "Font16V", nil, nil, {ttf_color = date_label_color, apply_ui_scale = true})
+  self.white_font = gfx:loadFontAndSpriteTable("QData", "Font01V", nil, nil, {y_sep = -2, apply_ui_scale = true})
+  self.pause_font = gfx:loadFontAndSpriteTable("QData", "Font124V", nil, nil, {ttf_color = pause_label_color, apply_ui_scale = true})
+end
+
+function UIBottomPanel:registerKeyHandlers()
+  local ui = self.ui
+  local buttons = self.additional_buttons
+
+  -- The bottom panel hotkeys.
+  ui:addKeyHandler("ingame_panel_bankManager", self.bank_button, self.bank_button.handleClick, "left")  -- bank manager
+  ui:addKeyHandler("ingame_panel_bankStats", self.bank_button, self.bank_button.handleClick, "right")  -- bank stats
+  ui:addKeyHandler("ingame_panel_staffManage", buttons[1], buttons[1].handleClick, "left")    -- staff management
+  ui:addKeyHandler("ingame_panel_townMap", buttons[2], buttons[2].handleClick, "left")    -- town map
+  ui:addKeyHandler("ingame_panel_casebook", buttons[3], buttons[3].handleClick, "left")    -- casebook
+  ui:addKeyHandler("ingame_panel_research", buttons[4], buttons[4].handleClick, "left")    -- research
+  ui:addKeyHandler("ingame_panel_status", buttons[5], buttons[5].handleClick, "left")    -- status
+  ui:addKeyHandler("ingame_panel_charts", buttons[6], buttons[6].handleClick, "left")    -- charts
+  ui:addKeyHandler("ingame_panel_policy", buttons[7], buttons[7].handleClick, "left")    -- policy
+  ui:addKeyHandler("ingame_panel_machineMenu", self, self.dialogMachineMenu)    -- machine menu
+
+  -- Hotkeys for building a room, furnishing the corridor, editing a room, and hiring staff.
+  ui:addKeyHandler("ingame_panel_buildRoom", self, self.dialogBuildRoom)    -- Build room.
+  ui:addKeyHandler("ingame_panel_furnishCorridor", self, self.dialogFurnishCorridor)    -- Furnish corridor.
+  ui:addKeyHandler("ingame_panel_editRoom", self, self.editRoom)    -- Edit room.
+  ui:addKeyHandler("ingame_panel_hireStaff", self, self.dialogHireStaff)    -- Hire staff.
+
+  -- Alternate keyboard shortcuts for some of the fullscreen windows.
+  ui:addKeyHandler("ingame_panel_map_alt", buttons[2], buttons[2].handleClick, "left") -- town map
+  ui:addKeyHandler("ingame_panel_research_alt", buttons[4], buttons[4].handleClick, "left") -- research
+  local config = ui.app.config
+  if not config.volume_opens_casebook then
+    ui:addKeyHandler("ingame_panel_casebook_alt", buttons[3], buttons[3].handleClick, "left") -- casebook
+  else
+    ui:addKeyHandler("ingame_panel_casebook_alt02", buttons[3], buttons[3].handleClick, "left") -- casebook
+  end
+  ui:addKeyHandler("ingame_loadMenu", self, self.openLoad)  -- load saved game menu
+  ui:addKeyHandler("ingame_saveMenu", self, self.openSave)  -- load create save menu
+  ui:addKeyHandler("ingame_restartLevel", self, self.restart)  -- restart the level
+  ui:addKeyHandler("ingame_quitLevel", self, self.quit)  -- quit the game and return to main menu
+  ui:addKeyHandler("ingame_quickSave", self, self.quickSave)  -- quick save
+  ui:addKeyHandler("ingame_quickLoad", self, self.quickLoad)  -- load last quick save
+
+  -- misc. keyhandlers
+  ui:addKeyHandler("ingame_openFirstMessage", self, self.openFirstMessage)    -- message
+  ui:addKeyHandler("ingame_toggleInfo", self, self.toggleInformation)   -- information when you first build
+  ui:addKeyHandler("ingame_jukebox", self, self.openJukebox)   -- jukebox
+  ui:addKeyHandler("ingame_panel_adviserHistory", self, self.dialogAdviserHistory)    -- adviser history
+end
+
+function UIBottomPanel:openJukebox()
+  if self.ui.app.config.audio then
+    self.ui:addWindow(UIJukebox(self.ui.app))
+  end
+end
+
+function UIBottomPanel:openSave()
+  self.ui:addWindow(UISaveGame(self.ui))
+end
+
+function UIBottomPanel:openLoad()
+  self.ui:addWindow(UILoadGame(self.ui, "game"))
+end
+
+function UIBottomPanel:quickSave()
+  self.ui.app:quickSave()
+end
+
+function UIBottomPanel:quickLoad()
+  self.ui.app:quickLoad()
+end
+
+function UIBottomPanel:restart()
+  self.ui.app:restart()
+end
+
+function UIBottomPanel:quit()
+  self.ui:quit()
+end
+
+function UIBottomPanel:draw(canvas, x, y)
+  Window.draw(self, canvas, x, y)
+
+  -- Draw balance with temporary offset in unicode languages
+  local s = TheApp.config.ui_scale
+  x, y = x + self.x * s, y + self.y * s
+  local offset_x, offset_y = 0, 0
+  if self.ui.app.gfx:drawNumbersFromUnicode() then
+    offset_x = 4
+    offset_y = 2
+  end
+  local balance = math.floor(self.ui.hospital.balance)
+  local i = 7 - tostring(balance):len() -- Indent balances under 100k
+  for digit in ("%7i"):format(balance):gmatch("[-0-9]") do
+    self.money_font:draw(canvas, digit, x + offset_x * s + 44 * s + i * 13 * s, y + offset_y * s + 9 * s)
+    i = i + 1
+  end
+  local game_date = self.world:date()
+  local month, day = game_date:monthOfYear(), game_date:dayOfMonth()
+  self.date_font:draw(canvas, _S.date_format.daymonth:format(day, month), x + 140 * s, y + 20 * s, 60 * s, 0)
+
+  -- Draw possible information in the dynamic info bar
+  if not self.additional_panels[1].visible then
+    self:drawDynamicInfo(canvas, x + 364 * s, y)
+  end
+
+  -- Draw the fax door if it is not fully open
+  if self.message_door.closed_amount ~= MESSAGE_DOOR_FULLY_OPEN then
+    self.panel_sprites:draw(canvas, 40, x + 177 * s, y + 1, { scaleFactor = s })
+
+    for dx = 0, self.message_door.closed_amount do
+      self.panel_sprites:draw(canvas, 41, x + 179 * s + dx * s, y + 1 * s, { scaleFactor = s })
+    end
+
+    if self.message_door.closed_amount == MESSAGE_DOOR_FULLY_SHUT then
+      self.panel_sprites:draw(canvas, 42, x + 201 * s, y + 1 * s, { scaleFactor = s })
+    end
+  end
+
+  self:drawReputationMeter(canvas, x + 55 * s, y + 35 * s)
+end
+
+function UIBottomPanel:setPosition(x, y)
+  -- Lock to bottom of screen
+  return Window.setPosition(self, x, -0.1)
+end
+
+-- Draws the hospital reputation meter on canvas.
+-- x_left is the leftmost x-coordinate of the reputation meter
+-- y is the y-coordinate of the reputation meter
+function UIBottomPanel:drawReputationMeter(canvas, x_left, y)
+  local s = TheApp.config.ui_scale
+  local width = 65 * s -- Reputation meter width
+  local step = width / (self.ui.hospital.reputation_max - self.ui.hospital.reputation_min)
+  self.panel_sprites:draw(canvas, 36, x_left + math.floor(step * (self.ui.hospital.reputation - self.ui.hospital.reputation_min)), y, { scaleFactor = s })
+end
+
+--! Adds dynamic text to the bottom panel based on cursor position
+--!param canvas
+--!param x (num) coordinate
+--!param y (num) coordinate
+function UIBottomPanel:drawDynamicInfo(canvas, x, y)
+  local s = TheApp.config.ui_scale
+  if self.world:isCurrentSpeed("Pause") then
+    if not self.world.user_actions_allowed then
+      -- Original pause behaviour, show pause text
+      self.pause_font:drawWrapped(canvas, _S.misc.pause, x + 10 * s, y + 14 * s, 255 * s, "center")
+      return
+    elseif not (self.dynamic_info and self.dynamic_info["text"]) then
+      -- User allows editing while paused, only show pause text where dynamic text not present
+      self.pause_font:drawWrapped(canvas, _S.misc.pause, x + 10 * s, y + 14 * s, 255 * s, "center")
+      return
+    end
+  end
+
+  if not (self.dynamic_info and self.dynamic_info["text"]) then
+    return
+  end
+
+  local info = self.dynamic_info
+  local font = self.white_font
+
+  local dynamic_info_panel_x = 364
+  local progress_bar_r_offset = 11
+  local progress_bar_width = 100
+
+  local w = x + (self.width - dynamic_info_panel_x) * s
+
+  for i, text in ipairs(info["text"]) do
+    font:drawWrapped(canvas, text, x + 20 * s, y + 10 * i * s, 240 * s)
+    if i == #info["text"] and info["progress"] then
+      local white = canvas:mapRGB(255, 255, 255)
+      local black = canvas:mapRGB(0, 0, 0)
+      local orange = canvas:mapRGB(221, 83, 0)
+      canvas:drawRect(white, w - (progress_bar_width + progress_bar_r_offset + 1) * s, y + 10 * i * s, 100 * s, 10 * s)
+      canvas:drawRect(black, w - (progress_bar_width + progress_bar_r_offset) * s, y + s + 10 * i * s, 98 * s, 8 * s)
+      canvas:drawRect(orange, w - (progress_bar_width + progress_bar_r_offset) * s, y + s + 10 * i * s, math.floor(98 * info["progress"] * s), 8 * s)
+      if info["dividers"] then
+        for _, value in ipairs(info["dividers"]) do
+          canvas:drawRect(white, w - (progress_bar_width+progress_bar_r_offset) * s + math.floor(value * 100 * s), y + 10 * i * s, s, 10 * s)
+        end
+      end
+    end
+  end
+end
+
+--! Update the information shown in the information box on the panel.
+--!
+--! If the info is nil then a cooldown timer is used before removing the
+--! information from the display.
+--!
+--!param info (table) A table containing the information to display. The text
+--! key is required and contains an array of lines to show. An optional
+--! progress key may be given to draw a progress bar, following the text and
+--! and an array of dividers may be provided to draw extra vertical lines in
+--! the progress bar.
+--!
+--! info = {
+--!   text: { "He's not the saviour", "He's very naughty boy" },
+--!   progress: 50,
+--!   dividers: { 25, 50, 75 }
+--! }
+function UIBottomPanel:setDynamicInfo(info)
+  if info and not info["text"] then
+    self.world:gameLog("")
+    self.world:gameLog("Dynamic info is missing text!")
+    self.world:gameLog("Please report this issue including the call stack below.")
+    self.world:gameLog(debug.traceback())
+
+    return
+  end
+
+  if not info then
+    -- dynamic info hide countdown value. 25 = ~1 second
+    self.countdown = 25
+  else
+    self.countdown = nil
+    self.dynamic_info = info
+  end
+end
+
+function UIBottomPanel:onMouseMove(x, y, dx, dy)
+  local repaint = Window.onMouseMove(self, x, y, dx, dy)
+  if self:showAdditionalButtons(x, y) then
+    repaint = true
+  end
+  return repaint
+end
+
+function UIBottomPanel:showAdditionalButtons(x, y)
+  local panels = self.additional_panels
+  if self:hitTest(x, y) then -- Inside the panel
+    if not panels[1].visible then -- Are the buttons already shown?
+      for _, panel in ipairs(panels) do
+        panel.visible = true
+      end
+    end
+  else -- Outside the rectangle
+    if panels[1].visible then -- Are the buttons already invisible?
+      for _, panel in ipairs(panels) do
+        panel.visible = false
+      end
+    end
+  end
+end
+
+function UIBottomPanel:hitTest(x, y, x_offset)
+  local s = TheApp.config.ui_scale
+  return x >= (x_offset and x_offset * s or 0) and y >= 0 and x < self.width * s and y < self.height * s
+end
+
+--! Queue a fax notification message to appear.
+--! The arguments specify a message, which is added to a FIFO queue, and will
+-- appear on screen once there is space.
+--!param type (string) The type of message, can be: "emergency", "epidemy", "personality", "information", "disease", "report" or "strike"
+--!param message (table or number) If type == "strike", the amount of pay rise. Else a list of texts to display, including a "choices" table with choices. See below for structure.
+--!param owner (object or nil) Some messages are related to one staff or patient or epidemic. Otherwise this is nil.
+--!param timeout (number or nil) If given, the message will expire after that many world ticks and be removed.
+--!param default_choice (number or nil) If given, the choice with this number will be executed on expiration of the message.
+--!param callback (function or nil) If given, it will be called when the message is closed.
+--! Structure of message (except strike):
+-- message = {
+--   { text = "first line of text", offset (integer, optional) }
+--   { text = "second line of text", offset (integer, optional) }
+--   ...
+--   choices = {
+--     { text = "first choice", choice = "choice_type", enabled = true or false (optional, defaults to true) }
+--     ...
+--   }
+-- }
+function UIBottomPanel:queueMessage(type, message, owner, timeout, default_choice, callback)
+  -- Show a helpful message if there has been no messages before - only in campaign though
+  if not self.ui.hospital.message_popup and tonumber(self.world.map.level_number) then
+    self.world.ui.adviser:say(_A.information.fax_received)
+    self.ui.hospital.message_popup = true
+  end
+
+  local message_info = {
+    type = type,
+    message = message,
+    owner = owner,
+    timeout = timeout,
+    default_choice = default_choice,
+    callback = callback,
+  }
+
+  if self:canQueueFax(message_info) then
+    self.message_queue[#self.message_queue + 1] = message_info
+    self:_initMessageWithDrawerIcon(message_info)
+    -- Сreate reference to message in owner
+    if owner then
+      owner.message = message
+    end
+  else
+    self:cancelFax(message_info.type)
+  end
+end
+
+function UIBottomPanel:_factoryIconWitdh()
+  return FACTORY_ICON_WIDTH
+end
+
+--! Initialise fax message with an UIMessage object.
+--!param message_info (table) table with message metadata.
+function UIBottomPanel:_initMessageWithDrawerIcon(message_info)
+  local --[[persistable:bottom_panel_message_window_close]] function onClose(this_icon)
+    local this_icon_index
+    for i, icon in ipairs(self.message_windows) do
+      -- If icon position found
+      if this_icon_index ~= nil then
+        -- Shift all icons that are on the right to the left
+        -- The '_factoryIconWitdh()' call is used for compatibility with 0.69 saves and older
+        -- where FACTORY_ICON_WIDTH was not yet declared when the closure was created.
+        icon:setXLimit(1 + (i - 2) * self._factoryIconWitdh())
+      elseif icon == this_icon then
+        this_icon_index = i
+      end
+    end
+    if this_icon_index then
+      table.remove(self.message_windows, this_icon_index)
+    end
+    self:deleteMessage(nil, this_icon)
+  end
+
+  -- Create the drawer message icon, note this does not show it to the player on creation.
+  local drawer_icon = UIMessage(self.ui, 175, nil,
+    onClose, message_info.type, message_info.message, message_info.owner,
+    message_info.timeout, message_info.default_choice, message_info.callback)
+  message_info["drawer_icon"] = drawer_icon
+end
+
+--[[ A fax can be queued if the event the fax causes does not affect
+an event caused by any other fax that is queued. i.e both emergency
+and epidemics use the timer, so both faxes cannot appear at the same time.
+@param fax (table) the fax we want to determine if can be queued.
+@return true if fax can be queued, false otherwise (boolean) ]]
+function UIBottomPanel:canQueueFax(fax)
+  --[[ Determine if fax of a particular type is queued either in the
+  message queue or the message window (ui)
+  @param fax_type (string) the fax type to check if any queued
+  @return true if any of fax_type is queued false otherwise (boolean) ]]
+  local function isFaxTypeQueued(fax_type)
+    -- Check the queued messages
+    for _, fax_msg in ipairs(self.message_queue) do
+      if fax_msg.type == fax_type then
+        return true
+      end
+    end
+    -- Then the messages displayed on the bottom bar
+    for _, fax_msg in ipairs(self.message_windows) do
+      if fax_msg.type == fax_type then
+        return true
+      end
+    end
+    return false
+  end
+
+  if fax.type == "epidemy" then
+    if isFaxTypeQueued("emergency") then
+      return false
+    end
+  elseif fax.type == "emergency" then
+    if isFaxTypeQueued("epidemy") then
+      return false
+    end
+  end
+  return true
+end
+
+--[[ Cancels a fax of a particular type currently only "emergency" and "epidemy"
+Handles the cancelling of the event which the fax pertains to.
+@param fax_type (string) type of fax event to be cancelled]]
+function UIBottomPanel:cancelFax(fax_type)
+  local hospital = self.ui.hospital
+  if fax_type == "epidemy" then
+    hospital.epidemic:clearAllInfectedPatients()
+    hospital.epidemic = nil
+  elseif fax_type == "emergency" then
+    self.world:nextEmergency()
+  end
+end
+
+-- Opens the last available message. Currently used to open the level completed message.
+function UIBottomPanel:openLastMessage()
+  if #self.message_queue > 0 then
+    self:_showMessageIcon(#self.message_queue)
+  end
+  self.message_windows[#self.message_windows]:openMessage()
+end
+
+-- Return the index of the first fax message in the queue that is suitable to be
+-- shown, and nil if there are none. A message is suitable to be shown if there
+-- are less than 5 currently shown messages, no message of the same type is
+-- already shown.
+function UIBottomPanel:_findMessageToShow()
+  if #self.message_windows >= 5 then
+    return nil
+  end
+
+  local shown_types = {}
+  for _, fax_msg in ipairs(self.message_windows) do
+    shown_types[fax_msg.type] = true
+  end
+
+  for i, fax_msg in ipairs(self.message_queue) do
+    if not shown_types[fax_msg.type] then
+      return i
+    end
+  end
+
+  return nil
+end
+
+-- Opens the first available message in the list of message_windows.
+function UIBottomPanel:openFirstMessage()
+  if #self.message_windows > 0 then
+    self.message_windows[1]:openMessage()
+  end
+end
+
+--! Removes a message from the message queue (for example if a room is built before the player
+-- says what to do with the patient.
+--!param owner (object) optional message owner
+--!param icon (object) optional drawer icon object
+--!return (boolean) true if message was removed
+function UIBottomPanel:deleteMessage(owner, icon)
+  assert(owner or icon, "Both owner and icon are nil!")
+  -- A message can only ever exist in either the message queue or in message windows. Once it
+  -- is found, we don't need to check the other.
+  for i, msg_info in ipairs(self.message_queue) do
+    if (owner and msg_info.owner == owner) or
+        (icon and msg_info.drawer_icon == icon) then
+      table.remove(self.message_queue, i)
+
+      -- TODO: restructure message_queue to contain UIMessage objects already,
+      -- so this special handling isn't required.
+      msg_info.drawer_icon.onClose = nil
+      msg_info.drawer_icon = nil
+
+      if msg_info.owner then
+        msg_info.owner.message = nil
+      end
+      return true
+    end
+  end
+
+  for _, drawer_icon in ipairs(self.message_windows) do
+    if (owner and drawer_icon.owner == owner) or (icon and drawer_icon == icon) then
+      drawer_icon:removeMessage()
+      return true
+    end
+  end
+  return false
+end
+
+--! Pop the message with the given index from the message queue and turn it into
+-- an actual message window; if no index is provided the first suitable message
+-- in the queue is popped.
+--!param index (integer|nil) the index in the message_queue to pop
+function UIBottomPanel:_showMessageIcon(index)
+  if not index then
+    index = self:_findMessageToShow()
+  end
+  local message_windows = self.message_windows
+  local message_info = index and self.message_queue[index]
+  if not message_info then
+    return
+  end
+  local drawer_icon = message_info.drawer_icon
+  drawer_icon:setXLimit(1 + #message_windows * FACTORY_ICON_WIDTH)
+  message_windows[#message_windows + 1] = drawer_icon
+  self:addWindow(drawer_icon)
+  self.ui:playSound("NewFax.wav")
+  table.remove(self.message_queue, index)   -- Delete element of the queue
+end
+
+function UIBottomPanel:onTick()
+  -- The dynamic info bar is there a while longer when hovering an entity has stopped
+  if self.countdown then
+    if self.countdown < 1 then
+      self.dynamic_info = nil
+      -- If there is no info to display, and the app is tracking FPS, show that
+      local fps = self.ui.app:getFPS()
+      if fps then
+        self.dynamic_info = {text = {
+          ("FPS: %i"):format(math.floor(fps + 0.5) or 0),
+          ("Lua GC: %.1f Kb"):format(collectgarbage("count") or 0),
+          ("Entities: %i"):format(#self.ui.app.world.entities or 0),
+        }}
+        self.countdown = 1
+      end
+    else
+      self.countdown = self.countdown - 1
+    end
+  end
+
+  self:_messageDoorTick()
+
+  Window.onTick(self)
+end
+
+function UIBottomPanel:_messageDoorTick()
+  if self.message_door.next_action_delay > 0 then
+    self.message_door.next_action_delay = self.message_door.next_action_delay - 1
+    return
+  end
+
+  local msg_to_show = self:_findMessageToShow()
+
+  if msg_to_show and self.message_door.closed_amount == MESSAGE_DOOR_FULLY_OPEN then
+    self:_showMessageIcon()
+    self.message_door.next_action_delay = 9
+    return
+  end
+
+  if msg_to_show and self.message_door.closed_amount > MESSAGE_DOOR_FULLY_OPEN then
+    self.message_door.closed_amount = self.message_door.closed_amount - 1
+  elseif not msg_to_show and self.message_door.closed_amount < MESSAGE_DOOR_FULLY_SHUT then
+    self.message_door.closed_amount = self.message_door.closed_amount + 1
+  end
+end
+
+function UIBottomPanel:dialogBankManager(enable)
+  self:dialogBankCommon(enable)
+end
+
+function UIBottomPanel:dialogBankStats(enable)
+  self:dialogBankCommon(enable, true)
+end
+
+function UIBottomPanel:dialogBankCommon(enable, stats)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+  end
+
+  if enable then
+    self:addDialog("UIBankManager", stats and "showStatistics")
+  else
+    local w = self.ui:getWindow(UIBankManager)
+    if w then
+      if not stats and w.showingStatistics then
+        w:hideStatistics()
+      elseif stats and not w.showingStatistics then
+        w:showStatistics()
+      else
+        w:close()
+      end
+      self:updateButtonStates()
+    end
+  end
+end
+
+function UIBottomPanel:dialogBuildRoom()
+  if self.world.user_actions_allowed then
+    local w = self.ui:getWindow(UIBuildRoom)
+    local fullscreen = self.ui:getWindow(UIFullscreen)
+
+    if w then
+      if fullscreen then
+        fullscreen:close()
+      else
+        w:close()
+      end
+    else
+      if fullscreen then
+        fullscreen:close()
+      end
+
+      local dlg = UIBuildRoom(self.ui)
+      self.ui:setEditRoom(false)
+      self.ui:addWindow(dlg)
+      self.ui:tutorialStep(3, 1, 2)
+    end
+  end
+end
+
+function UIBottomPanel:dialogFurnishCorridor()
+  if self.world.user_actions_allowed then
+    local w = self.ui:getWindow(UIFurnishCorridor)
+    local fullscreen = self.ui:getWindow(UIFullscreen)
+
+    if w then
+      if fullscreen then
+        fullscreen:close()
+      else
+        w:close()
+      end
+    else
+      if fullscreen then
+        fullscreen:close()
+      end
+
+      local dlg = UIFurnishCorridor(self.ui)
+      self.ui:setEditRoom(false)
+      self.ui:addWindow(dlg)
+      self.ui:tutorialStep(1, 1, 2)
+    end
+  end
+end
+
+function UIBottomPanel:dialogHireStaff()
+  if self.world.user_actions_allowed then
+    local w = self.ui:getWindow(UIHireStaff)
+    local fullscreen = self.ui:getWindow(UIFullscreen)
+
+    if w then
+      if fullscreen then
+        fullscreen:close()
+      else
+        w:close()
+      end
+    else
+      if fullscreen then
+        fullscreen:close()
+      end
+
+      local dlg = UIHireStaff(self.ui)
+      self.ui:setEditRoom(false)
+      self.ui:addWindow(dlg)
+      self.ui:tutorialStep(2, 1, 2)
+      self.ui:tutorialStep(4, 1, 2)
+    end
+  end
+end
+
+function UIBottomPanel:dialogStaffManagement(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+  end
+  if enable then
+    self:addDialog("UIStaffManagement")
+  else
+    local w = self.ui:getWindow(UIStaffManagement)
+    if w then
+      w:close()
+    end
+  end
+end
+
+function UIBottomPanel:dialogTownMap(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+  end
+    if enable then
+    self:addDialog("UITownMap")
+    else
+    local w = self.ui:getWindow(UITownMap)
+      if w then
+        w:close()
+      end
+    end
+  end
+
+function UIBottomPanel:dialogDrugCasebook(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+end
+  if enable then
+    self:addDialog("UICasebook")
+  else
+    local w = self.ui:getWindow(UICasebook)
+    if w then
+      w:close()
+    end
+  end
+end
+
+function UIBottomPanel:dialogResearch(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    self.ui:playSound(self.ui.hospital.research_dep_built and
+        "selectx.wav" or "wrong2.wav")
+    return
+  end
+  if TheApp.using_demo_files then
+    self.ui:addWindow(UIInformation(self.ui, {_S.errors.dialog_missing_graphics}))
+  end
+  if self.ui.hospital.research_dep_built then
+    if enable then
+      self:addDialog("UIResearch")
+    else
+      local w = self.ui:getWindow(UIResearch)
+      if w then
+        w:close()
+      end
+    end
+    self.ui:playSound("selectx.wav")
+  else
+    self.ui:playSound("wrong2.wav")
+    self:updateButtonStates()
+    self:giveResearchAdvice()
+  end
+end
+
+function UIBottomPanel:giveResearchAdvice()
+  local can_build_research = false
+  for _, room in ipairs(self.ui.app.world.available_rooms) do
+    if room.class == "ResearchRoom" then
+      can_build_research = true
+      break
+    end
+  end
+  local msg = can_build_research and _A.warnings.research_screen_open_1 or _A.warnings.research_screen_open_2
+  if not TheApp.using_demo_files then
+    self.ui.adviser:say(msg)
+  end
+end
+
+function UIBottomPanel:dialogStatus(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+  end
+  if enable then
+    self:addDialog("UIProgressReport")
+  else
+    local w = self.ui:getWindow(UIProgressReport)
+    if w then
+      w:close()
+    end
+  end
+end
+
+function UIBottomPanel:dialogCharts(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+  end
+  if enable then
+    self:addDialog("UIGraphs")
+  else
+    local w = self.ui:getWindow(UIGraphs)
+    if w then
+      w:close()
+    end
+  end
+end
+
+function UIBottomPanel:dialogPolicy(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    return
+  end
+  if enable then
+    self:addDialog("UIPolicy")
+  else
+    local w = self.ui:getWindow(UIPolicy)
+    if w then
+      w:close()
+    end
+  end
+end
+
+function UIBottomPanel:dialogMachineMenu(enable)
+  if not self.world.user_actions_allowed then
+    self:updateButtonStates()
+    self.ui:playSound("selectx.wav")
+    return
+  end
+  local w = self.ui:getWindow(UIMachineMenu)
+  if w then
+    w:close()
+  else
+    self:addDialog("UIMachineMenu")
+  end
+  self.ui:playSound("selectx.wav")
+end
+
+function UIBottomPanel:dialogAdviserHistory(enable)
+  local w = self.ui:getWindow(UIAdviserHistory)
+  if w then
+    w:close()
+  else
+    self:addDialog("UIAdviserHistory")
+  end
+  self.ui:playSound("selectx.wav")
+end
+
+function UIBottomPanel:toggleInformation()
+  self.world:toggleInformation()
+end
+
+local fullscreen_dialogs = {
+  "UIStaffManagement",
+  "UITownMap",
+  "UICasebook",
+  "UIResearch",
+  "UIProgressReport",
+  "UIGraphs",
+  "UIPolicy",
+  "UIMachineMenu",
+}
+
+function UIBottomPanel:updateButtonStates()
+  for i, button in ipairs(self.additional_buttons) do
+    button:setToggleState(not not self.ui:getWindow(_G[fullscreen_dialogs[i]]))
+  end
+  self.bank_button:setToggleState(not not self.ui:getWindow(UIBankManager))
+end
+
+function UIBottomPanel:addDialog(dialog_class, extra_function)
+  local edit_window = self.ui:getWindow(UIEditRoom)
+  -- If we are currently editing a room, ask for abortion before adding any dialog.
+  if edit_window then
+    self.ui:addWindow(UIConfirmDialog(self.ui, false,
+      _S.confirmation.abort_edit_room,
+      --[[persistable:abort_edit_room_confirm_dialog]]function()
+        self.ui:setEditRoom(false)
+        local dialog = _G[dialog_class](self.ui)
+        if extra_function then
+          _G[dialog_class][extra_function](dialog)
+        end
+        self.ui:addWindow(dialog)
+        self:updateButtonStates()
+      end
+      ))
+    self:updateButtonStates()
+  else
+    self.ui:setEditRoom(false)
+    local dialog = _G[dialog_class](self.ui)
+    self.ui:addWindow(dialog)
+    if extra_function then
+      _G[dialog_class][extra_function](dialog)
+    end
+    self:updateButtonStates()
+  end
+end
+
+-- Do not remove, for savegame compatibility < r1878
+local --[[persistable:abort_edit_room_cancel_dialog]]function stub()
+end
+
+function UIBottomPanel:editRoom()
+  local ui = self.ui
+  if ui.editing_allowed then
+    self.ui:playSound("selectx.wav")
+    if ui.edit_room then
+      ui:setEditRoom(false)
+    else
+      ui:setEditRoom(true)
+    end
+  else
+    -- no editing is allowed when other dialogs are open
+    self.ui:playSound("wrong2.wav")
+  end
+end
+
+function UIBottomPanel:afterLoad(old, new)
+  self:setSize(640, 48)
+  self:setDefaultPosition(0.5, -0.1)
+  self:removeAllPanels()
+  self:drawPanels()
+  self:updateButtonStates()
+  if old < 40 then
+    -- Find the graph dialog and enable it
+    for _, button in ipairs(self.buttons) do
+      if not button.on_click then
+        button.on_click = self.dialogCharts
+        button.enabled = true
+      end
+    end
+  end
+  if old < 58 then
+    self.pause_font = TheApp.gfx:loadFontAndSpriteTable("QData", "Font124V")
+  end
+  if old < 62 then
+    -- renamed additional_buttons to additional_panels
+    -- additional_buttons are now the actual buttons
+    self.additional_panels = self.additional_buttons
+    self.additional_buttons = {}
+    for i = 1, 7 do
+      self.additional_buttons[i] = self.buttons[5 + i]:makeToggle() -- made them toggle buttons
+    end
+    self.bank_button = self.buttons[1]:makeToggle()
+  end
+  if old < 236 then
+   self:_initFonts(self.ui.app.gfx)
+  end
+  if old < 244 then
+    -- ignore the delay logic for save games, minor
+    if self.factory_counter == nil or self.factory_counter > MESSAGE_DOOR_FULLY_SHUT then
+      self.factory_counter = MESSAGE_DOOR_FULLY_SHUT
+    elseif self.factory_counter < MESSAGE_DOOR_FULLY_OPEN then
+      self.factory_counter = MESSAGE_DOOR_FULLY_OPEN
+    end
+    self.message_door = {
+      closed_amount = self.factory_counter,
+      next_action_delay = 0
+    }
+    self.factory_counter = nil
+    self.factory_direction = nil
+    self.show_animation = nil
+  end
+  if old < 254 then
+    for _, message_info in ipairs(self.message_queue) do
+      if message_info.drawer_icon == nil then
+        self:_initMessageWithDrawerIcon(message_info)
+      end
+    end
+  end
+  -- Hotfix to force re-calculation of the money font (see issue #1193)
+  self.money_font = TheApp.gfx:loadFontAndSpriteTable("QData", "Font05V", nil, nil, { apply_ui_scale = true })
+  self:registerKeyHandlers()
+
+  Window.afterLoad(self, old, new)
+end

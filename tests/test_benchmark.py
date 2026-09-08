@@ -9,6 +9,100 @@ class BenchmarkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):test_lua_runtime.LuaRuntimeTests.setUpClass()
 
+    def test_expanded_profile_handoff_and_failed_cleanup_restore_private_route(self):
+        script='local B=dofile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+')\n'+r'''
+local now,active,started,closed=0,false,0,0
+local root='sdmc:/3ds/corsixth/Benchmark/'
+local original_open=io.open
+io.open=function(name,mode)
+ if name==root..'expanded.sav' then return {close=function()end} end
+ return original_open(name,mode)
+end
+local app={savegame_dir='USER/',config={language='Chinese (simplified)',play_music=true,
+ unicode_font='font',audio_music='Music',autosave_frequency=2},
+ strings={checkLanguageExists=function()return true end}}
+local native={clock_ms=function()return now end,benchmark_state=function(v)active=v end,
+ set_notice=function()end,flush_observations=function()end,benchmark_mark=function()end}
+app.audio={background_playlist={{filename_music='Music/CANDY.wav'}},
+ stopBackgroundTrack=function()end,playBackgroundTrack=function()return true end}
+function app:initLanguage()return true end
+local paths={}
+function app:load(name)
+ assert(self.savegame_dir==root..'Saves/' and self.config.autosave_frequency==0)
+ paths[#paths+1]=name
+ self.world={setSpeed=function(self,s)self.speed=s end,getCurrentSpeed=function(self)return self.speed end}
+ return true
+end
+local fail_close=false
+package.preload['3ds.benchmark_stress']=function()return {new=function(a,n)
+ assert(a==app and n==native and paths[#paths]==root..'expanded.sav')
+ started=started+1
+ return {tick=function()return true end,close=function()closed=closed+1;if fail_close then error('cleanup')end end}
+end}end
+local function run()
+ now=0;local b=B.new(app,native);assert(#b.profiles==4);b:tick()
+ for _,t in ipairs{30000,90000,120000,180000,210000,270000,300000,360000}do now=t;b:tick()end
+ assert(b.phase=='stress' and active and app.savegame_dir==root..'Saves/')
+ return b
+end
+local b=run();b:tick()
+assert(b.phase=='done' and not active and started==1 and closed==1)
+assert(paths[4]==root..'expanded.sav' and paths[5]==paths[4])
+assert(app.savegame_dir=='USER/' and app.config.autosave_frequency==2)
+b=run();fail_close=true;b:cancel('B')
+assert(b.phase=='done' and not active and app.savegame_dir=='USER/' and app.config.autosave_frequency==2)
+assert(app.config.language=='Chinese (simplified)' and app.config.play_music)
+io.open=original_open
+'''
+        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+
+    def test_private_stress_sequence_save_reload_and_failure_boundary(self):
+        script='local S=dofile('+repr(str(ROOT/'lua/3ds/benchmark_stress.lua'))+')\n'+r'''
+local now=0
+local root='sdmc:/3ds/corsixth/Benchmark/'
+local app={savegame_dir=root..'Saves/',config={autosave_frequency=0}}
+local native={clock_ms=function()return now end,set_notice=function()end}
+local saved,loads,closed=0,0,0
+UIBottomPanel='bottom'
+for _,name in ipairs{'UIPolicy','UIProgressReport','UIResearch','UIStaffManagement'}do _G[name]=name end
+local function hospital()
+ local h={balance=100,staff={{humanoid_class='Doctor',profile={wage=100}}}}
+ app.ui={hospital=h,anyMustPauseWindowOpen=function()return false end}
+ app.world={rooms={{hospital=h,room_info={id='gp'},x=1,y=2,width=3,height=4}},
+  game_date={tostring=function()return '1/1/1' end},setSpeed=function()end,
+  map={th={getPlotCount=function()return 3 end,getPlotOwner=function()return 1 end}}}
+ local panel={}
+ function panel:addDialog(name)
+   local w={};function w:close()closed=closed+1;self.closed=true;app.ui.current=nil end
+   app.ui.current=w;app.ui.current_name=name
+ end
+ function app.ui:getWindow(kind)
+   if kind=='bottom' then return panel end
+   if self.current_name==kind then return self.current end
+ end
+end
+hospital()
+function app:save(path)
+ assert(path==root..'Saves/r62-roundtrip.sav' and self.savegame_dir==root..'Saves/')
+ saved=saved+1;return true
+end
+function app:load(path)assert(path==root..'Saves/r62-roundtrip.sav');loads=loads+1;hospital();return true end
+local s=S.new(app,native,180000)
+local finished=false
+for i=1,200 do finished=s:tick();if finished then break end;now=now+1000 end
+assert(finished and s.cycle>=8 and saved==loads and saved>=2 and closed==s.cycle)
+assert(app.savegame_dir==root..'Saves/' and app.config.autosave_frequency==0)
+local before=saved
+s=S.new(app,native);s:tick();s:close();assert(saved==before)
+app.ui.anyMustPauseWindowOpen=function()return true end
+s=S.new(app,native);assert(not pcall(s.tick,s)) -- leaves mandatory event unanswered
+app.save=function()return false end
+s=S.new(app,native);assert(not pcall(s.saveReload,s))
+app.savegame_dir='USER/';assert(not pcall(S.new,app,native))
+print('PASS private stress orchestration; actual engine/device acceptance remains separate')
+'''
+        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+
     def test_menu_music_starts_after_attach_and_pending_cancel_is_untouched(self):
         script='local B=dofile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+')\n'+r'''
 local now=0

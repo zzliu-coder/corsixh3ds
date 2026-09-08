@@ -1858,7 +1858,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R61 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R62 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1952,7 +1952,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R61 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R62 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2276,9 +2276,7 @@ int l_cpu_phase(lua_State* state) {
       if(!std::strcmp(kCpuWorkNames[index],name)) break;
     if(index==kCpuWorkNames.size()) return luaL_error(state,"unknown World phase");
     if(cpu_work.enabled && began && now>=began) {
-      auto& row=cpu_work.rows[index];const auto elapsed=now-began;
-      ++row.calls;++row.units;row.total_us+=elapsed;
-      if(elapsed>row.max_us) row.max_us=elapsed;
+      cpu_work.record(index,began,now);
       g_observations.slow.record(began,now,"world",name);
     }
   }
@@ -2307,10 +2305,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R61\n",4)){
+    if(length==4&&!std::memcmp(magic,"R62\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r61.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r62.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
@@ -2652,7 +2650,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R61 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 text_cache_limit=2097152 music=file_wav save_index_buckets=256 lua_allocator_watch=1");
+  boot_log("diagnostics: revision=R62 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 music=file_wav save_index_buckets=256 lua_allocator_watch=1 raw=indexed128 warm_backgrounds=3 atlas=skyline_lru benchmark_cpu=contained_scopes");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));

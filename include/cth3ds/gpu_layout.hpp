@@ -17,6 +17,27 @@ struct GpuShelf {
     ox=nx;oy=ny;x=nx+w;y=ny;row=std::max(nr,h);return true;
   }
 };
+// R62: a bounded 64-column skyline fills holes left by mixed-height sprites.
+// Each occupied column is tile-aligned; appends never touch a queued tile.
+struct GpuSkyline {
+  std::uint8_t heights[64]{};
+  bool allocate(int w,int h,int& ox,int& oy) noexcept {
+    if(w<=0||h<=0||w>512||h>512)return false;
+    const int columns=(w+7)/8, rows=(h+7)/8;
+    int best=-1, best_y=65, best_waste=4097;
+    for(int x=0;x+columns<=64;++x){
+      int y=0,sum=0;
+      for(int n=0;n<columns;++n){y=std::max(y,int(heights[x+n]));sum+=heights[x+n];}
+      const int waste=y*columns-sum;
+      if(y+rows<=64 && (y<best_y || (y==best_y && waste<best_waste))){
+        best=x;best_y=y;best_waste=waste;
+      }
+    }
+    if(best<0)return false;
+    for(int n=0;n<columns;++n)heights[best+n]=static_cast<std::uint8_t>(best_y+rows);
+    ox=best*8;oy=best_y*8;return true;
+  }
+};
 inline std::size_t gpu_tile_offset(unsigned x,unsigned y,unsigned width) noexcept {
   const unsigned ix=x&7U,iy=y&7U;
   const unsigned morton=(ix&1U)|((iy&1U)<<1U)|((ix&2U)<<1U)|

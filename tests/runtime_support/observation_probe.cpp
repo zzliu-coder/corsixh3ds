@@ -129,9 +129,16 @@ int main() {
   observations.reset(0);output.clear();
   observations.timing.present_complete(1,PresentResult::Success);
   observations.sample_mark("SAMPLE-BEGIN",2000000,sink);
+  cpu_work.record(static_cast<std::size_t>(CpuWork::World),1999999,2100000);
+  cpu_work.record(static_cast<std::size_t>(CpuWork::World),2200000,2200400);
+  cpu_work.rows={}; // normal ten-second flush must not lose strict totals
+  cpu_work.record(static_cast<std::size_t>(CpuWork::World),2300000,2300600);
   observations.sample_present(2100000,PresentResult::Success);
   observations.sample_present(62100000,PresentResult::Success);
   observations.sample_mark("SAMPLE-END",62200000,sink);
+  CHECK(output.find("benchmark-cpu: eligible=1 name=world calls=2 total_us=1000 max_us=600")!=std::string::npos);
+  cpu_work.record(static_cast<std::size_t>(CpuWork::World),62200000,62300000);
+  CHECK(cpu_work.sample_rows[static_cast<std::size_t>(CpuWork::World)].calls==2);
   CHECK(output.find("eligible=1")!=std::string::npos);
   CHECK(output.find("coverage_begin=2100000 coverage_end=62100000")!=std::string::npos);
   CHECK(output.find("intervals=1 sum_us=60000000")!=std::string::npos);

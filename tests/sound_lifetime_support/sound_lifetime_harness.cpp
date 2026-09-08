@@ -58,6 +58,7 @@ struct LuaFault {
 static LuaFault* observed_fault=nullptr;
 static bool allow_reserve=true,mixer_allocate_fail=false;
 static size_t reserve_requests=0, largest_request=0, fatal_count=0;
+static size_t reserve_chunk_limit=SIZE_MAX;
 static std::recursive_mutex mixer_mutex;
 static std::array<Mix_Chunk*,32> active_chunks{};
 static std::array<bool,32> paused{};
@@ -114,7 +115,7 @@ void runtime_observe_memory(const char* site,const char* phase,const char*,Memor
     observed_fault->commit_seen=true;observed_fault->deny_growth=true;
   }
 }
-bool runtime_audio_reserve(size_t n,const char*) noexcept {++reserve_requests;largest_request=std::max(largest_request,n);return allow_reserve;}
+bool runtime_audio_reserve(size_t n,const char*) noexcept {++reserve_requests;largest_request=std::max(largest_request,n);return allow_reserve&&live_chunks<=reserve_chunk_limit;}
 void report_allocation_failure(const char*,const char*,uint64_t,const char*,const char*) noexcept {}
 void report_fatal(const char*) noexcept {++fatal_count;}
 }
@@ -312,6 +313,16 @@ static int test_release_no_allocation(const std::string& dir) {
 static int test_cache(const std::string& dir) {
   sound_archive a;CHECK(a.load_from_file((dir+"/large.dat").c_str()));sound_player p;p.populate_from(&a);
   auto pinned=p.play(1,1,-1);CHECK(pinned);
+  auto warm=p.play(2,1,0);CHECK(warm);p.stop(warm);
+  warm=p.play(3,1,0);CHECK(warm);p.stop(warm);
+  reserve_chunk_limit=1;
+  auto recovered=p.play(4,1,0);CHECK(recovered);p.stop(recovered);
+  CHECK(p.is_playing(pinned));reserve_chunk_limit=SIZE_MAX;
+  const auto fatals=fatal_count;
+  allow_reserve=false;
+  CHECK(p.play(5,1,0)==0 && p.is_playing(pinned) && fatal_count==fatals);
+  allow_reserve=true;
+  auto retry=p.play(5,1,0);CHECK(retry);p.stop(retry);
   for(size_t i=2;i<a.get_number_of_sounds();++i) {
     auto h=p.play(i,1,0);CHECK(h);p.stop(h);CHECK(p.is_playing(pinned));CHECK(p.owner_bytes()<=3*1024*1024);
   }

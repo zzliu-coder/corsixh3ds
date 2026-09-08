@@ -2,6 +2,7 @@
 #include "th_lua.h"
 #include "persist_lua.h"
 #include "cth3ds/allocation_watch.hpp"
+#include "cth3ds/memory_pressure.hpp"
 #include <array>
 #include <cerrno>
 #include <climits>
@@ -41,7 +42,7 @@ static void run(lua_State* L,const char* code) {
   if(error){std::fprintf(stderr,"Lua failure: %s\nScript: %.220s\n",lua_tostring(L,-1),code);std::abort();}
 }
 int main(int argc,char** argv) {
-  assert(argc==2);
+  assert(argc==2 || argc==3);
   Heap heap;auto* L=lua_newstate(allocator,&heap);assert(L);luaL_openlibs(L);
   lua_pushglobaltable(L);lua_pushcclosure(L,reference::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"reference");
   lua_pushglobaltable(L);lua_pushcclosure(L,candidate::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"candidate");
@@ -97,7 +98,27 @@ int main(int argc,char** argv) {
   run(L,"local result=assert(candidate.dump(root,{}));assert(result==expected)");
   assert(heap.refused==0 && heap.largest<=128*1024);
   std::printf("reference_denied_request=%zu candidate_largest_index_request=%zu byte_format=identical graph_tables=49282\n",original_largest,heap.largest);
-  heap.limited=false;lua_close(L);
+  heap.limited=false;
+  if(argc==3) {
+    if(luaL_dofile(L,argv[2])) {std::fprintf(stderr,"%s\n",lua_tostring(L,-1));std::abort();}
+    run(L,R"(
+      local encoded=assert(candidate.dump(index_save_graph,index_save_permanents))
+      for _,reader in ipairs{reference,candidate} do
+        local restored=assert(reader.load(encoded,index_load_permanents))
+        assert(restored.index.entity_map[15][16]==restored.alias)
+        assert(restored.objects==restored.alias.objects)
+        assert(restored.objects[1]==restored.shared and restored.objects[2]==restored.shared)
+        restored.index:compact()
+        local alias=restored.legacy_alias
+        local object=alias[1]
+        restored.legacy:removeEntity(2,2,object)
+        restored.legacy:compact()
+        restored.legacy:addEntity(2,2,object)
+        assert(restored.legacy:getObjectsAtCoordinate(2,2)==alias and alias[1]==object)
+      end
+    )");
+  }
+  lua_close(L);
   // Allocation watch keeps the original allocator contract, including type
   // tags on new objects, failed growth (old allocation stays live), and free.
   cth3ds::AllocationWatch watch;watch.reset(allocator,&heap,0);
@@ -109,5 +130,19 @@ int main(int argc,char** argv) {
   cth3ds::MemoryObservationGate gate;
   assert(gate.take(1,false));assert(!gate.take(2,false));assert(gate.take(3,true));
   assert(gate.take(50003,false));assert(gate.skipped==1 && gate.sampled==3);
+  cth3ds::MemoryPressure pressure;
+  assert(pressure.due(1) && !pressure.due(2));
+  assert(!pressure.begin(1,16*1024*1024,true));
+  pressure.request(1024);pressure.request(512);assert(pressure.requested==1024);
+  assert(!pressure.begin(2,16*1024*1024,false) && pressure.requested==1024);
+  assert(pressure.begin(3,16*1024*1024,true));
+  assert(!pressure.due(600000) && !pressure.begin(600000,0,true));
+  pressure.collecting=false;pressure.request(2048);
+  assert(pressure.due(600000) && !pressure.begin(600000,0,true));
+  assert(pressure.requested==2048);
+  assert(pressure.begin(2000003,16*1024*1024,true));
+  pressure.collecting=false;assert(pressure.requested==0);
+  assert(!pressure.begin(4000003,8*1024*1024,true));
+  assert(pressure.begin(4000003,8*1024*1024-1,true));
   std::puts("PASS native save compatibility, strong aliases, bounded index allocations, allocation watcher");
 }

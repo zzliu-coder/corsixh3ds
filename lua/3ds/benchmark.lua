@@ -121,6 +121,11 @@ function Benchmark:load()
   local profile=self.profiles[self.index]
   if self.media_profiles then self:applyMedia(profile.language,profile.music) end
   self.app.world:setSpeed(profile.speed)
+  self.expected_language=self.app.config.language
+  self.expected_music=self.app.config.play_music
+  self.expected_voice=self.app.config.speech_language
+  self.expected_camera_x=self.app.ui and self.app.ui.screen_offset_x
+  self.expected_camera_y=self.app.ui and self.app.ui.screen_offset_y
   assert(self.app.world:getCurrentSpeed()==profile.speed,
     "benchmark blocked by a mandatory pause window")
   self:mark("WARMUP")
@@ -132,6 +137,13 @@ function Benchmark:advance()
   if self.phase=="pending" then self:load();return end
   assert(self.app.world and self.app.world:getCurrentSpeed()==self.profiles[self.index].speed,
     "benchmark speed changed or a mandatory pause window opened")
+  assert(self.app.config.language==self.expected_language and
+    self.app.config.play_music==self.expected_music and
+    self.app.config.speech_language==self.expected_voice,
+    "benchmark language, music or voice changed")
+  assert((self.app.ui and self.app.ui.screen_offset_x)==self.expected_camera_x and
+    (self.app.ui and self.app.ui.screen_offset_y)==self.expected_camera_y,
+    "benchmark camera changed")
   if self.native.clock_ms()<self.deadline then return end
   if self.phase=="warmup" then
     self:mark("SAMPLE-BEGIN");self.phase="sample"

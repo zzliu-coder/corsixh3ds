@@ -511,6 +511,7 @@ function Platform:samplePerformanceContext()
     tick_rate = world and world.tick_rate or -1, game_date = date_text,
     camera_x = ui and ui.screen_offset_x or 0, camera_y = ui and ui.screen_offset_y or 0,
     language = app.config.language or "unknown", music = app.config.play_music == true,
+    voice = app.config.speech_language or "en",
   }
   return true
 end
@@ -876,11 +877,13 @@ function Platform:installOperationSpans()
       local function baseline(phase)
         local gc_token=native.span_begin("gc")
         collectgarbage("collect")
+        native.span_end(gc_token,true)
         if phase=="gc-after" then native.operation_boundary() end
         native.observe_memory(site,phase,method,"Operation")
-        native.span_end(gc_token,true)
       end
-      baseline("gc-before")
+      -- Save's permanence builder owns the mandatory two collections for
+      -- finalized weak keys. Keep load pre-GC and operation post-GC here.
+      if method=="load" then baseline("gc-before") end
       local result = pack_values(pcall(original, ...))
       local success = result[1] and result[2] == true
       native.operation_boundary()

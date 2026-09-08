@@ -27,6 +27,8 @@ def original_sources(root):
     for name in ('sdl_audio.cpp', 'th_gfx_font.h', 'th_gfx_font.cpp', 'th_strings.h', 'th_strings.cpp', 'persist_lua.cpp', 'persist_lua.h', 'th_lua.h', 'th_lua.cpp', 'lua.hpp'):
         files['CorsixTH/Src/' + name] = (ROOT/'tests/fixtures'/ (name + '.pinned')).read_text(encoding='utf-8')
     files['CorsixTH/Lua/entities/humanoid.lua'] = (ROOT/'tests/fixtures/humanoid.lua.pinned').read_text(encoding='utf-8')
+    files['CorsixTH/Lua/entity_map.lua'] = (ROOT/'tests/fixtures/entity_map.lua.pinned').read_text(encoding='utf-8')
+    files['CorsixTH/Lua/entities/humanoids/staff.lua'] = (ROOT/'tests/fixtures/staff.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/dialogs/resizables/sound_setting.lua'] = (ROOT/'tests/fixtures/sound_setting.lua.pinned').read_text(encoding='utf-8')
     for name,text in files.items():
         assert hashlib.sha256(text.encode()).hexdigest()==SOURCE_HASHES[name]
@@ -40,7 +42,7 @@ def generated_sources(directory):
     generated = original_sources(directory / 'upstream')
     originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in generated.rglob('*') if path.is_file()}
-    if originals != SOURCE_HASHES or len(originals) != 38:
+    if originals != SOURCE_HASHES or len(originals) != 40:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
     tracked = subprocess.check_output(
@@ -73,7 +75,10 @@ def generated_sources(directory):
             raise RuntimeError('repeat generation changed file inventory or bytes')
         first = current
     if hashes(overlay) != before:
-        raise RuntimeError('integration changed exported overlay bytes')
+        after = hashes(overlay)
+        changed = sorted(name for name in before.keys() | after.keys()
+                         if before.get(name) != after.get(name))
+        raise RuntimeError('integration changed exported overlay bytes: ' + ', '.join(changed))
     if any(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest
            for name, digest in before.items()):
         raise RuntimeError('integration changed the tested checkout')

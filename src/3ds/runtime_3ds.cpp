@@ -43,6 +43,7 @@
 #include "cth3ds/presentation_clock.hpp"
 #include "cth3ds/cpu_work.hpp"
 #include "cth3ds/allocation_watch.hpp"
+#include "cth3ds/memory_pressure.hpp"
 #include "cth3ds/text_cache.hpp"
 #include "cth3ds/gpu_api.hpp"
 #include "cth3ds/framebuffer_scaler.hpp"
@@ -249,6 +250,33 @@ void update_lua_memory(lua_State* state) noexcept {
                   static_cast<std::uint64_t>(remainder);
     g_lua_peak_bytes = std::max(g_lua_peak_bytes, g_lua_bytes);
   }
+}
+
+void boot_log(const char* format, ...);
+MemoryPressure g_memory_pressure;
+void recover_main_thread_memory(lua_State* state) noexcept {
+  const auto now=now_us();
+  if(!state || !g_memory_pressure.due(now))return;
+  const auto before=heap_snapshot();
+  if(!g_memory_pressure.begin(now,before.heap_available_estimate,
+      lua_gc(state,LUA_GCISRUNNING,0)!=0))return;
+  // Safe loop point: no sound decoding, mixer lock, allocator hook or suspended
+  // save writer can enter here. A finalizer error is contained by lua_pcall.
+  bool ok=false;
+  if(lua_checkstack(state,2)) {
+    lua_pushcfunction(state,[](lua_State* L)->int {lua_gc(L,LUA_GCCOLLECT,0);return 0;});
+    const auto token=runtime_span_begin(TimingStage::GC);
+    ok=lua_pcall(state,0,0,0)==LUA_OK;
+    if(!ok){const char* error=lua_tostring(state,-1);boot_log("memory-pressure: gc_error=%.160s",error?error:"non-string finalizer error");lua_pop(state,1);}
+    runtime_span_end(token,ok);
+  }
+  g_memory_pressure.collecting=false;
+  update_lua_memory(state);
+  const auto after=heap_snapshot();
+  boot_log("memory-pressure: before=%llu after=%llu elapsed_us=%llu collected=%d main_thread=1",
+    (unsigned long long)before.heap_available_estimate,
+    (unsigned long long)after.heap_available_estimate,
+    (unsigned long long)(now_us()-now),ok);
 }
 
 void boot_log_open() {
@@ -929,6 +957,7 @@ class Runtime {
     last_tick_us_ = frame_started;
 
     if(input_failed_ || lifecycle_.state()!=LifecycleState::Running)return;
+    recover_main_thread_memory(state);
     if (state_refresh_gate_.due(frame_started) &&
         bottom_mode_ == BottomScreenMode::Panel) {
       // In game mode nothing on screen consumes this, and walking the hospital
@@ -974,14 +1003,19 @@ class Runtime {
 
     if(g_benchmark_active){
       std::string benchmark_error;
-      const char* method=(raw_held&KEY_B)?"benchmarkCancel":"benchmarkTick";
+      bool interrupted=benchmark_user_input(snapshot);
+      RawInputSnapshot queued;
+      for(std::size_t i=0;i<InputQueue::capacity && input_collector_.pop(queued,frame_started);++i)
+        interrupted=benchmark_user_input(queued)||interrupted;
+      const char* method=interrupted?"benchmarkCancel":"benchmarkTick";
       if(!call_platform_method(state,method,nullptr,&benchmark_error)){
         g_benchmark_active=false;report_fatal(benchmark_error.c_str());input_failed_=true;return;
       }
       input_collector_.discard();
+      if(interrupted)return; // Cancelling input never doubles as a game click.
     }
     if (g_benchmark_active) {
-      // Benchmark runs have no user input. B is handled above; lifecycle stays
+      // Benchmark runs have no user input. Input cancels above; lifecycle stays
       // active below. The stylus never gets synthetic mouse commands.
     } else if (bottom_mode_ == BottomScreenMode::Game) {
 #ifdef CTH3DS_STUB_BUILD
@@ -1371,7 +1405,9 @@ class Runtime {
       result = ok ? PresentResult::Success : PresentResult::Failed;
       }
     }
-    g_observations.timing.present_complete(now_us(), result);
+    const auto presented=now_us();
+    g_observations.timing.present_complete(presented, result);
+    g_observations.sample_present(presented, result);
     g_top_present_seen = g_top_present_ok = false;
   }
 
@@ -1822,7 +1858,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R60 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R61 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1916,7 +1952,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R60 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R61 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2271,10 +2307,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R60\n",4)){
+    if(length==4&&!std::memcmp(magic,"R61\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r60.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r61.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
@@ -2284,6 +2320,7 @@ int l_benchmark_enabled(lua_State* state){
 int l_benchmark_mark(lua_State* state){
   const char* event=luaL_checkstring(state,1);const char* speed=luaL_checkstring(state,2);
   const char* date=luaL_checkstring(state,3);
+  g_observations.sample_mark(event,now_us(),{boot_log,boot_log_flush,nullptr});
   boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
     (unsigned long long)now_us(),event,speed,date);
   return 0;
@@ -2430,7 +2467,8 @@ int l_workload(lua_State* state) {
   const auto language = table_string(state,1,"language","unknown");
   const auto date = table_string(state,1,"game_date","unknown");
   const auto speed = table_string(state,1,"speed","unknown");
-  boot_log("workload: at_us=%llu scene=%s patients=%lld staff=%lld rooms=%lld speed=\"%s\" hours_per_tick=%lld tick_rate=%lld date=%s camera_x=%lld camera_y=%lld language=%s music_enabled=%d",
+  const auto voice = table_string(state,1,"voice","unknown");
+  boot_log("workload: at_us=%llu scene=%s patients=%lld staff=%lld rooms=%lld speed=\"%s\" hours_per_tick=%lld tick_rate=%lld date=%s camera_x=%lld camera_y=%lld language=%s music_enabled=%d voice=%s",
     static_cast<unsigned long long>(now_us()),g_observations.scene.data(),
     static_cast<long long>(table_integer(state,1,"patients",-1)),
     static_cast<long long>(table_integer(state,1,"staff",-1)),
@@ -2439,7 +2477,7 @@ int l_workload(lua_State* state) {
     static_cast<long long>(table_integer(state,1,"tick_rate",-1)),date.c_str(),
     static_cast<long long>(table_integer(state,1,"camera_x",0)),
     static_cast<long long>(table_integer(state,1,"camera_y",0)),language.c_str(),
-    table_boolean(state,1,"music",false));
+    table_boolean(state,1,"music",false),voice.c_str());
   return 0;
 }
 
@@ -2588,6 +2626,7 @@ void register_lua_module(lua_State* state) {
   g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
   g_observation_state=state;
+  g_memory_pressure={};
   g_memory_sampling={};
   void* allocator_context=nullptr;
   const auto allocator=lua_getallocf(state,&allocator_context);
@@ -2613,7 +2652,8 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R60 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 text_cache_limit=2097152 music=file_wav save_index_buckets=256 lua_allocator_watch=1");
+  boot_log("diagnostics: revision=R61 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 text_cache_limit=2097152 music=file_wav save_index_buckets=256 lua_allocator_watch=1");
+  boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2738,7 +2778,9 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
   // Sample high-frequency sprite/texture events. Operation, language,
   // sound, stage boundaries and every reported failure remain unconditional.
   const bool frequent=checkpoint && (std::strcmp(checkpoint,"vspr_decode")==0 ||
-      std::strcmp(checkpoint,"textures")==0 || std::strcmp(checkpoint,"release")==0);
+      std::strcmp(checkpoint,"textures")==0 || std::strcmp(checkpoint,"release")==0 ||
+      std::strcmp(checkpoint,"gc")==0 || std::strcmp(checkpoint,"sound_play")==0 ||
+      std::strcmp(checkpoint,"sound_release")==0);
   if(!g_memory_sampling.take(now_us(),!frequent || failed || (requested_known && requested>=262144)))return;
   CpuWorkScope observation_cost(CpuWork::MemoryObserve);
   update_lua_memory(g_observation_state);
@@ -2793,10 +2835,15 @@ void runtime_after_frame(bool draw_success) noexcept { runtime().after_frame(dra
 bool runtime_audio_reserve(std::size_t bytes,const char* identity) noexcept {
   const auto h=heap_snapshot();const auto policy=memory_gate_policy(MemoryGate::Operation);
   if(!evaluate_memory_gate(h.heap_total,h.heap_available_estimate,h.linear_total,policy).pass() || bytes>h.heap_available_estimate || !evaluate_memory_gate(h.heap_total,h.heap_available_estimate-bytes,h.linear_total,policy).pass() || policy.probe_reserve_bytes>h.heap_available_estimate-bytes) {
-    report_allocation_failure("sound",identity,bytes,"regular","operation reserve gate");return false;
+    // Admission check, not an allocation or a held reservation. The actual
+    // decoder must still handle allocation failure. Retry after owner eviction;
+    // Lua collection is deferred to the next safe main-loop point.
+    g_memory_pressure.request(bytes);
+    SDL_SetError("audio memory pressure: operation headroom unavailable");
+    return false;
   }
-  void* probe=std::malloc(bytes);if(!probe){report_allocation_failure("sound",identity,bytes,"regular","contiguous preflight");return false;}
-  std::free(probe);return true;
+  (void)identity;
+  return true;
 }
 void runtime_tick(lua_State* state) { RuntimeTimingScope timing(TimingStage::Runtime); runtime().tick(state); timing.finish(runtime().assert_ready(state)); }
 void runtime_shutdown(lua_State*) noexcept { runtime_flush_observations(true); runtime().shutdown(); g_observation_state=nullptr; }

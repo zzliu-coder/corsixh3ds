@@ -19,6 +19,7 @@ std::vector<std::function<void()>> commands,pending;
 C3D_RenderTarget* current{};C3D_RenderTarget* outputs[2]{};
 SDL_Rect clip{};bool clipped{},in_frame{},ready{};
 unsigned offset{},cost=64,objects{},max_objects{},waits{},allocations{},live{},fail_at{};
+unsigned clip_changes{},flush_calls{};
 bool allocation(){return ++allocations!=fail_at;}
 bool corrupt_sampling{},corrupt_clear{},corrupt_raster{},corrupt_lcd{},reject_invalidate{},wrong_dimensions{};
 std::array<std::array<u8,400*240*4>,2> lcd{};
@@ -106,11 +107,11 @@ void C3D_FrameEnd(u8 flags){
   drawn_targets.clear();pending=std::move(commands);commands.clear();in_frame=false;
 }
 float C3D_GetDrawingTime(){return 1;}
-void C2D_Flush(){}void C2D_Prepare(){}void C2D_SetTintMode(int){}void C2D_ViewReset(){}
+void C2D_Flush(){++flush_calls;}void C2D_Prepare(){}void C2D_SetTintMode(int){}void C2D_ViewReset(){}
 void C3D_DepthTest(bool enabled,int,int mask){assert(!enabled&&mask==GPU_WRITE_COLOR);}
 void C3D_AlphaBlend(int,int,int src,int dst,int alpha,int adst){assert(src==GPU_SRC_ALPHA&&dst==GPU_ONE_MINUS_SRC_ALPHA&&alpha==GPU_ONE&&adst==GPU_ONE_MINUS_SRC_ALPHA);}
 void C2D_SceneBegin(C3D_RenderTarget* t){current=t;drawn_targets.push_back(t);}
-void C3D_SetScissor(int mode,int l,int b,int r,int t){clipped=mode;clip={l,current->height-t,r-l,t-b};}
+void C3D_SetScissor(int mode,int l,int b,int r,int t){++clip_changes;clipped=mode;clip={l,current->height-t,r-l,t-b};}
 void C2D_TargetClear(C3D_RenderTarget* t,u32 c){commands.emplace_back([=]{for(int y=0;y<t->height;++y)for(int x=0;x<t->width;++x)raw(t->tex,x,y)=cth3ds::gpu_pixel(corrupt_clear?0U:c);});}
 bool C2D_DrawImage(C2D_Image image,const C2D_DrawParams* p,const C2D_ImageTint* colour){
   emitted();const auto sub=*image.subtex;const auto params=*p;const auto tint=colour?colour->colour:0xffffffffU;
@@ -160,6 +161,31 @@ int main(){
   auto* background=gpu_image_create(renderer,640,480,colours.data());assert(background);
   auto draw=[&](SDL_Texture* tex,SDL_Rect src,SDL_FRect dest,int flip){assert(gpu_image_draw(tex,&src,&dest,static_cast<SDL_RendererFlip>(flip))==0);};
   SDL_FRect full{0,0,640,480};
+  // Full small sprites and the general cropped path must produce identical
+  // pixels for all flips, scaling, clipping, tint and alpha.
+  std::vector<u32> small(17*13),padded(19*15);
+  for(int y=0;y<13;++y)for(int x=0;x<17;++x)
+    padded[(y+1)*19+x+1]=small[y*17+x]=0x90204000U|u32(x+y*17);
+  auto* fast=gpu_image_create(renderer,17,13,small.data());
+  auto* general=gpu_image_create(renderer,19,15,padded.data());
+  assert(fast&&general);
+  for(auto* tex:{fast,general}){SDL_SetTextureColorMod(tex,137,212,249);SDL_SetTextureAlphaMod(tex,173);}
+  for(int flip=0;flip<4;++flip){
+    std::vector<u32> reference;
+    for(auto* tex:{general,fast}){
+      assert(gpu_begin());assert(gpu_clear(0xff182838U));
+      SDL_Rect cut{13,12,80,53};gpu_clip(&cut);
+      const auto changes=clip_changes,flushes=flush_calls;
+      for(int repeat=0;repeat<100;++repeat)gpu_clip(&cut);
+      assert(clip_changes==changes&&flush_calls==flushes);
+      draw(tex,tex==fast?SDL_Rect{0,0,17,13}:SDL_Rect{1,1,17,13},{10.25f,10.25f,85,65},flip);
+      assert(gpu_read_pixels(out));
+      const auto* pixels=static_cast<u32*>(out->pixels);
+      if(tex==general)reference.assign(pixels,pixels+640*480);
+      else assert(std::equal(reference.begin(),reference.end(),pixels));
+    }
+  }
+  gpu_image_destroy(fast);gpu_image_destroy(general);
   for(int flip=0;flip<4;++flip){
     assert(gpu_begin());assert(gpu_clear(0xff000000U));draw(background,{0,0,640,480},full,flip);
     assert(gpu_read_pixels(out));auto* p=static_cast<u32*>(out->pixels);

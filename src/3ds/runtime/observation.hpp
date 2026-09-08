@@ -27,7 +27,7 @@ class RuntimeObservations {
   RuntimeObservations() = default;
   RuntimeObservations(const RuntimeObservations&) = delete;
   RuntimeObservations& operator=(const RuntimeObservations&) = delete;
-  // Keep this 52 KiB owner in permanent storage. Reset in place: value
+  // Keep this large owner in permanent storage. Reset in place: value
   // assignment creates a temporary larger than the Old 3DS main stack.
   void reset(std::uint64_t now) noexcept;
   Telemetry timing;
@@ -40,7 +40,12 @@ class RuntimeObservations {
   bool due(std::uint64_t now, bool force) const noexcept;
   void observe(const char* site, const MemoryObservation& observation) noexcept;
   void flush(const ObservationInputs& inputs, const ObservationOutput& output, bool force) noexcept;
+  void sample_mark(const char* event, std::uint64_t now, const ObservationOutput& output) noexcept;
+  void sample_present(std::uint64_t now, PresentResult result) noexcept;
  private:
+  DurationDistribution sample_intervals;
+  std::uint64_t sample_begin{},sample_first{},sample_last{};
+  bool sample_active{},sample_valid{},sample_anchor{};
   struct OperationSample {std::array<char,24> site{};MemoryObservation observation;};
   std::array<OperationSample,64> operations{};
   std::size_t operation_count{};

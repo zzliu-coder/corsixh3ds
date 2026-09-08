@@ -1,5 +1,6 @@
 #include "runtime/observation.hpp"
 #include "cth3ds/cpu_work.hpp"
+#include "cth3ds/input_queue.hpp"
 #include <cstdarg>
 #include <cstdio>
 #include <string>
@@ -124,4 +125,50 @@ int main() {
   }
   std::puts("PASS in-place reset stale records retired tokens invalidated");
   std::puts("PASS compact throttle terminal partial spans retained no false completion");
+  const ObservationOutput sink{log_line,log_flush,display};
+  observations.reset(0);output.clear();
+  observations.timing.present_complete(1,PresentResult::Success);
+  observations.sample_mark("SAMPLE-BEGIN",2000000,sink);
+  observations.sample_present(2100000,PresentResult::Success);
+  observations.sample_present(62100000,PresentResult::Success);
+  observations.sample_mark("SAMPLE-END",62200000,sink);
+  CHECK(output.find("eligible=1")!=std::string::npos);
+  CHECK(output.find("coverage_begin=2100000 coverage_end=62100000")!=std::string::npos);
+  CHECK(output.find("intervals=1 sum_us=60000000")!=std::string::npos);
+  for(const char* event:{"FAILED","ABORT-user","SAMPLE-BEGIN"}){
+    output.clear();observations.reset(0);
+    observations.sample_mark("SAMPLE-BEGIN",1,sink);
+    observations.sample_present(100,PresentResult::Success);
+    observations.sample_present(60000100,PresentResult::Success);
+    observations.sample_mark(event,60000200,sink);
+    CHECK(output.find("eligible=0")!=std::string::npos);
+  }
+  output.clear();observations.reset(0);
+  observations.sample_mark("SAMPLE-BEGIN",1,sink);
+  observations.sample_present(100,PresentResult::Success);
+  observations.sample_present(10001,PresentResult::Failed);
+  observations.sample_present(60000100,PresentResult::Success);
+  observations.sample_mark("SAMPLE-END",60000200,sink);
+  CHECK(output.find("eligible=0")!=std::string::npos);
+  // Window flush keeps the crossing interval but explicitly disqualifies it.
+  observations.reset(1);output.clear();
+  observations.timing.present_complete(1,PresentResult::Success);
+  clock_us=100;runtime_flush_observations(true);
+  observations.timing.present_complete(200,PresentResult::Success);
+  clock_us=201;runtime_flush_observations(true);
+  CHECK(output.find("crossing_interval=1")!=std::string::npos);
+  CHECK(output.find("count=1 sum=199")!=std::string::npos);
+  observations.reset(0);output.clear();
+  auto phase=memory_observation(memory,MemoryGate::Operation,"S70","writer-before","persist");
+  observations.observe("save",phase);clock_us=100;runtime_flush_observations(true);
+  CHECK(output.find("site=save phase=writer-before")!=std::string::npos);
+  RawInputSnapshot input{};
+  CHECK(!benchmark_user_input(input));
+  input.circle_x=23;CHECK(!benchmark_user_input(input));
+  input.circle_x=24;CHECK(benchmark_user_input(input));
+  input.circle_x=0;input.touching=true;CHECK(benchmark_user_input(input));
+  InputQueue queue;queue.push(input);input.touching=false;queue.push(input);
+  bool tapped=false;while(queue.pop(input,1))tapped=benchmark_user_input(input)||tapped;
+  CHECK(tapped); // Press/release between two game ticks still cancels.
+  std::puts("PASS strict benchmark anchors interrupted samples raw gaps retained");
 }

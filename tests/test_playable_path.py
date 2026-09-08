@@ -215,6 +215,7 @@ class U3GeneratedClockTests(unittest.TestCase):
         compiler = shutil.which('clang++') or shutil.which('g++')
         built = subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
             '-I'+str(ROOT/'include'), '-I'+str(ROOT/'src/3ds'), str(source), str(ROOT/'src/common/telemetry.cpp'),
+            str(ROOT/'src/3ds/runtime/observation.cpp'),
             '-o', str(cls.binary)], capture_output=True, text=True)
         if built.returncode: raise RuntimeError(built.stderr)
 
@@ -298,6 +299,11 @@ class U3GeneratedClockTests(unittest.TestCase):
         script = '''
 local current, ended, kinds = 0, {}, {}
 local commit_called=false
+local real_gc,cycles=collectgarbage,0
+collectgarbage=function(mode)
+  if mode==nil or mode=="collect" then cycles=cycles+1 end
+  return real_gc(mode or "collect")
+end
 local pack_values=table.pack
 Platform={}
 TH3DS = {
@@ -307,15 +313,22 @@ TH3DS = {
   flush_observations=function() end,
 }
 App = {_loadLevel=function() end,loadMainMenu=function() end,
-       save=function(_, mode) if mode=='throw' then error('write failure') end; commit_called=true; if mode=='commit-fail' then error('commit failed') end; return mode=='ok' end,
+       save=function(_, mode) assert(cycles==0,"outer save collected before permanence owner");
+         collectgarbage();collectgarbage(); -- model upstream's retained two weak-key cycles
+         if mode=='throw' then error('write failure') end; commit_called=true; if mode=='commit-fail' then error('commit failed') end; return mode=='ok' end,
        load=function() return false,'incompatible' end}
 '''+block+'''
 Platform.installOperationSpans({app=App,native=TH3DS,syncScene=function() end})
 assert(App:save('ok') == true and ended[#ended] == true)
+assert(cycles==3);cycles=0
 assert(App:save('no') == false and ended[#ended] == false)
+assert(cycles==3);cycles=0
 assert(not pcall(App.save, App, 'throw') and ended[#ended] == false)
+assert(cycles==3);cycles=0
 assert(not pcall(App.save, App, 'commit-fail') and ended[#ended] == false)
+assert(cycles==3);cycles=0
 local ok, err=App:load(); assert(ok==false and err=='incompatible' and ended[#ended]==false)
+assert(cycles==2)
 '''
         from test_lua_runtime import LuaRuntimeTests
         LuaRuntimeTests.setUpClass()

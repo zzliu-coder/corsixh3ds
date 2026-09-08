@@ -73,6 +73,13 @@ assert(rows[#rows][1]=='ABORT-B')
 b=B.new(app,native);b:tick();app.world.speed='Pause';b:tick()
 assert(b.phase=='done' and not active and rows[#rows][1]=='FAILED')
 assert(app.savegame_dir=='USER/' and app.config.autosave_frequency==2)
+for _,key in ipairs{'language','play_music','speech_language'}do
+ b=B.new(app,native);b:tick();app.config[key]='changed';b:tick()
+ assert(not active and b.phase=='done' and rows[#rows][1]=='FAILED')
+end
+app.ui={screen_offset_x=0,screen_offset_y=0}
+b=B.new(app,native);b:tick();app.ui.screen_offset_x=1;b:tick()
+assert(not active and b.phase=='done' and rows[#rows][1]=='FAILED')
 for _,failure in ipairs({'rejected','exception'}) do
  app.load=function()if failure=='exception' then error('injected') end;return false,'injected' end
  b=B.new(app,native);b:tick()

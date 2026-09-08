@@ -19,6 +19,39 @@ void RuntimeObservations::reset(std::uint64_t now) noexcept {
   // duplicated buffer is needed to retire the previous session's records.
   operation_count = 0;
   operation_overflow = 0;
+  sample_intervals.clear();
+  sample_active=sample_valid=sample_anchor=false;
+  sample_begin=sample_first=sample_last=0;
+}
+void RuntimeObservations::sample_present(std::uint64_t now, PresentResult result) noexcept {
+  if(!sample_active)return;
+  if(now<sample_begin || (sample_anchor && now<sample_last)){sample_valid=false;return;}
+  if(result==PresentResult::Failed){sample_valid=false;return;}
+  if(result!=PresentResult::Success)return;
+  if(sample_anchor)sample_intervals.add(now-sample_last);
+  else {sample_first=now;sample_anchor=true;}
+  sample_last=now;
+}
+void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const ObservationOutput& output) noexcept {
+  const bool begin=!std::strcmp(event,"SAMPLE-BEGIN");
+  if(sample_active){
+    const auto d=sample_intervals.snapshot();
+    const auto elapsed=now>=sample_begin?now-sample_begin:0;
+    const auto initial=sample_anchor?sample_first-sample_begin:elapsed;
+    const auto tail=sample_anchor&&now>=sample_last?now-sample_last:elapsed;
+    const bool eligible=!std::strcmp(event,"SAMPLE-END") && sample_valid && !d.total_overflowed &&
+      d.count>0 && elapsed>=60000000U && initial<=1000000U && tail<=1000000U;
+    output.line("benchmark-frames: end_event=%s eligible=%d begin=%llu end=%llu elapsed=%llu coverage_begin=%llu coverage_end=%llu first_delay_us=%llu open_gap_us=%llu intervals=%llu sum_us=%llu p95_hi_us=%llu max_us=%llu workload_guard=lua_each_tick presentation_api_timing=1",
+      event,eligible,(unsigned long long)sample_begin,(unsigned long long)now,(unsigned long long)elapsed,
+      (unsigned long long)sample_first,(unsigned long long)sample_last,
+      (unsigned long long)initial,(unsigned long long)tail,(unsigned long long)d.count,
+      (unsigned long long)d.total_us,(unsigned long long)d.p95_upper_us,(unsigned long long)d.maximum_us);
+    sample_active=false;
+  }
+  if(begin){
+    sample_intervals.clear();sample_begin=now;sample_first=sample_last=0;
+    sample_anchor=false;sample_active=sample_valid=true;
+  }
 }
 bool RuntimeObservations::due(std::uint64_t now, bool force) const noexcept {
   return !terminal_saved && (force || flush_requested || now-full_us>=60000000U || now-compact_us>=10000000U);
@@ -33,7 +66,7 @@ void RuntimeObservations::observe(const char* checkpoint, const MemoryObservatio
   const bool boundary=!std::strcmp(phase,"before")||!std::strcmp(phase,"after")||
     !std::strcmp(phase,"committed")||!std::strcmp(phase,"failed")||
     !std::strcmp(phase,"gc-before")||!std::strcmp(phase,"gc-after");
-  if(operation&&boundary) {
+  if(operation&&(boundary || !std::strcmp(checkpoint,"save") || !std::strcmp(checkpoint,"reload"))) {
     if(operation_count<operations.size()) {
       auto& row=operations[operation_count++];row.observation=o;
       std::snprintf(row.site.data(),row.site.size(),"%s",checkpoint);
@@ -47,6 +80,7 @@ void RuntimeObservations::observe(const char* checkpoint, const MemoryObservatio
 void RuntimeObservations::flush(const ObservationInputs& inputs, const ObservationOutput& output, bool force) noexcept {
   if (terminal_saved) return;
   const auto now = inputs.now;
+  if(terminal && sample_active)sample_mark("TERMINAL",now,output);
   flush_requested = flush_requested || force;
   const bool full = flush_requested || now - full_us >= 60000000U;
   if (!full && now - compact_us < 10000000U) return;
@@ -107,8 +141,10 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
   output.display();
   const auto& d = p.intervals;
   output.line("frame-interval-sum: overflowed=%d",d.total_overflowed);
-  output.line("segment: scene=%s stable_eligible=%d presentation_api_timing=1 operation_rows=%lu overflow=%llu",
-    scene.data(),!terminal && !window_has_operation && !window_scene_changed && scene[0] && p.intervals.count>0 && p.failed_presents==0 && p.invalid_events==0,(unsigned long)operation_count,(unsigned long long)operation_overflow);
+  const bool crossed=p.intervals.count>0 && p.interval_coverage_begin_us<p.window_begin_us;
+  output.line("segment: scene=%s stable_eligible=0 presentation_api_timing=1 operation_rows=%lu overflow=%llu crossing_interval=%d operation_mixed=%d scene_changed=%d workload_unfixed=1 strict_samples=benchmark-frames",
+    scene.data(),(unsigned long)operation_count,(unsigned long long)operation_overflow,
+    crossed,window_has_operation,window_scene_changed);
   for(std::size_t i=0;i<operation_count;++i){
     const auto& row=operations[i];const auto& o=row.observation;const auto& m=o.sample;
     output.line("operation-memory: site=%s phase=%s identity=%s timestamp=%llu heap_available=%llu arena=%llu lua=%llu lua_known=%d linear_free=%llu",

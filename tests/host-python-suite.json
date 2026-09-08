@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 234,
-  "selected_sorted_ids_sha256": "fbe2f1c43b489e449352bd26a54290c587f99cfed8f66efe59841a3dd14dfd23",
+  "selected_count": 235,
+  "selected_sorted_ids_sha256": "4bae3d129da004727363244a2c6d16cf5e3eb272018621c82eb26d4c6fbe6b3e",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_benchmark.BenchmarkTests.test_media_triplet_and_cancel_restore_user_settings",
@@ -187,6 +187,7 @@
     "test_embedded_adapter.EmbeddedAdapterTests.test_generator_uses_python39_exact_lf_write",
     "test_embedded_adapter.EmbeddedAdapterTests.test_header_contains_attach_entry_point",
     "test_embedded_adapter.EmbeddedAdapterTests.test_runtime_uses_the_embedded_fallback",
+    "test_entity_index.EntityIndexTests.test_real_sparse_index_and_ordered_migration",
     "test_fetch_log.FetchLogTests.test_default_set_includes_the_boot_log_and_version_stamp",
     "test_fetch_log.FetchLogTests.test_missing_remote_file_raises",
     "test_fetch_log.FetchLogTests.test_writes_file_and_reports_size",

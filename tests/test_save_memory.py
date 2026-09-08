@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from support.pinned_upstream import generated_sources, original_sources
 from test_playable_path import function_body
+from test_entity_index import index_script
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -28,6 +29,8 @@ class SaveMemoryTests(unittest.TestCase):
             target=directory/'probe.cpp';target.write_text(code)
             closure=directory/'closure.lua'
             closure.write_text('function make_closure(value)\n  return --[[persistable:SaveMemoryClosure]] function() return value.answer end\nend\n')
+            index_probe=directory/'index.lua'
+            index_probe.write_text(index_script(original,generated))
             include=os.environ.get('CTH3DS_LUA_INCLUDE','/opt/homebrew/include/lua')
             library=os.environ.get('CTH3DS_LUA_LIBRARY','/opt/homebrew/lib/liblua.dylib')
             binary=directory/'probe'
@@ -35,7 +38,7 @@ class SaveMemoryTests(unittest.TestCase):
                 '-fno-omit-frame-pointer','-I'+str(src),'-I'+str(ROOT/'include'),'-I'+include,
                 str(target),library,'-o',str(binary)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-            result=subprocess.run([str(binary),str(closure)],capture_output=True,text=True,timeout=90,
+            result=subprocess.run([str(binary),str(closure),str(index_probe)],capture_output=True,text=True,timeout=90,
                 env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('PASS native save compatibility',result.stdout)

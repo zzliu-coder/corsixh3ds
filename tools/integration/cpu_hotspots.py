@@ -6,6 +6,8 @@ from .world_profile import transforms as world_transforms
 from .latency import transforms as latency_transforms
 from .spatial_queries import transforms as spatial_transforms
 from .save_memory import transforms as save_transforms
+from .entity_index import transforms as entity_transforms
+from .save_phases import transforms as phase_transforms
 
 def transforms(root):
     path='CorsixTH/Src/th_map.cpp'
@@ -102,6 +104,8 @@ class level_map {
     yield from latency_transforms(root)
     yield from spatial_transforms(root)
     yield from save_transforms(root)
+    yield from entity_transforms(root)
+    yield from phase_transforms(root)
 
 def patch_cpu_hotspots(root: Path, dry_run=False):
     changes=[]

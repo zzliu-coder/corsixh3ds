@@ -165,12 +165,42 @@ DTOR_NEW = '''  if (singleton == this) {
 def replacements(original_transaction: str) -> Mapping[str, list[tuple[str, str, str]]]:
     return {
         'th_sound.h': [
+            ('  size_t cache_bytes{0};',
+             '  size_t cache_bytes{0};\n  bool pressure_rejected{false}; // R61: transient playback failure only', 'playback pressure status'),
             ('cache_bytes+(archive?archive->metadata_bytes():0)+sound_count', 'cache_bytes+archive_metadata_bytes+sound_count', 'owner accounting'),
             ('  sound_archive* archive{nullptr}; // Lua soundEffects environment retains archive.',
              '''  sound_archive* archive{nullptr}; // Lua soundEffects environment retains archive.
   size_t archive_metadata_bytes{0}; // value snapshot; safe after archive finalization''', 'metadata field'),
         ],
         'th_sound.cpp': [
+            ('bool sound_player::ensure_sound(size_t index) {\n  drain_finished();',
+             'bool sound_player::ensure_sound(size_t index) {\n  pressure_rejected=false; // R61: reset per request\n  drain_finished();', 'sound request status'),
+            ('  while(cache_bytes+metadata+pcm+sizeof(Mix_Chunk)>limit) {',
+             '''  // R61: owner-local eviction also responds to process headroom.
+  // Playing chunks stay pinned; never collect Lua inside a decoder/mixer call.
+  while(cache_bytes+metadata+pcm+sizeof(Mix_Chunk)>limit ||
+        !cth3ds::runtime_audio_reserve(scratch+pcm+sizeof(Mix_Chunk),archive->get_sound_name(index))) {''',
+             'global pressure reuses unpinned cache'),
+            ('if(victim==sound_count){SDL_SetError("audio cache pinned: required clip rejected");return false;}',
+             'if(victim==sound_count){pressure_rejected=true;SDL_SetError("audio pressure: no unused chunk to evict");return false;}',
+             'preserve active pins'),
+            ('''  // Actual conversion scratch plus operation reserve must coexist with cache.
+  if(!cth3ds::runtime_audio_reserve(scratch+pcm+sizeof(Mix_Chunk),archive->get_sound_name(index)))return false;''',
+             '''  // Admission checked above against current heap and conversion scratch.
+  // Actual allocation below remains fallible; no malloc/free probe claims ownership.''',
+             'single admission point'),
+            ('if(!chunk){sound_observe("sound_decode","decode-failed",archive->get_sound_name(index),scratch+pcm,owner_bytes(),true);return false;}',
+             'if(!chunk){pressure_rejected=std::strstr(SDL_GetError(),"memory")!=nullptr;sound_observe("sound_decode","decode-failed",archive->get_sound_name(index),scratch+pcm,owner_bytes(),true);return false;}',
+             'decoder out-of-memory boundary'),
+            ('''    cth3ds::report_allocation_failure("sound",archive ? archive->get_sound_name(iIndex) : "no-archive",0,"mixer",SDL_GetError());
+    cth3ds::report_fatal(SDL_GetError());''',
+             '''    char detail[192];std::snprintf(detail,sizeof(detail),"%s",SDL_GetError());
+    if(pressure_rejected) {
+      sound_observe("sound_play","pressure-skip",archive ? archive->get_sound_name(iIndex) : "no-archive",0,owner_bytes(),true);
+    } else {
+      cth3ds::report_allocation_failure("sound",archive ? archive->get_sound_name(iIndex) : "no-archive",0,"mixer",detail);
+      cth3ds::report_fatal(detail);
+    }''', 'optional clip failure preserves saveable session'),
             (original_transaction, sound_transaction(original_transaction), 'native transaction'),
             (CTOR_OLD, CTOR_NEW, 'native constructor'),
             (DTOR_OLD, DTOR_NEW, 'native destructor'),

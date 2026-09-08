@@ -6,6 +6,11 @@
 #include "cth3ds/events.hpp"
 
 namespace cth3ds {
+[[nodiscard]] inline bool benchmark_user_input(const RawInputSnapshot& sample) noexcept {
+  return sample.held || sample.down || sample.touching ||
+    sample.circle_x<=-24 || sample.circle_x>=24 ||
+    sample.circle_y<=-24 || sample.circle_y>=24;
+}
 // The caller owns synchronization. Edges are never coalesced; held movement
 // keeps a sample at least every 32ms. Idle snapshots occupy one tail entry.
 class InputQueue {

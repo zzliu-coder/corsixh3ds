@@ -1,4 +1,5 @@
 """Bounded slow-resource identities at real cold loads; hot cache hits stay direct."""
+from sound_lifetime import SoundPatchError
 
 LEGACY_GRAPHICS = '''
 -- CORSIXTH_3DS_COLD_RESOURCE_TRACE_R56
@@ -36,13 +37,22 @@ do
 end
 '''
 
+RETAINED_R60_GRAPHICS = GRAPHICS.replace(
+    '  -- CORSIXTH_3DS_HOT_CACHE_R58: cached identities bypass nested observers.',
+    '  -- CORSIXTH_3DS_HOT_CACHE_R58: hit returns the original cached identity,\n'
+    '  -- before nested pcall/span/allocator observers. Cold loads retain full traces.')
+
 def transforms(root):
     for path,fragment in (('CorsixTH/Lua/graphics.lua',GRAPHICS),
                           ('CorsixTH/Lua/app.lua',APP)):
         text=(root/path).read_text()
-        if fragment.strip() not in text:
-            if fragment == GRAPHICS and LEGACY_GRAPHICS.strip() in text:
-                text=text.replace(LEGACY_GRAPHICS.strip(),GRAPHICS.strip(),1)
-            else:
-                text=text.rstrip()+'\n'+fragment
+        if fragment == GRAPHICS:
+            # Normalize all known retained wrappers to exactly one owner.
+            for known in (GRAPHICS, LEGACY_GRAPHICS, RETAINED_R60_GRAPHICS):
+                text=text.replace(known.strip(), '')
+            if 'CORSIXTH_3DS_COLD_RESOURCE_TRACE_R56' in text:
+                raise SoundPatchError('unknown cold-resource wrapper; cannot normalize safely')
+            text=text.rstrip()+'\n'+GRAPHICS
+        elif fragment.strip() not in text:
+            text=text.rstrip()+'\n'+fragment
         yield path,text

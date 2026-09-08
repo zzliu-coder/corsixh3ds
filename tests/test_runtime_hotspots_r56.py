@@ -9,7 +9,7 @@ import unittest
 from support.pinned_upstream import original_sources,generated_sources
 from test_playable_path import function_body
 from integration.thermal_cache import MAP_MUTATORS,LUA_MUTATORS
-from integration.latency import APP,GRAPHICS
+from integration.latency import APP,GRAPHICS,RETAINED_R60_GRAPHICS,transforms as trace_transforms
 import test_lua_runtime
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -130,6 +130,13 @@ TheApp=nil;w=make(1,3);improved(w);assert(w.game_date.hour==50)
         self.lua(script)
 
     def test_cold_resource_wrappers_preserve_results_errors_and_cache_hits(self):
+        with tempfile.TemporaryDirectory(prefix='cth-trace-normalize-') as tmp:
+            root=Path(tmp);(root/'CorsixTH/Lua').mkdir(parents=True)
+            (root/'CorsixTH/Lua/graphics.lua').write_text(RETAINED_R60_GRAPHICS+GRAPHICS)
+            (root/'CorsixTH/Lua/app.lua').write_text(APP)
+            normalized=dict(trace_transforms(root))['CorsixTH/Lua/graphics.lua']
+            self.assertEqual(normalized.count('CORSIXTH_3DS_COLD_RESOURCE_TRACE_R56'),1)
+            self.assertEqual(normalized.strip(),GRAPHICS.strip())
         for path,fragment in (('CorsixTH/Lua/app.lua',APP),('CorsixTH/Lua/graphics.lua',GRAPHICS)):
             self.assertEqual((self.generated/path).read_text().count(fragment.strip()),1)
         self.lua(r'''

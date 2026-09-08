@@ -37,12 +37,14 @@ struct Image {
 struct Stats {
   std::uint64_t frames{},draws{},uploads{},upload_bytes{},hits{},evictions{},splits{},wait_us{};
   std::uint64_t source_bytes{},source_peak{},source_images{},gpu_us{},gpu_jobs{};
+  std::uint64_t clip_requests{},clip_skips{},full_sprite_draws{};
+  std::uint64_t frame_upload_start{},frame_eviction_start{},frame_upload_peak{},frame_eviction_peak{};
   float cmd_peak{};
 } stats;
 std::array<Page,page_count> pages;
 C3D_Tex canvas{},overlay{};
 C3D_RenderTarget *canvas_target{},*top_target{},*bottom_target{};
-bool active{},c3_ready{},c2_ready{},in_frame{},pending{},empty_clip{};
+bool active{},c3_ready{},c2_ready{},in_frame{},pending{},empty_clip{},canvas_clip_active{};
 unsigned objects{};std::uint64_t epoch{1};
 SDL_Rect clip{0,0,640,480};
 Image* images{};
@@ -80,6 +82,7 @@ void apply_clip() noexcept {
   C2D_Flush();
   C3D_SetScissor(GPU_SCISSOR_NORMAL,clip.x,512-clip.y-clip.h,
     clip.x+clip.w,512-clip.y);
+  canvas_clip_active=true;
 }
 void canvas_scene() noexcept {
   C2D_Prepare(); C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
@@ -100,7 +103,7 @@ void end_job() noexcept {
   C2D_Flush();stats.cmd_peak=std::max(stats.cmd_peak,command_usage());
   // C2D owns vertex/index buffers; default FrameEnd flushes their CPU cache
   // together with updated atlas regions before the queue starts using them.
-  C3D_FrameEnd(0);in_frame=false;pending=true;
+  C3D_FrameEnd(0);in_frame=false;pending=true;canvas_clip_active=false;
 }
 bool checkpoint() noexcept {
   // No screen has been drawn during canvas assembly. Preserve the canvas,
@@ -158,6 +161,7 @@ bool draw_image(C3D_Tex& tex,const Tex3DS_SubTexture& sub,SDL_FRect dst,u32 tint
 bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height) noexcept {
   if(!in_frame)return false;
   C2D_SceneBegin(target); C2D_ViewReset(); C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);
+  canvas_clip_active=false;
   C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
   // With C2D's offscreen projection, logical row y is memory row y (R54
   // device readback). Convert memory rows to bottom-origin texture V once.
@@ -387,6 +391,7 @@ bool gpu_begin() noexcept {
   if(!active)return false;
   if(in_frame)end_job();
   clip={0,0,640,480};empty_clip=false;
+  stats.frame_upload_start=stats.upload_bytes;stats.frame_eviction_start=stats.evictions;
   return begin_job();
 }
 bool gpu_clear(std::uint32_t colour) noexcept {
@@ -395,9 +400,15 @@ bool gpu_clear(std::uint32_t colour) noexcept {
 }
 void gpu_clip(const SDL_Rect* rectangle) noexcept {
   const SDL_Rect full{0,0,640,480};
-  empty_clip=rectangle && !SDL_IntersectRect(&full,rectangle,&clip);
-  if(!rectangle)clip=full;
-  if(empty_clip)clip={0,0,1,1};
+  SDL_Rect next=full;
+  const bool next_empty=rectangle && !SDL_IntersectRect(&full,rectangle,&next);
+  if(next_empty)next={0,0,1,1};
+  ++stats.clip_requests;
+  if(canvas_clip_active && empty_clip==next_empty &&
+     clip.x==next.x && clip.y==next.y && clip.w==next.w && clip.h==next.h){
+    ++stats.clip_skips;return;
+  }
+  empty_clip=next_empty;clip=next;
   if(in_frame)apply_clip();
 }
 bool gpu_fill(const SDL_Rect* rectangle,std::uint32_t colour) noexcept {
@@ -455,23 +466,28 @@ int gpu_image_draw(SDL_Texture* texture,const SDL_Rect* source,const SDL_FRect* 
   if(src.x<0||src.y<0||src.x>image->width-src.w||src.y>image->height-src.h)return SDL_SetError("GPU source outside image");
   Uint8 r=255,g=255,b=255,a=255;SDL_GetTextureColorMod(texture,&r,&g,&b);SDL_GetTextureAlphaMod(texture,&a);
   const bool fx=(flip&SDL_FLIP_HORIZONTAL)!=0,fy=(flip&SDL_FLIP_VERTICAL)!=0;
+  const bool whole=image->pieces.size()==1 && src.x==0 && src.y==0 &&
+    src.w==image->width && src.h==image->height;
   for(auto& piece:image->pieces){
-    const SDL_Rect area{piece.sx,piece.sy,piece.w,piece.h};SDL_Rect intersection;
+    SDL_Rect intersection=src;SDL_FRect dst=*destination;
+    if(!whole){
+    const SDL_Rect area{piece.sx,piece.sy,piece.w,piece.h};
     if(!SDL_IntersectRect(&area,&src,&intersection))continue;
     const float left=static_cast<float>(intersection.x-src.x)/src.w;
     const float right=static_cast<float>(intersection.x+intersection.w-src.x)/src.w;
     const float top=static_cast<float>(intersection.y-src.y)/src.h;
     const float bottom=static_cast<float>(intersection.y+intersection.h-src.y)/src.h;
-    SDL_FRect dst{destination->x+(fx?1-right:left)*destination->w,
+    dst={destination->x+(fx?1-right:left)*destination->w,
       destination->y+(fy?1-bottom:top)*destination->h,
       (right-left)*destination->w,(bottom-top)*destination->h};
+    }
     if(dst.x+dst.w<=clip.x||dst.y+dst.h<=clip.y||dst.x>=clip.x+clip.w||dst.y>=clip.y+clip.h)continue;
     if(!room_for_draw()||!place(*image,piece))return SDL_SetError("GPU atlas allocation failed");
     const int x=piece.x+intersection.x-piece.sx,y=piece.y+intersection.y-piece.sy;
     Tex3DS_SubTexture sub{static_cast<u16>(intersection.w),static_cast<u16>(intersection.h),
       x/512.0f,1.0f-y/512.0f,(x+intersection.w)/512.0f,1.0f-(y+intersection.h)/512.0f};
     if(!draw_image(pages[piece.page].texture,sub,dst,C2D_Color32(r,g,b,a),fx,fy))return SDL_SetError("GPU vertex buffer exhausted");
-    ++stats.draws;
+    ++stats.draws;if(whole)++stats.full_sprite_draws;
   }
   return 0;
 }
@@ -495,6 +511,8 @@ bool gpu_bottom(RectI view,const std::uint32_t* rgba,int height) noexcept {
     C2D_ImageTint tint;C2D_PlainImageTint(&tint,0xffffffffU,1.0f);
     ok=C2D_DrawImage({&overlay,&sub},&params,&tint)&&ok;
   }
+  stats.frame_upload_peak=std::max(stats.frame_upload_peak,stats.upload_bytes-stats.frame_upload_start);
+  stats.frame_eviction_peak=std::max(stats.frame_eviction_peak,stats.evictions-stats.frame_eviction_start);
   end_job();++stats.frames;return ok;
 }
 bool gpu_read_pixels(SDL_Surface* surface) noexcept {
@@ -511,6 +529,10 @@ bool gpu_read_pixels(SDL_Surface* surface) noexcept {
 }
 void gpu_log_statistics() noexcept {
   if(!active)return;
+  boot_log("gpu-hot-paths: clip_requests=%llu clip_skips=%llu full_sprite_draws=%llu frame_upload_peak_bytes=%llu frame_eviction_peak=%llu scope=session",
+    (unsigned long long)stats.clip_requests,(unsigned long long)stats.clip_skips,
+    (unsigned long long)stats.full_sprite_draws,(unsigned long long)stats.frame_upload_peak,
+    (unsigned long long)stats.frame_eviction_peak);
   boot_log("gpu-work: frames=%llu draws=%llu hits=%llu uploads=%llu upload_bytes=%llu evictions=%llu splits=%llu wait_us=%llu completed_gpu_jobs=%llu gpu_queue_us=%llu cmd_peak_permille=%u source_bytes=%llu source_peak=%llu images=%llu atlas_linear_bytes=3145728 canvas_vram_bytes=2097152 screen_vram_bytes=691200 linear_free=%lu vram_free=%lu",
     (unsigned long long)stats.frames,(unsigned long long)stats.draws,(unsigned long long)stats.hits,
     (unsigned long long)stats.uploads,(unsigned long long)stats.upload_bytes,(unsigned long long)stats.evictions,

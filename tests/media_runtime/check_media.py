@@ -1,4 +1,5 @@
 """Real assembled entry points, bounded lifetimes and private-media-free tests."""
+import hashlib
 import os
 from pathlib import Path
 import shlex
@@ -29,13 +30,57 @@ def make_outline_font(path, chars):
     fb.setupPost();fb.setupMaxp();fb.save(str(path))
 
 class MediaTests(unittest.TestCase):
+    def strict_runtime(self):
+        # Exact upstream global-variable policy, not the independent Lua C API
+        # checker. Do not supply a global IS_3DS that the game never declares.
+        path=ROOT/'tests/fixtures/strict.lua.pinned'
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+            'f8619b09e2f2056c6afacd57288f5136c2f10afa5cbc080cc9b5d0c74f6fb10d')
+        return 'dofile('+repr(str(path))+')\nassert(rawget(_G,"IS_3DS")==nil)\n'
+
+    def test_actual_graphics_font_entry_under_upstream_strict(self):
+        for platform in ('true','false','absent'):
+            with self.subTest(platform=platform):
+                script='local platform='+('nil' if platform=='absent' else platform)+'\n'+r'''
+local allocations=0
+package.preload.th3ds=function()
+ if platform==nil then error('platform module unavailable')end
+ return {is_platform=function()return platform end}
+end
+package.preload.TH=function()return {freetype_font=function()
+ allocations=allocations+1
+ return {setFace=function(self,data)assert(data=='outline')end,
+   setFontOptions=function(self,sheet,options)self.options=options end,
+   clearCache=function()end}
+end}end
+function class(name)_G[name]={};return function()end end
+'''
+                script+='package.loaded["3ds.media"]=dofile('+repr(str(ROOT/'lua/3ds/media.lua'))+')\n'
+                script+='dofile('+repr(str(self.upstream/'CorsixTH/Lua/graphics.lua'))+')\n'
+                script+=self.strict_runtime()+r'''
+local gfx=setmetatable({app={config={ui_scale=1}},th_charset=1,ttf_font_data='outline',
+ cache={language_fonts={}},reload_functions_last={},load_info={}},{__index=Graphics})
+local sheet,options={},{}
+local font=gfx:loadLanguageFont('unicode',sheet,options)._proxy
+assert(allocations==1 and options.ttf_height==nil and options.ttf_width==nil)
+assert(font.options.ttf_height==(platform and 14 or nil))
+assert(font.options.ttf_width==(platform and 0 or nil))
+assert(gfx:loadLanguageFont('unicode',sheet,{})._proxy==font and allocations==1)
+local heading=gfx:loadLanguageFont('unicode',sheet,{ttf_height=20})._proxy
+assert(heading~=font and heading.options.ttf_height==20 and allocations==2)
+assert(gfx:loadLanguageFont('unicode',sheet,{ttf_height=20})._proxy==heading)
+assert(allocations==2 and rawget(_G,'IS_3DS')==nil)
+'''
+                lua_tests.LuaRuntimeTests().run_lua(script)
+
     def test_actual_sound_window_and_persistent_voice_setting(self):
         script=r'''
-IS_3DS=true
 local function panel()
  local p={}
  function p:setLabel(v)self.label=v;return self end
  function p:setTooltip()return self end
+ function p:setVisible(v)self.visible=v;return self end
+ function p:setAutoClip()return self end
  function p:setToggleState(v)self.toggled=v;return self end
  function p:enable(v)self.enabled=v;return self end
  function p:makeButton()self.button=panel();return self.button end
@@ -56,10 +101,11 @@ UIDropdown=function(...)return {close=function(self)self.closed=true end}end
 '''
         script+='package.loaded["3ds.media"]=dofile('+repr(str(ROOT/'lua/3ds/media.lua'))+')\n'
         script+='dofile('+repr(str(self.upstream/'CorsixTH/Lua/dialogs/resizables/sound_setting.lua'))+')\n'
+        script+=self.strict_runtime()
         script+=r'''
 local installed=false
 package.loaded.lfs={attributes=function(path)if installed and path=="ROOT/Voices/Sound-CN.dat"then return "file"end end}
-local app={config={audio=true,play_sounds=true,play_announcements=true,play_music=true,
+local app={is_3ds=true,config={audio=true,play_sounds=true,play_announcements=true,play_music=true,
  sound_volume=.5,announcement_volume=.5,music_volume=.5,language="Chinese (simplified)"},
  gfx={loadMenuFont=function()return {}end},
  getFullPath=function()return "ROOT/"end,
@@ -81,6 +127,18 @@ assert(missing.voice_panel.label:find("missing"))
 installed=true;local available=create("game");assert(available.voice_panel.button.enabled)
 available:buttonVoiceLanguage();assert(app.config.speech_language=="zh")
 available:buttonVoiceLanguage();assert(app.config.speech_language=="en")
+-- Hidden MIDI callbacks are harmless on handheld; the desktop path still
+-- constructs and opens the original controls without a platform global.
+available:dropdownMidiApi(true);available:dropdownMidiPort(true)
+assert(not available.midi_api_dropdown and not available.midi_port_dropdown)
+app.is_3ds=nil
+for _,mode in ipairs{'menu','game'}do
+ local desktop=create(mode);assert(not desktop.voice_panel and desktop.midi_api_button)
+ desktop:dropdownMidiApi(true);assert(desktop.midi_api_dropdown)
+ desktop:dropdownMidiPort(true);assert(desktop.midi_port_dropdown and not desktop.midi_api_dropdown)
+ desktop:closeAllDropdowns();assert(not desktop.midi_port_dropdown)
+end
+assert(rawget(_G,'IS_3DS')==nil)
 '''
         lua_tests.LuaRuntimeTests().run_lua(script)
         config=(self.upstream/'CorsixTH/Lua/config_finder.lua').read_text()

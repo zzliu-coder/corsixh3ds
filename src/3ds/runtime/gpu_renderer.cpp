@@ -305,6 +305,21 @@ bool startup_self_test() noexcept {
   all=diagnostic_lcd(bottom,"canvas-to-bottom-buffer",submitted,barrier,false)&&all;
   boot_log("gpu-self-test: result=%s pixels=1024 mismatches=%u checks=staged-clear-raster-atlas-dual-output stages=5 lcd_visual=NOT_PROVEN",
     all?"PASS":"FAIL",texture.mismatches);
+  if(all) {
+    // Self-test pixels must not remain visible throughout Lua/asset startup.
+    // Reuse the canvas and both targets, complete the transfer, then let SDL
+    // display the normal boot status. No per-frame work or extra allocation.
+    bool clean=begin_job();
+    if(clean) {
+      C2D_TargetClear(canvas_target,C2D_Color32(18,25,32,255));
+      clean=screen_image(top_target,{0,0,640,480},400,240)&&clean;
+      clean=screen_image(bottom_target,{0,0,640,480},320,240)&&clean;
+    }
+    const bool completed=diagnostic_complete();
+    all=clean&&completed;
+    boot_log("gpu-startup: test_pattern_cleared=%u transfer_completed=%u loading_background=18,25,32",
+      clean?1U:0U,completed?1U:0U);
+  }
   stats={};epoch=1;objects=0;clip={0,0,640,480};empty_clip=false;
   return all;
 }

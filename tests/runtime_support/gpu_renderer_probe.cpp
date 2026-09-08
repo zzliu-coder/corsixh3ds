@@ -13,6 +13,7 @@
 #include <vector>
 #include "cth3ds/gpu_api.hpp"
 #include "cth3ds/gpu_layout.hpp"
+#include "cth3ds/gpu_diagnostics.hpp"
 namespace {
 std::vector<std::function<void()>> commands,pending;
 C3D_RenderTarget* current{};C3D_RenderTarget* outputs[2]{};
@@ -142,6 +143,19 @@ int main(){
   }
   corrupt_sampling=true;assert(!gpu_initialize());assert(!gpu_active()&&live==0);
   corrupt_sampling=false;assert(gpu_initialize());
+  // A passing self-test hands back completed, neutral loading buffers. No
+  // coloured test texture or white viewport may persist until asset loading.
+  assert(commands.empty()&&pending.empty()&&!in_frame);
+  for(int screen=0;screen<2;++screen){
+    const unsigned width=screen==GFX_TOP?400U:320U;
+    for(unsigned y=0;y<240;++y)for(unsigned x=0;x<width;++x){
+      u32 rgb{};assert(gpu_lcd_rgb(lcd[screen].data(),lcd[screen].size(),
+        gfxGetScreenFormat(static_cast<gfxScreen_t>(screen)),width,240,x,y,rgb));
+      assert(rgb==0x201912U);
+    }
+  }
+  assert(gpu_read_pixels(out));
+  for(int i=0;i<640*480;++i)assert(static_cast<u32*>(out->pixels)[i]==0xff201912U);
   std::vector<u32> colours(640*480);for(int y=0;y<480;++y)for(int x=0;x<640;++x)colours[y*640+x]=0xff000000U|u32(x%256)|u32(y%256)<<8U|u32((x+y)%256)<<16U;
   auto* background=gpu_image_create(renderer,640,480,colours.data());assert(background);
   auto draw=[&](SDL_Texture* tex,SDL_Rect src,SDL_FRect dest,int flip){assert(gpu_image_draw(tex,&src,&dest,static_cast<SDL_RendererFlip>(flip))==0);};

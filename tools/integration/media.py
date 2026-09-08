@@ -61,12 +61,18 @@ def transforms(root):
         text=replace_exact(text,'function Graphics:_loadTrueTypeFont(name, sprite_table, font_options)',
             '''function Graphics:_loadTrueTypeFont(name, sprite_table, font_options)
   -- CORSIXTH_3DS_FONT_METRICS_R59
-  if IS_3DS then font_options=require("3ds.media").fontOptions(font_options) end''','handheld font metrics')
+  if TH3DS then font_options=require("3ds.media").fontOptions(font_options) end''','handheld font metrics')
         text=replace_exact(text,'return string.format("%s,%d,%d,%s,%s,%s,%s",',
             'return string.format("%s,%d,%d,%s,%s,%s,%s,%s,%s",','font metric cache format')
         text=replace_exact(text,'    font_options.apply_ui_scale and "s" or "f")',
             '''    font_options.apply_ui_scale and "s" or "f",
     tostring(font_options.ttf_width), tostring(font_options.ttf_height))''','font metric cache identity')
+    # Graphics already owns a checked local TH3DS. IS_3DS is local to other
+    # modules and cannot be read here under upstream strict.lua. Upgrade the
+    # retained R59 overlay as well as generating a clean upstream tree.
+    old='  if IS_3DS then font_options=require("3ds.media").fontOptions(font_options) end'
+    if old in text:
+        text=replace_exact(text,old,old.replace('IS_3DS','TH3DS'),'local font platform scope')
     yield path,text
 
     path = 'CorsixTH/Src/th_gfx_font.cpp'
@@ -127,7 +133,7 @@ def transforms(root):
         end=text.index('\n  -- jukebox',begin)
         desktop=text[begin:end]
         handheld='''  -- CORSIXTH_3DS_SPEECH_SETTINGS_R59
-  if IS_3DS then
+  if self.app.is_3ds then
     local media=require("3ds.media")
     self.default_api_panels={};self.midi_api_panels={}
     self:addBevelPanel(LBL_X,y,LBL_WIDTH,LBL_HEIGHT,col_shadow,col_bg,col_bg)
@@ -153,10 +159,15 @@ function UISoundSettings:buttonVoiceLanguage()
   else self.ui:addWindow(UIInformation(self.ui,{err})) end
 end
 '''
+    old=marker+'\n  if IS_3DS then'
+    if old in text:
+        text=replace_exact(text,old,marker+'\n  if self.app.is_3ds then','sound window platform scope')
     for signature in ('function UISoundSettings:dropdownMidiApi(activate)',
                       'function UISoundSettings:dropdownMidiPort(activate)'):
-        if signature+'\n  if IS_3DS then return end' not in text:
-            text=replace_exact(text,signature,signature+'\n  if IS_3DS then return end','inactive handheld MIDI controls')
+        old=signature+'\n  if IS_3DS then return end'
+        new=signature+'\n  if self.app.is_3ds then return end'
+        if old in text:text=replace_exact(text,old,new,'MIDI callback platform scope')
+        elif new not in text:text=replace_exact(text,signature,new,'inactive handheld MIDI controls')
     # Upgrade the retained in-progress R59 generated tree as well as a clean
     # upstream tree. No duplicate controls/functions on incremental builds.
     old='''    local label=app.config.speech_language=="zh" and "Chinese" or "English"

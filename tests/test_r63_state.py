@@ -100,10 +100,20 @@ print('PASS complete Staff/BottomPanel modules: strict globals, 16x64 balanced s
         test_lua_runtime.LuaRuntimeTests().run_lua(script)
 
     def test_generated_modules_never_borrow_another_modules_th3ds_local(self):
+        # Verify and load the deployed copies, so tests cannot conceal a missing
+        # runtime dependency by loading it directly from the source checkout.
+        lua_root=self.generated/'CorsixTH/Lua'
+        script='package.path='+repr(str(lua_root/'?.lua'))+'..";"..package.path\n'
+        for source in sorted((ROOT/'lua/3ds').glob('*.lua')):
+            self.assertEqual((lua_root/'3ds'/source.name).read_bytes(),source.read_bytes())
+            script+='assert(type(require('+repr('3ds.'+source.stem)+'))=="table")\n'
+        test_lua_runtime.LuaRuntimeTests().run_lua(script)
         # Whole-module tripwire complements executable strict-module tests.
+        # Match an interface member access; error-history strings can legitimately
+        # mention the undeclared identifier without accessing a Lua global.
         for path in (self.generated/'CorsixTH/Lua').rglob('*.lua'):
             text=path.read_text()
-            if 'TH3DS' in text:
+            if re.search(r'\bTH3DS\s*[.\[]',text):
                 self.assertTrue(re.search(r'local \w+, TH3DS = pcall\(require,\s*"th3ds"\)',text),
                     str(path)+' lacks a module-local native binding')
 

@@ -19,13 +19,14 @@ class VersionAlignmentTests(unittest.TestCase):
         # The displayed candidate and one-shot benchmark must identify this
         # revision too; a matching semantic version alone cannot distinguish
         # consecutive hardware candidates.
-        self.assertIn('"R59 " + state.build_tag', runtime)
-        self.assertIn('"CORSIXTH R59 "', runtime)
-        self.assertIn('revision=R59', runtime)
-        self.assertTrue(r'memcmp(magic,"R59\n",4)' in runtime,
-                        'one-shot marker must match R59 exactly')
-        self.assertTrue('sdmc:/3ds/corsixth/benchmark-used-r59.txt' in runtime,
-                        'consumed benchmark marker must identify R59')
+        revision = "R61"
+        for token in (f'"{revision} " + state.build_tag',
+                      f'"CORSIXTH {revision} "', f'revision={revision}',
+                      f'memcmp(magic,"{revision}\\n",4)',
+                      f'sdmc:/3ds/corsixth/benchmark-used-{revision.lower()}.txt'):
+            self.assertTrue(token in runtime, f'candidate identity is missing: {token}')
+        self.assertNotIn('benchmark-used-r60.txt', runtime,
+                         'previous candidate marker must remain untouched')
         self.assertNotIn('"CORSIXTH R53 "', runtime)
         self.assertTrue('benchmark-used-r53.txt' not in runtime,
                         'old benchmark marker must remain untouched')

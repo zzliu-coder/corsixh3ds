@@ -33,11 +33,12 @@ TEST(bounded_log_retains_exact_three_runs) {
 TEST(bounded_log_caps_normal_writes_and_reserves_fatal_evidence) {
   LogFixture f; EXPECT_TRUE(f.open());
   const std::string block(1024,'x');
-  for (int i=0;i<2000;++i) f.log.write(block.data(),block.size());
+  const auto overflow_blocks=cth3ds::BoundedLog::kLimit/block.size()+2;
+  for (std::size_t i=0;i<overflow_blocks;++i) f.log.write(block.data(),block.size());
   EXPECT_TRUE(f.log.truncated());
   EXPECT_TRUE(f.log.bytes() <= cth3ds::BoundedLog::kLimit-cth3ds::BoundedLog::kReserve+128);
   f.log.emergency(); f.log.write("FATAL preserved\n",16);
-  for (int i=0;i<2000;++i) f.log.write(block.data(),block.size());
+  for (std::size_t i=0;i<overflow_blocks;++i) f.log.write(block.data(),block.size());
   f.log.close(); const auto text=LogFixture::read(f.current);
   EXPECT_TRUE(text.size() <= cth3ds::BoundedLog::kLimit);
   EXPECT_TRUE(text.find("FATAL preserved") != std::string::npos);

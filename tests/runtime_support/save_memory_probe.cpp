@@ -1,0 +1,113 @@
+#include "lua.hpp"
+#include "th_lua.h"
+#include "persist_lua.h"
+#include "cth3ds/allocation_watch.hpp"
+#include <array>
+#include <cerrno>
+#include <climits>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <new>
+#include <string>
+#include <cstdint>
+// INSERT_COMPAT
+namespace reference {
+// INSERT_REFERENCE
+}
+namespace candidate {
+// INSERT_CANDIDATE
+}
+struct Heap {bool limited{};std::size_t refused{},largest{};};
+static int empty_userdata(lua_State* L) {
+  lua_newuserdata(L,0);lua_newtable(L);
+  lua_pushinteger(L,0);lua_setfield(L,-2,"__depersist_size");lua_setmetatable(L,-2);
+  return 1;
+}
+static void* allocator(void* ud,void* p,size_t old,size_t n) {
+  auto& heap=*static_cast<Heap*>(ud);
+  if(!n){std::free(p);return nullptr;}
+  // Simulate limited contiguous temporary allocations, not total Old-3DS RAM.
+  // Final output strings remain allowed, identical for both writers.
+  if(heap.limited && n>old && (p || old!=LUA_TSTRING)) {
+    heap.largest=std::max(heap.largest,n);
+    if(n>128*1024){++heap.refused;return nullptr;}
+  }
+  return std::realloc(p,n);
+}
+static void run(lua_State* L,const char* code) {
+  const int error=luaL_dostring(L,code);
+  if(error){std::fprintf(stderr,"Lua failure: %s\nScript: %.220s\n",lua_tostring(L,-1),code);std::abort();}
+}
+int main(int argc,char** argv) {
+  assert(argc==2);
+  Heap heap;auto* L=lua_newstate(allocator,&heap);assert(L);luaL_openlibs(L);
+  lua_pushglobaltable(L);lua_pushcclosure(L,reference::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"reference");
+  lua_pushglobaltable(L);lua_pushcclosure(L,candidate::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"candidate");
+  lua_pushstring(L,argv[1]);lua_setglobal(L,"closure_path");
+  run(L,"reference.dofile(closure_path)");
+  run(L,"candidate.dofile(closure_path)");
+  lua_pushcfunction(L,empty_userdata);lua_setglobal(L,"empty_userdata");
+  run(L,R"(
+    local shared={answer=42};local empty=empty_userdata()
+    local graph={a=shared,b=shared,u=empty,v=empty,fn=make_closure(shared),
+      c=math.sin, bool=false,n=17.25,s=string.rep('long-key-',100)}
+    graph.self=graph;local tail=graph
+    for i=1,96 do tail.child={};tail=tail.child end
+    local permanents={[_G]='global',[math.sin]='sin'}
+    local inverse={global=_G,sin=math.sin}
+    for i=1,8 do
+      local original=assert(reference.dump(graph,permanents))
+      local updated=assert(candidate.dump(graph,permanents));assert(original==updated)
+      for _,reader in ipairs{reference,candidate} do
+        local value=assert(reader.load(updated,inverse))
+        assert(value.self==value and value.a==value.b and value.u==value.v)
+        assert(value.fn()==42 and value.c==math.sin and value.bool==false and value.n==17.25)
+        local count=0;while value.child do value=value.child;count=count+1 end
+        assert(count==96)
+      end
+      collectgarbage('collect')
+    end
+  )");
+  run(L,R"(
+    root={grid={},empty={},string=string.rep('long-value-',80)}
+    root.self=root
+    for x=1,128 do
+      local row={};root.grid[x]=row
+      for y=1,128 do row[y]={humanoids={},objects={}} end
+    end
+    root.alias=root.grid[42][17]
+    root.distinct_long_string=string.rep('long-value-',80)
+    expected=assert(reference.dump(root,{}))
+    actual=assert(candidate.dump(root,{}))
+    assert(actual==expected,'serialized byte format changed')
+    for _,reader in ipairs{reference,candidate} do
+      local restored=assert(reader.load(actual,{}))
+      assert(restored.self==restored and restored.alias==restored.grid[42][17])
+      assert(restored.string==root.string and restored.distinct_long_string==root.string)
+      restored=nil
+    end
+    collectgarbage('collect')
+  )");
+  heap.limited=true;
+  run(L,"local ok,err=pcall(reference.dump,root,{});assert(not ok and err:find('memory'));collectgarbage('collect')");
+  const auto original_largest=heap.largest;assert(heap.refused>0);
+  heap.refused=heap.largest=0;
+  run(L,"local result=assert(candidate.dump(root,{}));assert(result==expected)");
+  assert(heap.refused==0 && heap.largest<=128*1024);
+  std::printf("reference_denied_request=%zu candidate_largest_index_request=%zu byte_format=identical graph_tables=49282\n",original_largest,heap.largest);
+  heap.limited=false;lua_close(L);
+  // Allocation watch keeps the original allocator contract, including type
+  // tags on new objects, failed growth (old allocation stays live), and free.
+  cth3ds::AllocationWatch watch;watch.reset(allocator,&heap,0);
+  auto* p=cth3ds::AllocationWatch::allocate(&watch,nullptr,LUA_TTABLE,64);
+  assert(p && watch.live==64);heap.limited=true;
+  assert(!cth3ds::AllocationWatch::allocate(&watch,p,64,256*1024));
+  assert(watch.live==64 && watch.failures==1 && watch.failed_request==256*1024);
+  assert(!cth3ds::AllocationWatch::allocate(&watch,p,64,0) && watch.live==0);
+  cth3ds::MemoryObservationGate gate;
+  assert(gate.take(1,false));assert(!gate.take(2,false));assert(gate.take(3,true));
+  assert(gate.take(50003,false));assert(gate.skipped==1 && gate.sampled==3);
+  std::puts("PASS native save compatibility, strong aliases, bounded index allocations, allocation watcher");
+}

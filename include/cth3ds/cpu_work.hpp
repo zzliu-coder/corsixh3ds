@@ -11,8 +11,8 @@ struct CpuWorkCounters {
   std::array<CpuCounter,static_cast<std::size_t>(CpuWork::Count)> rows{};
   std::uint64_t (*clock_us)() noexcept = nullptr;
   bool enabled{true};
-  // R54 diagnostic split is opt-in: the normal scan still copies its snapshot
-  // in the same pass. Subphase totals are included in Temperature and World.
+  // Diagnostic split is opt-in; normal mode combines required structure and
+  // snapshot passes. Subphase totals are included in Temperature and World.
   bool thermal_phase_profile{false};
   bool thermal_uniform_fast{true};
   bool thermal_structure_fast{true};

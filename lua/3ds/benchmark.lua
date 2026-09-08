@@ -13,19 +13,6 @@ function Benchmark.new(app,native)
   if app.config.unicode_font and app.config.audio_music and app.audio and app.strings
       and app.strings:checkLanguageExists("Chinese (simplified)") then
     self.media_profiles=true
-    self.original_language=app.config.language
-    self.original_music=app.config.play_music
-    self.original_music_playing=app.audio.background_music~=nil
-    self.original_music_paused=app.audio.background_paused==true
-    if self.original_music_playing then
-      for i,info in ipairs(app.audio.background_playlist) do
-        if info.music==app.audio.background_music then self.original_track=i;break end
-      end
-    end
-    -- Even the upstream language-error fallback must not persist temporary
-    -- benchmark settings. Restore the exact instance method on every exit.
-    self.original_save_config=rawget(app,"saveConfig")
-    app.saveConfig=function()end
     self.profiles={
       {speed="Normal",language="English",music=false,label="en-off"},
       {speed="Normal",language="Chinese (simplified)",music=false,label="zh-off"},
@@ -37,6 +24,24 @@ function Benchmark.new(app,native)
   return self
 end
 
+-- App attaches us before it starts the normal menu song. Snapshot immediately
+-- before the first mutation, after startup has finished. Pending cancellation
+-- owns no media state and must leave the user's playback untouched.
+function Benchmark:captureMedia()
+  if not self.media_profiles or self.media_captured then return end
+  local app=self.app
+  self.original_language=app.config.language
+  self.original_music=app.config.play_music
+  self.original_music_playing=app.audio.background_music~=nil
+  self.original_music_paused=app.audio.background_paused==true
+  for i,info in ipairs(app.audio.background_playlist or {}) do
+    if info.music and info.music==app.audio.background_music then self.original_track=i;break end
+  end
+  self.original_save_config=rawget(app,"saveConfig")
+  app.saveConfig=function()end
+  self.media_captured=true
+end
+
 function Benchmark:mark(event)
   local world=self.app.world
   local date=world and world.game_date and world.game_date:tostring() or "unknown"
@@ -45,7 +50,8 @@ function Benchmark:mark(event)
   if self.media_profiles then
     local p=self.profiles[self.index]
     print("benchmark-media: event="..event.." variant="..p.label
-      .." language="..tostring(self.app.config.language).." music="..tostring(self.app.config.play_music))
+      .." language="..tostring(self.app.config.language).." music="..tostring(self.app.config.play_music)
+      .." voice="..tostring(self.app.config.speech_language or "en"))
   end
   self.native.flush_observations()
 end
@@ -77,7 +83,7 @@ function Benchmark:restore()
   self.app.config.autosave_frequency=self.original_autosave_frequency
   if self.app.world then self.app.world:setSpeed("Normal") end
   self.native.benchmark_state(false)
-  if self.media_profiles then
+  if self.media_captured then
     local ok,err=pcall(function()
       self:applyMedia(self.original_language,self.original_music,self.original_track,
         not self.original_music_playing)
@@ -101,6 +107,7 @@ function Benchmark:cancel(reason)
 end
 
 function Benchmark:load()
+  self:captureMedia()
   self.app.savegame_dir=root.."Saves/"
   self.app.config.autosave_frequency=0
   if self.media_profiles then self.app.audio:stopBackgroundTrack();self.app.config.play_music=false end

@@ -1,4 +1,11 @@
 {
+  "CorsixTH/Lua/dialogs/resizables/sound_setting.lua": "6524f09a0b876a962b80f1b058ac53d0aed6d081024511d55d68e3af5ee13e7d",
+  "CorsixTH/Lua/entities/humanoid.lua": "c6433b06d9a4bca1c6313bbc9665470f2e4ad3bc8d03dfc8d9cc0f4a4c5cedd3",
+  "CorsixTH/Src/persist_lua.cpp": "eae22443c7bb3b2e9865d9f9b545b23875fc0fd537fff67517a0473a3b848527",
+  "CorsixTH/Src/persist_lua.h": "66870427785da89352ac2d18462e4e1b9ccb81091b1ff58128b623c91128d9db",
+  "CorsixTH/Src/th_lua.h": "93c7444a9c098938dfbefc00cb7237322377675ccef393e83b1d6e8870c9e423",
+  "CorsixTH/Src/th_lua.cpp": "70d29e8a9d94aabe74f60f1b4fecf0680528b4ff4c32ae38371c360d93738892",
+  "CorsixTH/Src/lua.hpp": "feda1e2913fe3f0fd5877a0bed8a80a9fbe2e041466feed3897ecc428e46c821",
   "CorsixTH/Src/th_strings.cpp": "8fd88cb2f5b1340fa21ab18665bf3cd1617528eb2b570c114cc61ccdddbf27ec",
   "CorsixTH/Src/th_strings.h": "5e9846b838e4093062389aa2555c90c886e4f01f5e2ac4c880e7c07de14db475",
   "CorsixTH/Src/sdl_audio.cpp": "b10af00835aa2d45d4660b33f4a2a72bbf2467d251df1437c640cdc78117d9fb",

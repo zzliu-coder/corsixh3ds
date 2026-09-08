@@ -298,7 +298,9 @@ def _contract_required(root: Path, asset_mode: str) -> tuple[list[FileRecord], l
                 if not isinstance(item,dict):
                     raise ValidationError("private media file record differs")
                 name = _safe_relative(item.get("path"))
+                voice_paths={"Voices/Sound-"+code+".dat" for code in ("CN","EN","FR","DE","IT","ES","SV")}
                 if name in seen or not (name == "CorsixTH-SC-subset.ttf" or
+                    name in voice_paths or
                     (name.startswith("Music/") and len(PurePosixPath(name).parts)==2 and name.endswith(".wav"))):
                     raise ValidationError("private media path differs: "+name)
                 seen.add(name)

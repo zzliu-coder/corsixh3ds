@@ -1,7 +1,8 @@
 """Invalidate cached thermal structure at the pinned map's real mutation owners.
 
-Temperature values are still snapshotted/published on every original update.
-The ordinary kernel API defaults to a full scan; only this audited map opts in.
+Temperature values are published on every original update; the dense previous
+buffer is reused between audited mutations. The generic API takes a fresh
+snapshot and full structure scan; only this audited map opts into reuse.
 """
 from sound_lifetime import replace_exact
 

@@ -11,7 +11,7 @@ def sha(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
-def prepare(source, stage, runtime, tracks=None):
+def prepare(source, stage, runtime, tracks=None, voices=None):
     from fontTools.ttLib import TTFont
     source, stage, runtime = map(lambda p: Path(p).resolve(), (source, stage, runtime))
     if source == stage or source in stage.parents or stage in source.parents:
@@ -46,6 +46,19 @@ def prepare(source, stage, runtime, tracks=None):
                 remaining-=n
         files.append((path,Path('Music')/path.name))
         rows.append({'name':path.name,'frames':frames,'sample_rate':22050,'channels':1,'bits':16})
+    voice_rows=[]
+    voice_source=Path(voices).resolve() if voices is not None else source
+    if (voice_source/'Voices').exists():
+        from prepare_loose_assets import parse_original_sound
+        allowed={'Sound-'+x+'.dat'for x in ('CN','EN','FR','DE','IT','ES','SV')}
+        for path in sorted((voice_source/'Voices').iterdir()):
+            if path.name not in allowed or not path.is_file() or path.is_symlink() or path.stat().st_size>64*1024*1024:
+                raise ValueError('invalid prepared voice bank: '+str(path))
+            sounds,indices,reserved=parse_original_sound(path.read_bytes())
+            if not reserved or len(sounds)>4095 or any(s.sample_rate!=22050 or s.bits_per_sample!=16 for s in sounds):
+                raise ValueError('voice bank must retain indices and PCM16/22050')
+            files.append((path,Path('Voices')/path.name))
+            voice_rows.append({'file':path.name,'slots':len(sounds)+1,'sample_rate':22050,'bits':16})
     inventory=[]
     for path, relative in files:
         digest=sha(path);dest=stage/relative
@@ -56,7 +69,7 @@ def prepare(source, stage, runtime, tracks=None):
             dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(path,dest)
         if sha(dest)!=digest:raise ValueError('copied media differs')
         inventory.append({'path':relative.as_posix(),'bytes':path.stat().st_size,'sha256':digest})
-    report={'schema':'corsixth.private-media.v1','files':inventory,'music':rows,
+    report={'schema':'corsixth.private-media.v1','files':inventory,'music':rows,'voices':voice_rows,
             'required_characters':len(required),'missing_characters':0,
             'font_rendering':'upstream FreeType -> real render_target -> selected backend',
             'music_transport':'file-backed SDL_mixer WAV; one active decoder',
@@ -68,9 +81,10 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('source','stage','runtime'):parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--track',action='append',help='one WAV name; repeat, defaults to all prepared tracks')
+    parser.add_argument('--voices',type=Path,help='optional prepared directory containing Voices/')
     args=parser.parse_args()
     try:
-        report=prepare(args.source,args.stage,args.runtime,args.track)
+        report=prepare(args.source,args.stage,args.runtime,args.track,args.voices)
         print(json.dumps(report,ensure_ascii=False,indent=2))
     except (OSError,ValueError,wave.Error,ImportError) as e:parser.exit(2,str(e)+'\n')
 

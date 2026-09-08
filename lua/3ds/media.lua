@@ -2,6 +2,79 @@
 -- and lifetime are platform-specific. No game/music/font payload lives here.
 local M = {}
 
+function M.fontOptions(options)
+  local result={}
+  for key,value in pairs(options)do result[key]=value end
+  -- Natural outline aspect ratio, integer body height inside 19-pixel rows.
+  -- Explicit per-window sizes remain available; no final-screen stretching.
+  if result.ttf_height==nil then result.ttf_height=14 end
+  if result.ttf_width==nil then result.ttf_width=0 end
+  return result
+end
+
+function M.speechFile(app, requested)
+  local choice=app.config.speech_language or "en"
+  for _,voice in ipairs(M.voices)do if voice.code==choice then return voice.file end end
+  return requested or "Sound-0.dat"
+end
+
+M.voices={
+  {code="zh",label="Chinese",file="Sound-CN.dat"},
+  {code="en",label="English",file="Sound-EN.dat",original="Sound-0.dat"},
+  {code="fr",label="French",file="Sound-FR.dat"},
+  {code="de",label="German",file="Sound-DE.dat"},
+  {code="it",label="Italian",file="Sound-IT.dat"},
+  {code="es",label="Spanish",file="Sound-ES.dat"},
+  {code="sv",label="Swedish",file="Sound-SV.dat"},
+}
+function M.speechPath(app,file)
+  for _,voice in ipairs(M.voices)do
+    if file==voice.file then
+      if app.getFullPath then
+        local path=app:getFullPath().."Voices/"..file
+        if require("lfs").attributes(path,"mode")=="file" then return path end
+      end
+      if voice.original then return app.fs:_getFilePath("Sound/Data/"..voice.original) end
+      return nil,"Voice data missing: "..voice.label
+    end
+  end
+  return app.fs:_getFilePath("Sound/Data/"..file)
+end
+function M.voiceOptions(app)
+  local result={}
+  for _,voice in ipairs(M.voices)do
+    if M.speechPath(app,voice.file) then result[#result+1]=voice end
+  end
+  return result
+end
+function M.voiceLabel(app)
+  for _,voice in ipairs(M.voices)do
+    if voice.code==(app.config.speech_language or "en") then return voice.label end
+  end
+  return "Unknown"
+end
+function M.hasChineseSpeech(app)
+  return M.speechPath(app,"Sound-CN.dat")~=nil
+end
+
+function M.setSpeech(app,choice)
+  local available=false
+  for _,voice in ipairs(M.voiceOptions(app))do if voice.code==choice then available=true;break end end
+  if not available then return false,"Voice data is not installed; current voice kept." end
+  local previous=app.config.speech_language
+  app.config.speech_language=choice
+  local ok,result=pcall(app.audio.initSpeech,app.audio)
+  if not ok or result~=true then app.config.speech_language=previous;return false,tostring(result) end
+  app:saveConfig()
+  return true
+end
+function M.cycleSpeech(app)
+  local choices=M.voiceOptions(app);local index=0
+  for i,voice in ipairs(choices)do if voice.code==(app.config.speech_language or "en") then index=i;break end end
+  if #choices==0 then return false,"Voice data is not installed" end
+  return M.setSpeech(app,choices[index%#choices+1].code)
+end
+
 function M.configure(config, root, attributes)
   attributes = attributes or require("lfs").attributes
   root = root:gsub("[/\\]+$", "") .. "/"
@@ -25,6 +98,9 @@ function M.configure(config, root, attributes)
 end
 
 local function observe(native, phase, path)
+  if native and native.diagnostic_line then
+    native.diagnostic_line("music-state: "..phase.." file="..tostring(path or "none"))
+  end
   if native and native.observe_memory then
     -- A file/decoder failure is not evidence of an allocation failure.
     native.observe_memory("sound_read", phase, path or "music", "Operation")

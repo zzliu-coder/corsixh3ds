@@ -193,9 +193,14 @@ end
 
 function Platform:showError(message)
   message = tostring(message)
-  native_notice(self.native, message, true)
+  if self.native.diagnostic_line then self.native.diagnostic_line(message) end
+  local summary=message:match("^[^\n]+") or message
+  if message:match("^SAVE FAILED:") and message:find("not enough memory",1,true) then
+    summary="SAVE FAILED: Not enough memory. Previous save kept."
+  elseif #summary>150 then summary=summary:sub(1,147).."..." end
+  native_notice(self.native, summary, true)
   local ui = self.app.ui
-  if ui and UIInformation then ui:addWindow(UIInformation(ui, {message})) end
+  if ui and UIInformation then ui:addWindow(UIInformation(ui, {summary})) end
   print("CorsixTH 3DS: " .. message)
 end
 
@@ -239,6 +244,7 @@ function Platform:installAtomicSaves()
     local ok, err = xpcall(function()
       self:resourceEvent("save-begin", filename, true); transaction = true
       native.begin_critical_io(); critical = true
+      if native.prepare_save then native.prepare_save() end
       assert(original_save(instance, temporary) == true, "save writer did not confirm success")
       local committed, detail = native.atomic_commit(temporary, filename, true)
       assert(committed == true, "save commit: " .. tostring(detail))

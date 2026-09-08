@@ -129,6 +129,11 @@ fi
 if [[ -n "${PRIVATE_MEDIA}" ]]; then
   python3 "${CTH3DS_ROOT}/tools/prepare_media.py" \
     --source "${PRIVATE_MEDIA}" --stage "${WORK_DEST}" --runtime "${SOURCE_DATA}"
+  # A fresh package with the user's prepared Chinese voice defaults to it.
+  # This staging operation never changes a live SD configuration or save.
+  if [[ -f "${WORK_DEST}/Voices/Sound-CN.dat" ]]; then
+    printf '\nspeech_language = "zh"\n' >> "${WORK_DEST}/config.txt"
+  fi
 fi
 
 python3 "${CTH3DS_ROOT}/tools/validate_sd_tree.py" create-contract "${WORK_DEST}" \

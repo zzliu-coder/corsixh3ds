@@ -29,6 +29,95 @@ def make_outline_font(path, chars):
     fb.setupPost();fb.setupMaxp();fb.save(str(path))
 
 class MediaTests(unittest.TestCase):
+    def test_actual_sound_window_and_persistent_voice_setting(self):
+        script=r'''
+IS_3DS=true
+local function panel()
+ local p={}
+ function p:setLabel(v)self.label=v;return self end
+ function p:setTooltip()return self end
+ function p:setToggleState(v)self.toggled=v;return self end
+ function p:enable(v)self.enabled=v;return self end
+ function p:makeButton()self.button=panel();return self.button end
+ p.makeToggleButton=p.makeButton
+ return p
+end
+UIResizable={}
+function UIResizable:UIResizable(ui)self.ui=ui end
+function UIResizable:setDefaultPosition()end
+function UIResizable:addBevelPanel()return panel()end
+function UIResizable:addWindow(w)self.last_window=w end
+function class(name)return function(base)_G[name]=setmetatable({},{__index=base})end end
+local function strings()return setmetatable({},{__index=function(_,key)return tostring(key)end})end
+_S={audio_window=strings(),customise_window=strings(),menu_options_volume=strings(),
+    tooltip={audio_window=strings()}}
+Colours={}
+UIDropdown=function(...)return {close=function(self)self.closed=true end}end
+'''
+        script+='package.loaded["3ds.media"]=dofile('+repr(str(ROOT/'lua/3ds/media.lua'))+')\n'
+        script+='dofile('+repr(str(self.upstream/'CorsixTH/Lua/dialogs/resizables/sound_setting.lua'))+')\n'
+        script+=r'''
+local installed=false
+package.loaded.lfs={attributes=function(path)if installed and path=="ROOT/Voices/Sound-CN.dat"then return "file"end end}
+local app={config={audio=true,play_sounds=true,play_announcements=true,play_music=true,
+ sound_volume=.5,announcement_volume=.5,music_volume=.5,language="Chinese (simplified)"},
+ gfx={loadMenuFont=function()return {}end},
+ getFullPath=function()return "ROOT/"end,
+ fs={_getFilePath=function(_,path)if path=="Sound/Data/Sound-0.dat"then return path end end},
+ audio={getMidiApiList=function()return {}end,getMidiPortList=function()return {}end,
+ initSpeech=function()return true end},saveConfig=function()end}
+local ui={app=app}
+local function create(mode)
+ local w=setmetatable({},{__index=UISoundSettings});w:UISoundSettings(ui,mode)
+ w:closeAllDropdowns()
+ for _,b in ipairs{w.sound_volume_button,w.announcement_volume_button,w.music_volume_button}do
+  w:dropdownVolume(true,b);assert(b.toggled and w.volume_dropdown)
+  local old=w.volume_dropdown;w:closeAllDropdowns();assert(old.closed and not b.toggled)
+ end
+ return w
+end
+local missing=create("menu");assert(not missing.voice_panel.button.enabled)
+assert(missing.voice_panel.label:find("missing"))
+installed=true;local available=create("game");assert(available.voice_panel.button.enabled)
+available:buttonVoiceLanguage();assert(app.config.speech_language=="zh")
+available:buttonVoiceLanguage();assert(app.config.speech_language=="en")
+'''
+        lua_tests.LuaRuntimeTests().run_lua(script)
+        config=(self.upstream/'CorsixTH/Lua/config_finder.lua').read_text()
+        self.assertIn('speech_language = [[en]]',config)
+        self.assertEqual(config.count("param(config_values, 'speech_language')"),1)
+
+    def test_independent_voice_selection_and_failed_switch_rollback(self):
+        lua_tests.LuaRuntimeTests().run_lua('local M=dofile('+repr(str(ROOT/'lua/3ds/media.lua'))+')\n'+r'''
+local installed=false
+package.loaded.lfs={attributes=function(path)if installed and path=="ROOT/Voices/Sound-CN.dat"then return "file"end end}
+local app={config={language='Chinese (simplified)'},getFullPath=function()return "ROOT/"end,
+ fs={_getFilePath=function(_,path)if path=="Sound/Data/Sound-0.dat"then return path end end}}
+local changes,writes=0,0
+app.saveConfig=function()writes=writes+1 end
+app.audio={initSpeech=function(self)changes=changes+1;self.bank=M.speechFile(app);return true end}
+assert(M.speechFile(app,'Sound-1.dat')=='Sound-EN.dat')
+assert(not M.setSpeech(app,'zh') and changes==0 and writes==0)
+installed=true;assert(M.setSpeech(app,'zh') and app.audio.bank=='Sound-CN.dat')
+app.config.language='English';assert(M.speechFile(app)=='Sound-CN.dat')
+assert(M.setSpeech(app,'en') and app.audio.bank=='Sound-EN.dat')
+app.audio.initSpeech=function()error('injected bad sound archive')end
+assert(not M.setSpeech(app,'zh') and app.config.speech_language=='en')
+package.loaded.lfs.attributes=function(path)
+ for _,v in ipairs(M.voices)do if path=='ROOT/Voices/'..v.file then return 'file' end end
+end
+app.audio.initSpeech=function()return true end
+app.config.speech_language='zh'
+local ui_language=app.config.language
+for _,code in ipairs{'en','fr','de','it','es','sv','zh'}do
+ assert(M.cycleSpeech(app) and app.config.speech_language==code)
+ assert(app.config.language==ui_language)
+ assert(M.speechPath(app,M.speechFile(app)):match('^ROOT/Voices/'))
+end
+local options={ttf_color=123};local body=M.fontOptions(options)
+assert(body.ttf_height==14 and body.ttf_width==0 and options.ttf_height==nil)
+local heading=M.fontOptions({ttf_height=20});assert(heading.ttf_height==20)
+''')
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory(prefix='cth-media-')
@@ -129,6 +218,10 @@ M.release(a,api);assert(live==0)
             make_outline_font(source/'CorsixTH-SC-subset.ttf','简体中文医生')
             with wave.open(str(source/'Music/CANDY.wav'),'wb') as wav:
                 wav.setparams((1,2,22050,0,'NONE','not compressed'));wav.writeframes(bytes(4410))
+            # Prepared speech remains separate from original game/Sound data.
+            from media_runtime.check_voices import bank,wav as voice_wav
+            (source/'Voices').mkdir()
+            (source/'Voices/Sound-CN.dat').write_bytes(bank(voice_wav(140,22050,16),voice_wav(141,22050,16)))
             stage=root/'prepared'
             report=prepare(source,stage,runtime)
             self.assertEqual(report,prepare(source,stage,runtime))
@@ -144,6 +237,8 @@ M.release(a,api);assert(live==0)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             package=root/'dist/sd-card/3ds/corsixth'
             self.assertEqual(validate_sd_tree(package)['result'],'PASS')
+            self.assertIn('speech_language = "zh"',(package/'config.txt').read_text())
+            self.assertTrue((package/'Voices/Sound-CN.dat').is_file())
             self.assertEqual({p.name for p in (package/'Lua/languages').glob('*.lua')},
                 {'english.lua','original_strings.lua','simplified_chinese.lua'})
             (package/'Music/CANDY.wav').write_bytes(b'changed')

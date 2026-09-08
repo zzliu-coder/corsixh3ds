@@ -4,6 +4,8 @@ from sound_lifetime import replace_exact, SoundPatchError
 from .thermal_cache import transforms as thermal_transforms
 from .world_profile import transforms as world_transforms
 from .latency import transforms as latency_transforms
+from .spatial_queries import transforms as spatial_transforms
+from .save_memory import transforms as save_transforms
 
 def transforms(root):
     path='CorsixTH/Src/th_map.cpp'
@@ -98,6 +100,8 @@ class level_map {
     yield from thermal_transforms(root)
     yield from world_transforms(root)
     yield from latency_transforms(root)
+    yield from spatial_transforms(root)
+    yield from save_transforms(root)
 
 def patch_cpu_hotspots(root: Path, dry_run=False):
     changes=[]

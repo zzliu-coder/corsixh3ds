@@ -42,6 +42,8 @@
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/presentation_clock.hpp"
 #include "cth3ds/cpu_work.hpp"
+#include "cth3ds/allocation_watch.hpp"
+#include "cth3ds/text_cache.hpp"
 #include "cth3ds/gpu_api.hpp"
 #include "cth3ds/framebuffer_scaler.hpp"
 #include "cth3ds/input_mapper.hpp"
@@ -1820,7 +1822,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R58 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R59 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1914,7 +1916,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R58 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R59 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2269,10 +2271,10 @@ int l_benchmark_enabled(lua_State* state){
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
     char magic[6]{};const auto length=std::fread(magic,1,5,file);std::fclose(file);
-    if(length==4&&!std::memcmp(magic,"R58\n",4)){
+    if(length==4&&!std::memcmp(magic,"R59\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r58.txt")==0;
+        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r59.txt")==0;
       }
     }
     boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
@@ -2306,6 +2308,23 @@ int l_span_end(lua_State* state) {
 int l_operation_boundary(lua_State*) {
   runtime_operation_boundary();
   return 0;
+}
+AllocationWatch g_lua_allocations;
+MemoryObservationGate g_memory_sampling;
+int l_prepare_save(lua_State*) {
+  const auto before=text_cache.bytes;
+  text_cache.clear(); // reconstructible text only; no game, voice or save data.
+  boot_log("save-cache: released_charge=%llu remaining=%llu",
+      static_cast<unsigned long long>(before),static_cast<unsigned long long>(text_cache.bytes));
+  return 0;
+}
+int l_diagnostic_line(lua_State* state) {
+  std::size_t size=0;
+  const char* message=luaL_checklstring(state,1,&size);
+  // Bounded normal-thread log; never allocate a full traceback texture.
+  for(std::size_t offset=0;offset<size && offset<4096;offset+=240)
+    boot_log("lua-diagnostic: %.*s",static_cast<int>(std::min<std::size_t>(240,size-offset)),message+offset);
+  boot_log_flush();return 0;
 }
 int l_observe_memory(lua_State* state) {
   const char* checkpoint = luaL_checkstring(state, 1);
@@ -2533,6 +2552,8 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state,"span_begin",l_span_begin);
   set_function(state,"span_end",l_span_end);
   set_function(state,"observe_memory",l_observe_memory);
+  set_function(state,"diagnostic_line",l_diagnostic_line);
+  set_function(state,"prepare_save",l_prepare_save);
   set_function(state,"operation_boundary",l_operation_boundary);
   set_function(state,"flush_observations",l_request_observation_flush);
   set_function(state, "allocation_failure", l_allocation_failure);
@@ -2567,6 +2588,14 @@ void register_lua_module(lua_State* state) {
   g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
   g_observation_state=state;
+  g_memory_sampling={};
+  void* allocator_context=nullptr;
+  const auto allocator=lua_getallocf(state,&allocator_context);
+  if(allocator!=AllocationWatch::allocate) {
+    g_lua_allocations.reset(allocator,allocator_context,
+        static_cast<std::uint64_t>(lua_gc(state,LUA_GCCOUNT,0))*1024U+lua_gc(state,LUA_GCCOUNTB,0));
+    lua_setallocf(state,AllocationWatch::allocate,&g_lua_allocations);
+  }
   boot_log_open();
   // Diagnostic switches are sampled only at native startup.
   // Reference mode retains the full weighted thermal arithmetic for A/B runs.
@@ -2576,14 +2605,14 @@ void register_lua_module(lua_State* state) {
   if (auto* marker = std::fopen("sdmc:/3ds/corsixth/thermal-reference.txt", "rb")) {
     std::fclose(marker); cpu_work.thermal_uniform_fast = false; cpu_work.thermal_structure_fast = false;
   }
-  boot_log("thermal-mode: uniform_fast=%u phase_profile=%u structure_fast=%u mutation_owners=10 snapshot_each_tick=1 step_frequency=unchanged",
+  boot_log("thermal-mode: uniform_fast=%u phase_profile=%u structure_fast=%u mutation_owners=10 dense_reuse=audited_only publish_each_tick=1 step_frequency=unchanged",
     cpu_work.thermal_uniform_fast ? 1U : 0U, cpu_work.thermal_phase_profile ? 1U : 0U,
     cpu_work.thermal_structure_fast ? 1U : 0U);
   initialize_heap_watermarks();
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R58 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 text_cache_limit=2097152 music=file_wav");
+  boot_log("diagnostics: revision=R59 max_log_bytes=1048576 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 text_cache_limit=2097152 music=file_wav save_index_buckets=256 lua_allocator_watch=1");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
   boot_log(
@@ -2705,6 +2734,11 @@ void runtime_operation_boundary() noexcept {
 void runtime_observe_memory(const char* checkpoint, const char* phase, const char* resource,
     MemoryGate gate, std::uint64_t requested, bool requested_known,
     std::uint64_t held, bool held_known, bool failed, bool opaque) noexcept {
+  // Sample high-frequency sprite/texture events. Operation, language,
+  // sound, stage boundaries and every reported failure remain unconditional.
+  const bool frequent=checkpoint && (std::strcmp(checkpoint,"vspr_decode")==0 ||
+      std::strcmp(checkpoint,"textures")==0 || std::strcmp(checkpoint,"release")==0);
+  if(!g_memory_sampling.take(now_us(),!frequent || failed || (requested_known && requested>=262144)))return;
   CpuWorkScope observation_cost(CpuWork::MemoryObserve);
   update_lua_memory(g_observation_state);
   const auto h = heap_snapshot();
@@ -2714,6 +2748,11 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
       phase ? phase : "unknown", resource ? resource : "unknown",
       requested, requested_known, held, held_known, failed, opaque);
   g_observations.observe(checkpoint,o);
+  if(checkpoint && (std::strcmp(checkpoint,"save")==0 || std::strcmp(checkpoint,"reload")==0))
+    boot_log("lua-allocation: phase=%s live=%llu peak=%llu failures=%llu failed_request=%llu largest_request=%llu",
+      phase?phase:"unknown",static_cast<unsigned long long>(g_lua_allocations.live),
+      static_cast<unsigned long long>(g_lua_allocations.peak),static_cast<unsigned long long>(g_lua_allocations.failures),
+      static_cast<unsigned long long>(g_lua_allocations.failed_request),static_cast<unsigned long long>(g_lua_allocations.largest_request));
   if (failed) {
     boot_log("allocation-failure: checkpoint=%s phase=%s resource=%s requested=%llu known=%d",
       checkpoint ? checkpoint : "unknown", o.phase.data(), o.resource.data(),
@@ -2735,6 +2774,8 @@ void runtime_note_logic_callback(bool success) noexcept {
 void runtime_flush_observations(bool force) noexcept {
   const auto now=now_us();
   if(!g_observations.due(now,force))return;
+  boot_log("memory-sampling: interval_us=50000 sampled=%llu skipped=%llu failure_and_operation=always peaks=sampled",
+      static_cast<unsigned long long>(g_memory_sampling.sampled),static_cast<unsigned long long>(g_memory_sampling.skipped));
   update_lua_memory(g_observation_state);
   const auto m=heap_snapshot();
   const ObservationInputs inputs{now,m.heap_available_estimate,m.heap_available_low_water,

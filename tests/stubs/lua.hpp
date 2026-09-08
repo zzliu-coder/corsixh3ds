@@ -7,6 +7,12 @@ struct lua_State {};
 using lua_Integer = std::int64_t;
 using lua_Number = double;
 using lua_CFunction = int (*)(lua_State*);
+using lua_Alloc = void* (*)(void*,void*,std::size_t,std::size_t);
+// Declarations for the syntax-only target. Behavioral allocator tests link
+// the real checked Lua library and never use this header.
+lua_Alloc lua_getallocf(lua_State*,void**);
+void lua_setallocf(lua_State*,lua_Alloc,void*);
+const char* luaL_checklstring(lua_State*,int,std::size_t*);
 
 constexpr int LUA_OK = 0;
 constexpr int LUA_TTABLE = 5;

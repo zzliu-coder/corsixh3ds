@@ -19,11 +19,13 @@ class ThermalGrid {
   struct Cell {std::uint8_t flags{},weight[4]{},sum{};bool dirty{true};};
   std::vector<Cell> stencil_;
   std::vector<std::uint16_t> old_;
+  std::vector<std::uint16_t> next_;
   int width_{};
+  int cached_index_{-1};
   bool structure_dirty_{true};
  public:
   // Called by the real map mutation owners, before changing tiles.
-  void invalidate_structure() noexcept {structure_dirty_=true;}
+  void invalidate_structure() noexcept {structure_dirty_=true;cached_index_=-1;}
   template<class Tile,class Object>
   void update(Tile* tiles,int width,int height,int previous,int current,
               std::uint16_t air,std::uint16_t radiator,Object radiator_type,
@@ -33,13 +35,19 @@ class ThermalGrid {
     if(stencil_.size()!=static_cast<std::size_t>(count)||width_!=width){
       std::vector<Cell> fresh(static_cast<std::size_t>(count));
       std::vector<std::uint16_t> values(static_cast<std::size_t>(count));
-      stencil_.swap(fresh);old_.swap(values);width_=width;structure_dirty_=true;
+      std::vector<std::uint16_t> next_values(static_cast<std::size_t>(count));
+      stencil_.swap(fresh);old_.swap(values);next_.swap(next_values);
+      width_=width;structure_dirty_=true;cached_index_=-1;
     }
     radiator=std::max(air,radiator);
     // The generic API scans authoritative fields on every update. The pinned
     // engine opts into reuse only with its audited mutation-owner notifications.
     const bool profile=cpu_work.thermal_phase_profile;
     const bool scan=force_structure_scan||structure_dirty_;
+    // Only the audited engine opts into dense reuse. Its load/resize/mutation
+    // owners invalidate us; all authoritative tile values are still published
+    // on every update for saves, displays and ordinary game consumers.
+    const bool snapshot=force_structure_scan || cached_index_!=previous;
     ++cpu_work.thermal_updates;
     if(scan)++cpu_work.thermal_scans;
     cpu_work.thermal_bytes=bytes();
@@ -66,11 +74,11 @@ class ThermalGrid {
       }
       {
         CpuWorkScope scope(CpuWork::ThermalSnapshot,static_cast<std::uint64_t>(count));
-        for(int i=0;i<count;++i)old_[i]=tiles[i].aiTemperature[previous];
+        if(snapshot)for(int i=0;i<count;++i)old_[i]=tiles[i].aiTemperature[previous];
       }
     } else {
-      if(scan)for(int i=0;i<count;++i){observe(i);old_[i]=tiles[i].aiTemperature[previous];}
-      else for(int i=0;i<count;++i)old_[i]=tiles[i].aiTemperature[previous];
+      if(scan)for(int i=0;i<count;++i){observe(i);if(snapshot)old_[i]=tiles[i].aiTemperature[previous];}
+      else if(snapshot)for(int i=0;i<count;++i)old_[i]=tiles[i].aiTemperature[previous];
     }
     CpuWorkScope arithmetic(CpuWork::ThermalArithmetic,static_cast<std::uint64_t>(count),profile);
     // Preserve the pinned engine's linear-array neighbour bounds, including
@@ -107,9 +115,11 @@ class ThermalGrid {
       else if(cell.flags&64U)value=(value+radiator)/2U;
       else value=value*999U/1000U;
       tiles[i].aiTemperature[current]=static_cast<std::uint16_t>(value);
+      next_[i]=static_cast<std::uint16_t>(value);
     }
+    old_.swap(next_);cached_index_=current;
     structure_dirty_=false;
   }
-  std::size_t bytes() const noexcept {return stencil_.capacity()*sizeof(Cell)+old_.capacity()*sizeof(std::uint16_t);}
+  std::size_t bytes() const noexcept {return stencil_.capacity()*sizeof(Cell)+(old_.capacity()+next_.capacity())*sizeof(std::uint16_t);}
 };
 } // namespace cth3ds

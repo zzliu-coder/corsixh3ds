@@ -9,6 +9,36 @@ class BenchmarkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):test_lua_runtime.LuaRuntimeTests.setUpClass()
 
+    def test_menu_music_starts_after_attach_and_pending_cancel_is_untouched(self):
+        script='local B=dofile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+')\n'+r'''
+local now=0
+local app={savegame_dir='USER/',config={unicode_font='font',audio_music='Music',
+ language='Chinese (simplified)',play_music=true,autosave_frequency=2},
+ strings={checkLanguageExists=function()return true end}}
+local native={clock_ms=function()return now end,benchmark_state=function()end,
+ set_notice=function()end,flush_observations=function()end,benchmark_mark=function()end}
+local stops=0
+app.audio={background_playlist={{filename_music='Music/CANDY.wav'}}}
+function app.audio:stopBackgroundTrack()stops=stops+1;self.background_music=nil;self.background_paused=nil end
+function app.audio:playBackgroundTrack(index)
+ local track={};self.background_playlist[index].music=track;self.background_music=track;return true
+end
+function app:initLanguage()return true end
+function app:load()self.world={setSpeed=function(self,s)self.speed=s end,getCurrentSpeed=function(self)return self.speed end};return true end
+local b=B.new(app,native)
+assert(not app.audio.background_music)
+app.audio:playBackgroundTrack(1) -- real App:init order: normal song after attach
+local user_track=app.audio.background_music
+b:cancel('pending');assert(app.audio.background_music==user_track and stops==0)
+b=B.new(app,native);b:tick();assert(b.original_music_playing and b.original_track==1)
+for _,time in ipairs{30000,90000,120000,180000,210000,270000}do now=time;b:tick()end
+assert(b.phase=='done' and app.config.play_music and app.audio.background_music)
+app.audio:stopBackgroundTrack() -- explicit stopped state is preserved too
+b=B.new(app,native);b:tick();b:cancel('B')
+assert(app.config.play_music and app.audio.background_music==nil)
+'''
+        test_lua_runtime.LuaRuntimeTests().run_lua(script)
+
     def test_completed_and_cancelled_runs_restore_user_directory(self):
         script='local B=assert(loadfile('+repr(str(ROOT/'lua/3ds/benchmark.lua'))+'))()\n'+r'''
 local now,active=0,false

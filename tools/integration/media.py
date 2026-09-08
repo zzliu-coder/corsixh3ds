@@ -45,8 +45,53 @@ def transforms(root):
 
     yield from font_transforms(root)
 
+    path = 'CorsixTH/Lua/config_finder.lua'
+    text = (root/path).read_text()
+    if 'speech_language = [[en]]' not in text:
+        text=replace_exact(text,'    announcement_volume = 0.5,',
+            '    announcement_volume = 0.5,\n    speech_language = [[en]],','persistent voice default')
+        text=replace_exact(text,"param(config_values, 'announcement_volume') .. [=[",
+            "param(config_values, 'announcement_volume') ..\nparam(config_values, 'speech_language') .. [=[",'voice config writer')
+    yield path,text
+
+    path = 'CorsixTH/Lua/graphics.lua'
+    text = (root/path).read_text()
+    marker = '-- CORSIXTH_3DS_FONT_METRICS_R59'
+    if marker not in text:
+        text=replace_exact(text,'function Graphics:_loadTrueTypeFont(name, sprite_table, font_options)',
+            '''function Graphics:_loadTrueTypeFont(name, sprite_table, font_options)
+  -- CORSIXTH_3DS_FONT_METRICS_R59
+  if IS_3DS then font_options=require("3ds.media").fontOptions(font_options) end''','handheld font metrics')
+        text=replace_exact(text,'return string.format("%s,%d,%d,%s,%s,%s,%s",',
+            'return string.format("%s,%d,%d,%s,%s,%s,%s,%s,%s",','font metric cache format')
+        text=replace_exact(text,'    font_options.apply_ui_scale and "s" or "f")',
+            '''    font_options.apply_ui_scale and "s" or "f",
+    tostring(font_options.ttf_width), tostring(font_options.ttf_height))''','font metric cache identity')
+    yield path,text
+
+    path = 'CorsixTH/Src/th_gfx_font.cpp'
+    text = (root/path).read_text()
+    old='  if (is_monochrome() || iHeight <= 14 || iWidth <= 9) {'
+    new='''#ifdef CORSIXTH_3DS
+  // A zero width explicitly requests FreeType's natural aspect ratio. Avoid
+  // the desktop minimum-width rule enlarging 14px CJK bodies beyond UI rows.
+  if (iWidth == 0 && iHeight > 0) return FT_Set_Pixel_Sizes(font_face, 0, iHeight);
+#endif
+''' + old
+    if new not in text:text=replace_exact(text,old,new,'natural aspect handheld font')
+    yield path,text
+
     path = 'CorsixTH/Lua/audio.lua'
     text = (root/path).read_text()
+    old='    speech_file=speech_file or "Sound-0.dat"'
+    new='    speech_file=require("3ds.media").speechFile(self.app,speech_file) -- R59 independent voice'
+    if new not in text:text=replace_exact(text,old,new,'independent speech selection')
+    old='    assert(not self.not_loaded,"audio device unavailable")'
+    new='    if self.not_loaded then return true end -- disabled audio retains the next voice choice'
+    if new not in text:text=replace_exact(text,old,new,'audio-off language change')
+    old='    local path,err=self.app.fs:_getFilePath("Sound"..pathsep.."Data"..pathsep..speech_file)'
+    new='    local path,err=require("3ds.media").speechPath(self.app,speech_file)'
+    if new not in text:text=replace_exact(text,old,new,'prepared voice path')
     if '-- CORSIXTH_3DS_MUSIC_R58' not in text:
         for old, new in (
             ('  local waveform = list_to_set(self.allowed_waveform_formats)',
@@ -73,6 +118,62 @@ def transforms(root):
   elseif music_dir then
     _f, _s, _v = lfs.dir(music_dir)''', 'optional music directory')
     yield path, text
+
+    path = 'CorsixTH/Lua/dialogs/resizables/sound_setting.lua'
+    text = (root/path).read_text()
+    marker='  -- CORSIXTH_3DS_SPEECH_SETTINGS_R59'
+    if marker not in text:
+        begin=text.index('  local midi_api_label =')
+        end=text.index('\n  -- jukebox',begin)
+        desktop=text[begin:end]
+        handheld='''  -- CORSIXTH_3DS_SPEECH_SETTINGS_R59
+  if IS_3DS then
+    local media=require("3ds.media")
+    self.default_api_panels={};self.midi_api_panels={}
+    self:addBevelPanel(LBL_X,y,LBL_WIDTH,LBL_HEIGHT,col_shadow,col_bg,col_bg)
+      :setLabel("Voice language").lowered=true
+    local label=media.voiceLabel(app)
+    local available=#media.voiceOptions(app)>1
+    if not media.hasChineseSpeech(app) then label=label.." (Chinese data missing)" end
+    self.voice_panel=self:addBevelPanel(BTN_X,y,BTN_WIDTH,BTN_HEIGHT,Colours.Setting,nil,nil,nil,Colours.SettingActive)
+      :setLabel(label)
+    self.voice_panel:makeButton(0,0,BTN_WIDTH,BTN_HEIGHT,nil,self.buttonVoiceLanguage):enable(available)
+    self:addBevelPanel(LBL_X,y+25,BIG_BTN_WIDTH,LBL_HEIGHT,col_shadow,col_bg,col_bg)
+      :setLabel("Music: PCM stream / one active voice bank").lowered=true
+  else
+'''+desktop+'''
+  end
+'''
+        text=text[:begin]+handheld+text[end:]
+        text+='''
+function UISoundSettings:buttonVoiceLanguage()
+  local media=require("3ds.media")
+  local ok,err=media.cycleSpeech(self.app)
+  if ok then self.voice_panel:setLabel(media.voiceLabel(self.app))
+  else self.ui:addWindow(UIInformation(self.ui,{err})) end
+end
+'''
+    for signature in ('function UISoundSettings:dropdownMidiApi(activate)',
+                      'function UISoundSettings:dropdownMidiPort(activate)'):
+        if signature+'\n  if IS_3DS then return end' not in text:
+            text=replace_exact(text,signature,signature+'\n  if IS_3DS then return end','inactive handheld MIDI controls')
+    # Upgrade the retained in-progress R59 generated tree as well as a clean
+    # upstream tree. No duplicate controls/functions on incremental builds.
+    old='''    local label=app.config.speech_language=="zh" and "Chinese" or "English"
+    local available=media.hasChineseSpeech(app)
+    if not available then label=label.." (Chinese data missing)" end'''
+    if old in text:
+        text=replace_exact(text,old,'''    local label=media.voiceLabel(app)
+    local available=#media.voiceOptions(app)>1
+    if not media.hasChineseSpeech(app) then label=label.." (Chinese data missing)" end''','voice catalog upgrade')
+    old='''  local choice=self.app.config.speech_language=="zh" and "en" or "zh"
+  local ok,err=require("3ds.media").setSpeech(self.app,choice)
+  if ok then self.voice_panel:setLabel(choice=="zh" and "Chinese" or "English")'''
+    if old in text:
+        text=replace_exact(text,old,'''  local media=require("3ds.media")
+  local ok,err=media.cycleSpeech(self.app)
+  if ok then self.voice_panel:setLabel(media.voiceLabel(self.app))''','voice cycling upgrade')
+    yield path,text
 
     path = 'CorsixTH/Src/sdl_audio.cpp'
     text = (root/path).read_text()

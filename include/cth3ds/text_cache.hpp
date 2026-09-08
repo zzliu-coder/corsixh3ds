@@ -14,6 +14,12 @@ struct TextCacheNode {
 class TextCacheBudget {
  public:
   static constexpr std::size_t limit = 2U * 1024U * 1024U;
+  void clear() noexcept {
+    while(first_) {
+      auto* node=first_;auto release=node->release;auto context=node->context;
+      forget(*node);release(context);
+    }
+  }
   void forget(TextCacheNode& node) noexcept {
     if (!node.release) return;
     if (node.previous) node.previous->next = node.next; else first_ = node.next;

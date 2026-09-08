@@ -191,6 +191,20 @@ static int test_success(const std::string& dir) {
   CHECK(p.toggle_pause(h)==sound_player::toggle_pause_result::resumed);p.populate_from(&a);CHECK(p.cached_bytes()==0);
   p.populate_from(nullptr);CHECK(p.cached_bytes()==0);CHECK(live_chunks==0);return 0;
 }
+static int test_prepared_bank(const std::string& file) {
+  sound_archive a;CHECK(a.load_from_file(file.c_str()));
+  CHECK(a.get_number_of_sounds()>1);
+  sound_player p;p.populate_from(&a);
+  CHECK(p.cached_bytes()==0 && p.decoded_clip_count()==0);
+  for(size_t i=1;i<a.get_number_of_sounds();++i) {
+    size_t pcm=0,scratch=0;CHECK(a.pcm_requirement(i,pcm,scratch));
+    CHECK(pcm>0 && scratch>=pcm);
+    auto h=p.play(i,1.0,0);CHECK(h!=0 && p.is_playing(h));
+    p.stop(h);CHECK(p.owner_bytes()<=3*1024*1024);
+  }
+  p.populate_from(nullptr);CHECK(p.cached_bytes()==0 && live_chunks==0);
+  return 0;
+}
 static int test_native_failures(const std::string& dir) {
   sound_archive a,b;CHECK(a.load_from_file((dir+"/a.dat").c_str()));CHECK(b.load_from_file((dir+"/b.dat").c_str()));
   for(bool initial : {true,false})for(int at=-1;at<3;++at) {
@@ -436,6 +450,7 @@ int main(int argc,char** argv) {
   // This suite uses SDL RWops/decoders only; no host device or DBus startup.
   const std::string name=argv[1],dir=argv[2];int result=0;
   if(name=="success-747")result=test_success(dir);
+  else if(name=="prepared-bank")result=test_prepared_bank(dir);
   else if(name=="native-failures")result=test_native_failures(dir);
   else if(name=="lua-cpp-failures")result=test_lua_cpp_failures(dir);
   else if(name=="post-commit-lua-oom")result=test_after_commit_oom(dir);

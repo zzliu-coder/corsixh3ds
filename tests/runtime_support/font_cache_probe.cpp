@@ -79,6 +79,11 @@ int main(int argc,char** argv) {
   auto pixel_count=640*480;bool visible=false;
   for(int i=0;i<pixel_count;++i)visible|=(static_cast<uint32_t*>(surface->pixels)[i]&0xffffff)!=0;
   assert(visible);
+  cth3ds::text_cache.clear();
+  assert(cth3ds::text_cache.bytes==0);
+  cth3ds::text_cache.clear(); // Save preparation is idempotent.
+  fonts.front()->draw_text(&target,message.c_str(),message.size(),0,0);
+  assert(cth3ds::text_cache.bytes>0); // A live font rebuilds after preparation.
   for(auto& font:fonts)font->clear_cache();
   assert(cth3ds::text_cache.bytes==0);
   std::string large;
@@ -94,6 +99,14 @@ int main(int argc,char** argv) {
    assert(font.set_ideal_character_size(14,18)==0);
    assert(font.get_text_dimensions(message.c_str(),message.size(),320).width>0);}
   assert(cth3ds::text_cache.bytes==0);
+  {
+    freetype_font body;assert(body.set_face(data.data(),data.size())==0);
+    assert(body.set_ideal_character_size(0,14)==0);
+    const std::string text=u8"员工休息室 医生 保存";
+    const auto layout=body.get_text_dimensions(text.c_str(),text.size(),320);
+    assert(layout.row_count==1 && layout.end_y<=19 && layout.width>0);
+    std::printf("body_font_height_14 row_end_y=%d row_budget=19\n",layout.end_y);
+  }
   SDL_DestroyRenderer(renderer);SDL_FreeSurface(surface);SDL_Quit();
   std::cout<<"PASS real FreeType UTF8 SDL pixels, 12 owners, cache eviction and release\n";
 }

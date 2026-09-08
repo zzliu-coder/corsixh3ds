@@ -121,6 +121,10 @@ M.release(a,api);assert(live==0)
             runtime=root/'external/CorsixTH/CorsixTH'
             language=runtime/'Lua/languages/simplified_chinese.lua'
             language.write_text('Language("简体中文", "Chinese (simplified)")\nInherit("english")\nFont("unicode")\nstaff={doctor="医生"}\n')
+            # The real upstream directory also contains these static utf8
+            # wrappers, even when only the Chinese closure is packaged.
+            (language.parent/'french.lua').write_text('Language(utf8 "Français", "French", "fr")\nInherit("english")\n')
+            (language.parent/'iberic_portuguese.lua').write_text('Language(utf8 "Português", "Portuguese", "pt")\nInherit("english")\n')
             source=root/'media';(source/'Music').mkdir(parents=True)
             make_outline_font(source/'CorsixTH-SC-subset.ttf','简体中文医生')
             with wave.open(str(source/'Music/CANDY.wav'),'wb') as wav:

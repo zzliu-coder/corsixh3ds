@@ -16,8 +16,11 @@ except ModuleNotFoundError:
 # Parentheses inside quoted aliases ("Chinese (simplified)", "zh(s)")
 # belong to the name; only an unquoted closing parenthesis ends the call.
 _LANGUAGE_STRING = r'''(?:"[^"\r\n]*"|'[^'\r\n]*')'''
-LANGUAGE_RE = re.compile(r"\bLanguage\s*\(\s*(" + _LANGUAGE_STRING +
-                         r"(?:\s*,\s*" + _LANGUAGE_STRING + r")*)\s*\)")
+# Pinned French and Portuguese declarations use the upstream utf8 wrapper.
+# Its argument is still a static literal; no Lua evaluation is required.
+_LANGUAGE_ARGUMENT = r"(?:utf8\s+)?" + _LANGUAGE_STRING
+LANGUAGE_RE = re.compile(r"\bLanguage\s*\(\s*(" + _LANGUAGE_ARGUMENT +
+                         r"(?:\s*,\s*" + _LANGUAGE_ARGUMENT + r")*)\s*\)")
 INHERIT_RE = re.compile(r"\bInherit\s*\(\s*(['\"])([^'\"]+)\1\s*(?:,\s*(\d+)\s*)?\)")
 STRING_RE = re.compile(r"(['\"])(.*?)\1")
 

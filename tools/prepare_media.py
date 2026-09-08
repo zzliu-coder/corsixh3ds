@@ -8,8 +8,11 @@ import shutil
 import wave
 
 def sha(path):
+    digest = hashlib.sha256()
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        for block in iter(lambda: stream.read(256 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
 
 def prepare(source, stage, runtime, tracks=None, voices=None):
     from fontTools.ttLib import TTFont

@@ -283,6 +283,8 @@ M.release(a,api);assert(live==0)
             stage=root/'prepared'
             report=prepare(source,stage,runtime)
             self.assertEqual(report,prepare(source,stage,runtime))
+            for row in report['files']:
+                self.assertEqual(row['sha256'], hashlib.sha256((stage/row['path']).read_bytes()).hexdigest())
             self.assertEqual(report['missing_characters'],0)
             with self.assertRaises(ValueError):prepare(source,root/'bad-track',runtime,['../CANDY.wav'])
             language.write_text(language.read_text()+'\nmissing="龘"\n')

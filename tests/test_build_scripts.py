@@ -309,7 +309,8 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('echo "$test_env/bin" >> "$GITHUB_PATH"', workflow)
         host_matrix = workflow.split("  host:\n", 1)[1].split(
             "  old3ds-cross-build:", 1)[0]
-        self.assertIn("lua5.4 liblua5.4-0", host_matrix)
+        self.assertIn("lua5.4 liblua5.4-dev", host_matrix)
+        self.assertIn("libclang-rt-18-dev", host_matrix)
         self.assertIn('ln -s "$(command -v lua5.4)"', host_matrix)
         self.assertIn('echo "$RUNNER_TEMP/cth3ds-bin" >> "$GITHUB_PATH"', host_matrix)
         self.assertRegex(

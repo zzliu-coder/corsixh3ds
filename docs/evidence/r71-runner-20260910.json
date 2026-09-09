@@ -1,0 +1,525 @@
+{
+  "format": 3,
+  "product": "R71",
+  "source_commit": "0b07ec3b0add18653302ff1b6da1805fdd6157e0",
+  "source_tree": "fd9dc0acde8ab21cee6618876acbe8519793fa11",
+  "source_digest": "8b5faf992998eb139c0b23396fe3c1b6bb7f19761e54b0938838619a1bd8bad2",
+  "source_files": 490,
+  "source_unchanged_during_validation": true,
+  "artifact": {
+    "bytes": 2833524,
+    "path": "CorsixTH-3DS.3dsx",
+    "sha256": "7e4b170a1b112436a2f92f5608b29a36e90a84beb4678a939d30ed9fc20a5094"
+  },
+  "elf": {
+    "bytes": 25831160,
+    "path": "CorsixTH-3DS.elf",
+    "sha256": "cb85672096626f36048092b682f8c5cdc2c3b8115a836047a6d89f085eadcecb"
+  },
+  "run_id": "20260910-040123-8bf163c26cff",
+  "run_count": 1,
+  "identity": "PASS",
+  "launcher_roundtrip": "PASS",
+  "game_outcome": "PASS",
+  "game_reason": "COMPLETE",
+  "config_sha256": "6e8cd01af32164e681c69c568532b47d75c7005ff450c0b783bd0c88ddebb4cf",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "manifest_sha256": "fde4307c26d08340a4c0f541178486668523863a3fb1c7ab162c6ff97fb9f61e",
+  "launch_boot": "e4a17d765a3c13020b9248a137530620",
+  "return_boot": "d9d47cc47f0f1598ec29a6a77761ebc9",
+  "host": {
+    "component_python_unique_ids": 8,
+    "final_python_ids": 2,
+    "component_python_ids_reused": 6,
+    "native_bounded_log_cases": 7,
+    "final_ctest_targets": 2,
+    "format_differential_cases": 10142,
+    "complete_production_format_literals": 95,
+    "manifest_discovered_ids": 335,
+    "full_suite": "NOT_RERUN",
+    "historical_suite": "R70 related closure and R69 effective 326 PASS plus one allowed skip; original failures retained",
+    "test_extractor_change": "Adjacent C++ format string literals concatenated before differential comparison; two final relevant Python IDs rerun.",
+    "review": "PASS_SCOPED",
+    "review_sha256": "8d53b6d6f7436b4dd59e4dd2715ae6a8a8306b7b96fcf68bf88a655649308c36"
+  },
+  "assembly": {
+    "outcome": "PASS",
+    "generated_files": 739,
+    "syntax_checked_lua": 306,
+    "actual_generated_modules_loaded": 8,
+    "debug_files_verified": 7,
+    "reference_product_files_unchanged": 734,
+    "generated_added": [
+      "CorsixTH/Src/3ds/include/cth3ds/log_format.hpp"
+    ],
+    "generated_changed": [
+      ".cth3ds-view.json",
+      "CorsixTH/Src/3ds/include/cth3ds/bounded_log.hpp",
+      "CorsixTH/Src/3ds/integration-manifest.json",
+      "CorsixTH/Src/3ds/runtime_3ds.cpp"
+    ],
+    "shared_view_for_build_and_package": true,
+    "view_sha256": "86b7f29e527b0686c8466f54f024cf6f9c6465401cca4f94ac09136cc67e3c89",
+    "input_sha256": "edcf0f22cd9cfa16ee4499c0593f312f68fea16469c861d2ab98d2ca6d8c8e48"
+  },
+  "deployment": {
+    "outcome": "PASS",
+    "files": 3,
+    "uploaded_bytes": 2970607,
+    "binary_last": true,
+    "full_asset_download": false,
+    "toolchain_reused": true,
+    "fresh_protection_before": 33,
+    "fresh_protection_after": 29,
+    "original_files_unchanged": 27,
+    "total_file_retr_count": 68,
+    "total_file_retr_bytes": 31028275,
+    "excludes": "FTP control messages and runner artifact/log collection",
+    "connections_closed": true,
+    "third_party_uncoordinated_ftp_exclusion": "NOT_PROVEN"
+  },
+  "sample": {
+    "simulation_outcome": "PASS",
+    "performance_observation": "PASS",
+    "observed_presented_hz": 14.835,
+    "elapsed_us": 60061620,
+    "completed": {
+      "world": 2670,
+      "hours": 890,
+      "entities": 28854,
+      "frames": 891,
+      "at": 60061
+    },
+    "boundary_ledger_outcome": "PASS",
+    "first_delay_us": 50275,
+    "open_gap_us": 13566,
+    "total_unclosed_boundary_us": 63841,
+    "unchanged_boundary_limit_us": 250000,
+    "p95_interval_upper_bound_us": 131071,
+    "max_interval_us": 448542,
+    "phases": {
+      "loop_other": {
+        "whole_us": 56816191,
+        "first_delay_us": 49846,
+        "interval_us": 56766298,
+        "open_gap_us": 47
+      },
+      "gc_observe": {
+        "whole_us": 262740,
+        "first_delay_us": 0,
+        "interval_us": 262716,
+        "open_gap_us": 24
+      },
+      "gc_step": {
+        "whole_us": 9101,
+        "first_delay_us": 0,
+        "interval_us": 9095,
+        "open_gap_us": 6
+      },
+      "observation_flush": {
+        "whole_us": 1827954,
+        "first_delay_us": 0,
+        "interval_us": 1827954,
+        "open_gap_us": 0
+      },
+      "event_wait": {
+        "whole_us": 46441,
+        "first_delay_us": 0,
+        "interval_us": 46389,
+        "open_gap_us": 52
+      },
+      "runtime": {
+        "whole_us": 418354,
+        "first_delay_us": 32,
+        "interval_us": 418272,
+        "open_gap_us": 50
+      },
+      "benchmark_call": {
+        "whole_us": 680839,
+        "first_delay_us": 397,
+        "interval_us": 667055,
+        "open_gap_us": 13387
+      }
+    },
+    "last_flush": {
+      "begin": 17883652131,
+      "end": 17883837308,
+      "reason_bits": 4,
+      "action": "compact",
+      "completed": true
+    },
+    "clock": {
+      "eligible": 1,
+      "begin": 17833095044,
+      "end": 17893156664,
+      "elapsed_us": 60061620,
+      "steps": 2670,
+      "completed": 2670,
+      "failed": 0,
+      "debt_begin_us": 90000,
+      "debt_end_us": 90000,
+      "dropped_us": 12005524,
+      "rebases": 0,
+      "budget_exits": 889,
+      "step_us": 18000
+    },
+    "world_steps_per_second": 44.454345387287255,
+    "nominal_world_steps_per_second": 55.55555555555556,
+    "real_time_simulation_rate_met": false,
+    "cpu": {
+      "temperature": {
+        "eligible": 1,
+        "calls": 890,
+        "total_us": 5161398,
+        "max_us": 14997,
+        "units": 14581760,
+        "contained_scopes": 1,
+        "inclusive": 1
+      },
+      "world": {
+        "eligible": 1,
+        "calls": 2670,
+        "total_us": 26341582,
+        "max_us": 400883,
+        "units": 2670,
+        "contained_scopes": 1,
+        "inclusive": 1
+      },
+      "world_entities": {
+        "eligible": 1,
+        "calls": 890,
+        "total_us": 17124767,
+        "max_us": 394134,
+        "units": 890,
+        "contained_scopes": 1,
+        "inclusive": 1
+      },
+      "world_calendar": {
+        "eligible": 1,
+        "calls": 890,
+        "total_us": 1868192,
+        "max_us": 93605,
+        "units": 890,
+        "contained_scopes": 1,
+        "inclusive": 1
+      },
+      "pathfind": {
+        "eligible": 1,
+        "calls": 425,
+        "total_us": 148677,
+        "max_us": 4567,
+        "units": 425,
+        "contained_scopes": 1,
+        "inclusive": 1
+      },
+      "sample_staff_attributes": {
+        "eligible": 1,
+        "calls": 945,
+        "total_us": 254101,
+        "max_us": 1367,
+        "units": 945,
+        "contained_scopes": 1,
+        "inclusive": 1
+      },
+      "sample_staff_speed": {
+        "eligible": 1,
+        "calls": 945,
+        "total_us": 245085,
+        "max_us": 688,
+        "units": 945,
+        "contained_scopes": 1,
+        "inclusive": 1
+      }
+    },
+    "floor": {
+      "ticks": 1927832928,
+      "tick_hz": 268111856,
+      "calls": 578259,
+      "frames": 891,
+      "pieces": 363528,
+      "page_switches": 0,
+      "mean_ms": 8.070039692184741,
+      "upper_bound_includes_adjacent_shadows_and_traversal": true
+    },
+    "scope": "CPU scopes inclusive/nested, sampled Staff subcalls not scaled to totals; floor uses another unit. D2 is exclusive wall residency, not hardware utilization.",
+    "exact_state_ab": "NOT_PROVEN",
+    "net_performance_gain": "NOT_PROVEN"
+  },
+  "stress": {
+    "outcome": "PASS",
+    "actual_elapsed_ms": 202345,
+    "cycles": 11,
+    "private_save_reload": {
+      "outcome": "PASS",
+      "completed_count": 2,
+      "files_observed": [
+        "save/recovery-before-load.sav",
+        "save/r62-roundtrip.sav",
+        "save/completed.sav"
+      ],
+      "file_presence_alone_proves_reload": false
+    },
+    "errors": 0,
+    "busy_level_and_soak_acceptance": "NOT_PROVEN"
+  },
+  "memory": {
+    "minimum_heap_available_estimate_bytes": 20343328,
+    "heap_available_end_bytes": 30383680,
+    "linear_free_end_bytes": 2199552,
+    "largest_contiguous_block": "NOT_PROVEN",
+    "large_hospital_capacity": "NOT_PROVEN",
+    "arm_log_object_bytes": 8312,
+    "baseline_arm_log_object_bytes": 8208,
+    "arm_log_object_delta_bytes": 104,
+    "arm_section_note": "g_log moved bss to initialized data; 104-byte object growth is separate from artifact size."
+  },
+  "startup": {
+    "ready_ms": 37325,
+    "locked_cache_startup_comparison": "NOT_PROVEN"
+  },
+  "save_writer": [
+    {
+      "line": 1297,
+      "outcome": "PASS",
+      "raw": {
+        "mode": "stream16k",
+        "bytes": "386879",
+        "flush_count": "24",
+        "elapsed_ms": "2194",
+        "writer_includes_io": "1",
+        "scope": "save_file_including_close",
+        "close_ok": "1",
+        "commit_included": "0"
+      },
+      "proves_atomic_commit": false,
+      "bytes": 386879,
+      "flush_count": 24,
+      "elapsed_ms": 2194
+    },
+    {
+      "line": 1322,
+      "outcome": "PASS",
+      "raw": {
+        "mode": "stream16k",
+        "bytes": "386879",
+        "flush_count": "24",
+        "elapsed_ms": "2022",
+        "writer_includes_io": "1",
+        "scope": "save_file_including_close",
+        "close_ok": "1",
+        "commit_included": "0"
+      },
+      "proves_atomic_commit": false,
+      "bytes": 386879,
+      "flush_count": 24,
+      "elapsed_ms": 2022
+    },
+    {
+      "line": 1681,
+      "outcome": "PASS",
+      "raw": {
+        "mode": "stream16k",
+        "bytes": "384459",
+        "flush_count": "24",
+        "elapsed_ms": "2479",
+        "writer_includes_io": "1",
+        "scope": "save_file_including_close",
+        "close_ok": "1",
+        "commit_included": "0"
+      },
+      "proves_atomic_commit": false,
+      "bytes": 384459,
+      "flush_count": 24,
+      "elapsed_ms": 2479
+    },
+    {
+      "line": 1706,
+      "outcome": "PASS",
+      "raw": {
+        "mode": "stream16k",
+        "bytes": "384459",
+        "flush_count": "24",
+        "elapsed_ms": "2197",
+        "writer_includes_io": "1",
+        "scope": "save_file_including_close",
+        "close_ok": "1",
+        "commit_included": "0"
+      },
+      "proves_atomic_commit": false,
+      "bytes": 384459,
+      "flush_count": 24,
+      "elapsed_ms": 2197
+    },
+    {
+      "line": 1739,
+      "outcome": "PASS",
+      "raw": {
+        "mode": "stream16k",
+        "bytes": "384730",
+        "flush_count": "24",
+        "elapsed_ms": "2212",
+        "writer_includes_io": "1",
+        "scope": "save_file_including_close",
+        "close_ok": "1",
+        "commit_included": "0"
+      },
+      "proves_atomic_commit": false,
+      "bytes": 384730,
+      "flush_count": 24,
+      "elapsed_ms": 2212
+    }
+  ],
+  "log": {
+    "status": "PRESENT",
+    "path": "artifacts/boot.log",
+    "issues": [
+      "slow-event ring dropped rows"
+    ],
+    "integrity": "NOT_PROVEN",
+    "native_closed_samples": 1,
+    "reported_write_failure": 0,
+    "reported_truncation": 0,
+    "runtime_write_status": "PASS",
+    "slow_startup_rows_dropped": 6,
+    "boot_sha256": "4a1e6db444f82ba24ef856b603e16dd65a47ff4d534f2b3f62186f4b9f9a2617",
+    "cost_snapshot_validation": "PASS",
+    "cost_snapshot_count": 9,
+    "last_cumulative_cost_snapshot": {
+      "format_calls": 1882,
+      "format_us": 131319,
+      "format_max_us": 579,
+      "fast": 1817,
+      "fallback": 65,
+      "write_calls": 1945,
+      "write_us": 2742973,
+      "write_max_us": 450321,
+      "flush_calls": 106,
+      "flush_us": 7958973,
+      "flush_max_us": 374814,
+      "valid": 1,
+      "line": 1946
+    },
+    "cost_scope": "logger software only; not exact benchmark window or final process total",
+    "cost_excluded": [
+      "producer preformat and heap scan",
+      "snapshot own output",
+      "later close/flush"
+    ],
+    "stdio_write_may_include_implicit_flush": true,
+    "physical_sd_durability": "NOT_PROVEN"
+  },
+  "workload": {
+    "sha256": "4a1e6db444f82ba24ef856b603e16dd65a47ff4d534f2b3f62186f4b9f9a2617",
+    "scenes": {
+      "level:sdmc:/3ds/corsixth/Levels/example.level": {
+        "observed_rows": 30,
+        "first": {
+          "line": 88,
+          "at_us": 17803028574,
+          "patients": 9,
+          "staff": 17,
+          "rooms": 14,
+          "speed": "Normal",
+          "date": "1-09-01T00",
+          "camera": [
+            523,
+            1614
+          ],
+          "language": "Chinese (simplified)",
+          "music": 1,
+          "voice": "zh"
+        },
+        "last": {
+          "line": 1889,
+          "at_us": 18098265731,
+          "patients": 11,
+          "staff": 17,
+          "rooms": 14,
+          "speed": "Normal",
+          "date": "1-11-17T22",
+          "camera": [
+            523,
+            1614
+          ],
+          "language": "chinese (simplified)",
+          "music": 1,
+          "voice": "zh"
+        },
+        "sampled_ranges": {
+          "patients": [
+            9,
+            12
+          ],
+          "staff": [
+            17,
+            17
+          ],
+          "rooms": [
+            14,
+            14
+          ]
+        },
+        "speeds": [
+          "Normal"
+        ],
+        "media": [
+          [
+            "Chinese (simplified)",
+            1,
+            "zh"
+          ],
+          [
+            "chinese (simplified)",
+            1,
+            "zh"
+          ]
+        ]
+      }
+    },
+    "scope": "Sampled workload only; extrema between rows and state across reloads unknown. No large-level, service, hardware, memory or performance acceptance inferred."
+  },
+  "thermal_trial": {
+    "merged": false,
+    "host_equivalence": "PASS",
+    "alternating_ab_ba_pairs": 20,
+    "candidate_time_ratio_median_uniform": 1.53485,
+    "candidate_time_ratio_median_mixed": 1.43669,
+    "all_candidate_pairs_slower": true,
+    "retained_decision": "REJECT_CANDIDATE",
+    "arm_performance": "NOT_PROVEN"
+  },
+  "root_replay": {
+    "outcome": "PASS",
+    "raw_and_saved_analyses_equal": true,
+    "original_files_unchanged": 27,
+    "remote_connections": 0,
+    "game_submissions": 0
+  },
+  "stage_seconds": {
+    "device-finalize-01": 0.213,
+    "device-protect-after-01": 46.355,
+    "arm-01": 23.537,
+    "root-readback-01": 0.261,
+    "device-gate-01": 0.548,
+    "retain-debug-01": 0.419,
+    "device-deploy-01": 68.188,
+    "device-run-01": 425.914,
+    "host-native-01": 4.04,
+    "candidate-prepare-01": 1.812,
+    "assembly-01": 1.44
+  },
+  "remaining": [
+    "B2 actual entity/attribute work and A3 floor geometry/ordered submission",
+    "D1/D2/E3 aggregate logging write/flush ownership, preserve important completion and error records",
+    "B3 alternative temperature work only after whole-entry equivalence and cost evidence",
+    "Higher entity workload, natural reception service, level change and release",
+    "Long-running repeated save/reload, HOME/lid and final device acceptance",
+    "AR4-AR6 lifecycle ownership and production/experimental build separation"
+  ],
+  "limits": [
+    "No net FPS gain proven by this single run.",
+    "R70 last report was full; R71 last report compact. These durations are not equivalent A/B samples.",
+    "30 FPS reference only; normal rules/speed, simulation continuity and saves remain gates.",
+    "Unchanged media and old recovery evidence reused; this run does not prove physical hearing or HOME/lid behavior."
+  ]
+}

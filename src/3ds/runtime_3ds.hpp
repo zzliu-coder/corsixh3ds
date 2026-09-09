@@ -5,6 +5,7 @@
 #include <memory>
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/memory_telemetry.hpp"
+#include "runner/adapter.hpp"
 
 struct lua_State;
 struct SDL_Window;

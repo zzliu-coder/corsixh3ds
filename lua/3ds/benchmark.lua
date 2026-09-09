@@ -6,9 +6,13 @@ Benchmark.__index=Benchmark
 local root="sdmc:/3ds/corsixth/Benchmark/"
 local speeds={"Normal","And then some more"}
 local Health=require("3ds.state_health")
+local NEEDS_INPUT="TH3DS_NEEDS_INPUT"
 
 function Benchmark.new(app,native)
+  local run=native.runner_context and native.runner_context()
+  local root=run and run.root or root
   local self=setmetatable({app=app,native=native,phase="pending",index=1,
+    root=root,run=run,results={},sample_elapsed=0,sample_ticks=0,sample_frames=0,
     original_dir=app.savegame_dir,original_autosave_frequency=app.config.autosave_frequency},Benchmark)
   self.profiles={{speed=speeds[1]},{speed=speeds[2]}}
   if app.config.unicode_font and app.config.audio_music and app.audio and app.strings
@@ -28,6 +32,17 @@ function Benchmark.new(app,native)
   end
   local recovery=io.open(root.."r62-recovery.sav","rb")
   if recovery then recovery:close();self.recovery_copy=true end
+  if run then
+    assert(self.media_profiles,"runner requires installed Chinese font, speech and music")
+    if run.profile=="zh-on" then
+      self.profiles={{speed="Normal",language="Chinese (simplified)",music=true,label="zh-on"}}
+    elseif run.profile=="expanded-zh-on" then
+      self.profiles={{speed="Normal",language="Chinese (simplified)",music=true,
+        label="expanded-zh-on",file="expanded.sav"}}
+    end
+    self.stress_duration=tonumber(run.stress_ms)
+    self.warmup_ms=tonumber(run.warmup_ms);self.sample_ms=tonumber(run.sample_ms)
+  end
   native.benchmark_state(true)
   native.set_notice("AUTO BENCHMARK - B CANCEL",false)
   return self
@@ -97,7 +112,47 @@ end
 function Benchmark:progress()
   local p=self.app._3ds and self.app._3ds.simulation_progress or {}
   return {world=p.world_completed or 0,hours=p.hours_completed or 0,
-    entities=p.entity_completed or 0,at=self.native.clock_ms()}
+    entities=p.entity_completed or 0,at=self.native.clock_ms(),
+    frames=self.native.runner_frames and self.native.runner_frames() or 0}
+end
+
+function Benchmark:terminal(outcome,reason)
+  if not self.run then return end
+  local fields={simulation_ticks=tostring(self.sample_ticks),frames=tostring(self.sample_frames),
+    elapsed_us=tostring(self.sample_elapsed*1000),recovery_outcome="NOT_PROVEN",
+    recovery_roundtrip_outcome=self.recovery_verified and "PASS" or "NOT_PROVEN",
+    recovery_behavior_outcome="NOT_PROVEN",
+    healthy_baseline_outcome=outcome,errors=tostring(self.app._3ds.simulation_errors or 0),
+    voice_playback="NOT_PROVEN",exact_state_ab="NOT_PROVEN"}
+  for k,v in pairs(self.results)do fields[k]=tostring(v) end
+  if self.phase=="sample" and self.sample_progress then
+    local now=self:progress()
+    for _,key in ipairs{"world","hours","entities","frames","at"}do
+      fields["partial_"..key]=tostring(now[key]-self.sample_progress[key])
+    end
+  end
+  if self.stress then
+    fields.stress_cycles=tostring(self.stress.cycle)
+    fields.stress_save_reload_count=tostring(self.stress.save_reload_count or 0)
+    local now=self:progress()
+    for _,key in ipairs{"world","hours","entities","frames","at"}do
+      fields["stress_"..key]=tostring(now[key]-self.stress_progress[key])
+    end
+  end
+  local exited,exit_err=pcall(self.app.exit,self.app)
+  if not exited then
+    outcome="FAIL";reason="EXIT_FAILED"
+    fields.exit_error=tostring(exit_err):gsub("[\r\n]"," "):sub(1,1024)
+    if self.app.abandon then pcall(self.app.abandon,self.app)end
+  end
+  local written,err=pcall(self.native.runner_finish,outcome,reason,fields)
+  assert(written,err)
+end
+
+function Benchmark:cleanup()
+  local ok,result=pcall(self.restore,self)
+  if not ok then self.results.cleanup_error=tostring(result):gsub("[\r\n]"," "):sub(1,1024) end
+  return ok and result==true
 end
 
 function Benchmark:restore()
@@ -106,7 +161,7 @@ function Benchmark:restore()
     local detail;closed,detail=pcall(self.stress.close,self.stress)
     if not closed then print("benchmark window cleanup failed: "..tostring(detail)) end
   end
-  self.app.savegame_dir=self.original_dir
+  self.app.savegame_dir=self.run and self.root.."save/" or self.original_dir
   self.app.config.autosave_frequency=self.original_autosave_frequency
   if self.app.world then self.app.world:setSpeed(self.failed and "Pause" or "Normal") end
   self.native.benchmark_state(false)
@@ -129,15 +184,17 @@ end
 function Benchmark:cancel(reason)
   if self.phase=="done" then return end
   self:mark("ABORT-"..tostring(reason))
+  local restored=self:cleanup()
+  self:terminal(restored and "NOT_PROVEN" or "FAIL",restored and "CANCEL" or "CLEANUP_FAILED")
   self.phase="done"
-  local restored=self:restore()
   self.native.set_notice(restored and "BENCHMARK STOPPED - LOG RETAINED"
     or "BENCHMARK RESTORE FAILED - SEE LOG",not restored)
 end
 
 function Benchmark:load()
+  local root=self.root
   self:captureMedia()
-  self.app.savegame_dir=root.."Saves/"
+  self.app.savegame_dir=root..(self.run and "save/" or "Saves/")
   self.app.config.autosave_frequency=0
   if self.media_profiles then self.app.audio:stopBackgroundTrack();self.app.config.play_music=false end
   if self.recovery_copy and not self.recovery_verified then
@@ -147,18 +204,21 @@ function Benchmark:load()
     self.recovery_copy=false -- one independent qualification attempt
     if recovered~=true then
       self.recovery_refused=true
+      self.results.recovery_reason=tostring(reason):gsub("[\r\n]"," "):sub(1,1024)
       print("benchmark-recovery: status=REFUSED original_slot1=untouched reason="..tostring(reason))
     else
     local health=Health.assertActive(self.app)
     self.app.world:setSpeed("Pause")
     local fingerprint=require("3ds.benchmark_stress").fingerprint
     local before=fingerprint(self.app)
-    local output=root.."Saves/r63-recovery-roundtrip.sav"
+    local output=self.app.savegame_dir.."r63-recovery-roundtrip.sav"
     assert(self.app:save(output)==true,"R62 recovery copy save failed")
     assert(self.app:load(output)==true,"R62 recovery copy reload failed")
     Health.assertActive(self.app)
     assert(fingerprint(self.app)==before,"R62 recovery copy roundtrip state changed")
     self.recovery_verified=true
+    self.results.recovery_staff=health.staff;self.results.recovery_patients=health.patients
+    self.results.recovery_repaired_count=self.app._3ds.recovery_count or "NOT_PROVEN"
     print("benchmark-recovery: status=PASS staff="..health.staff.." patients="..health.patients
       .." ticks=active action_timer_state=preserved original_slot1=untouched")
     end
@@ -189,10 +249,10 @@ function Benchmark:load()
   self.expected_voice=self.app.config.speech_language
   self.expected_camera_x=self.app.ui and self.app.ui.screen_offset_x
   self.expected_camera_y=self.app.ui and self.app.ui.screen_offset_y
-  assert(self.app.world:getCurrentSpeed()==profile.speed,
-    "benchmark blocked by a mandatory pause window")
+  if self.app.ui and self.app.ui.anyMustPauseWindowOpen and self.app.ui:anyMustPauseWindowOpen() then error(NEEDS_INPUT) end
+  assert(self.app.world:getCurrentSpeed()==profile.speed,"benchmark speed could not be selected")
   self:mark("WARMUP")
-  self.phase="warmup";self.deadline=self.native.clock_ms()+30000
+  self.phase="warmup";self.deadline=self.native.clock_ms()+(self.warmup_ms or 30000)
   self.native.set_notice("AUTO BENCHMARK - WARMUP",false)
 end
 
@@ -213,8 +273,8 @@ function Benchmark:advance()
     if self.stress:tick() then self:finish() end
     return
   end
-  assert(self.app.world and self.app.world:getCurrentSpeed()==self.profiles[self.index].speed,
-    "benchmark speed changed or a mandatory pause window opened")
+  if self.app.ui and self.app.ui.anyMustPauseWindowOpen and self.app.ui:anyMustPauseWindowOpen() then error(NEEDS_INPUT) end
+  assert(self.app.world and self.app.world:getCurrentSpeed()==self.profiles[self.index].speed,"benchmark speed changed")
   assert(self.app.config.language==self.expected_language and
     self.app.config.play_music==self.expected_music and
     self.app.config.speech_language==self.expected_voice,
@@ -226,7 +286,7 @@ function Benchmark:advance()
   if self.phase=="warmup" then
     self.sample_progress=self:progress()
     self:mark("SAMPLE-BEGIN");self.phase="sample"
-    self.deadline=self.native.clock_ms()+60000
+    self.deadline=self.native.clock_ms()+(self.sample_ms or 60000)
     self.native.set_notice("AUTO BENCHMARK - SAMPLING",false)
   elseif self.phase=="sample" then
     Health.assertActive(self.app)
@@ -237,18 +297,46 @@ function Benchmark:advance()
       .." completed_world="..(finish.world-start.world).." completed_hours="..(finish.hours-start.hours)
       .." completed_entities="..(finish.entities-start.entities)
       .." exact_state_ab=NOT_PROVEN")
+    if self.run then
+      local prefix="sample_"..self.index.."_"
+      for _,key in ipairs{"world","hours","entities","frames","at"} do
+        self.results[prefix..key]=finish[key]-start[key]
+      end
+      assert(finish.frames>start.frames,"no valid rendered frames")
+      self.sample_ticks=self.sample_ticks+finish.world-start.world
+      self.sample_frames=self.sample_frames+finish.frames-start.frames
+      self.sample_elapsed=self.sample_elapsed+finish.at-start.at
+      if self.native.runner_checkpoint then
+        local checkpoint={phase="sample_complete",outcome="NOT_PROVEN"}
+        for k,v in pairs(self.results)do checkpoint[k]=tostring(v)end
+        self.native.runner_checkpoint(checkpoint)
+      end
+    end
     self:mark("SAMPLE-END")
     if self.index<#self.profiles then self.index=self.index+1;self:load()
     else
-      if self.expanded then
+      if (self.run and self.stress_duration>0) or (not self.run and self.expanded) then
         self.phase="stress";self.deadline=nil
-        self.stress=require("3ds.benchmark_stress").new(self.app,self.native)
+        self.stress_progress=self:progress()
+        self.stress=require("3ds.benchmark_stress").new(self.app,self.native,self.stress_duration,
+          self.run and self.app.savegame_dir or nil)
       else self:finish() end
     end
   end
 end
 
 function Benchmark:finish()
+  if self.run then
+    Health.assertActive(self.app)
+    if self.stress then
+      local now=self:progress()
+      assert(now.world>self.stress_progress.world and now.hours>self.stress_progress.hours and
+        now.entities>self.stress_progress.entities,"stress completed no simulation work")
+    end
+    assert(self.app:save(self.app.savegame_dir.."completed.sav")==true,"runner final private save failed")
+    self:mark("WORKLOAD-END");assert(self:cleanup(),"runner cleanup failed")
+    self:terminal("PASS","COMPLETE");self.phase="done";return
+  end
   -- Return a fresh private copy for play; all automated writes have ended.
   local ok,detail=self.app:load(root..(self.expanded and "expanded.sav" or "input.sav"))
   assert(ok==true,"benchmark final reload failed: "..tostring(detail))
@@ -263,9 +351,15 @@ function Benchmark:tick()
   local ok,err=pcall(self.advance,self)
   if not ok then
     self:mark("FAILED")
-    self.phase="done";self.failed=true;self:restore()
+    self.failed=true;local restored=self:cleanup()
     self.native.set_notice("BENCHMARK FAILED - SEE LOG",true)
     print("benchmark failure: "..tostring(err))
+    if self.native.runner_error then self.native.runner_error(tostring(err))end
+    self.results.failure_detail=tostring(err):gsub("[\r\n]"," "):sub(1,1024)
+    local needs_input=tostring(err):match(NEEDS_INPUT.."$")~=nil
+    self:terminal(needs_input and restored and "NOT_PROVEN" or "FAIL",
+      not restored and "CLEANUP_FAILED" or (needs_input and "NEEDS_INPUT" or "FAILED"))
+    self.phase="done"
   elseif self.phase~="done" and self.deadline then
     local second=math.floor(self.native.clock_ms()/1000)
     if second~=self.last_second then

@@ -285,6 +285,11 @@ void boot_log_open() {
   }
   g_log_attempted = true;
   g_boot_started_ms = osGetTime();
+  if(runner_active()){
+    const auto dir=runner_directory()+"/artifacts/";
+    if(!g_log.open((dir+"boot.log").c_str(),(dir+"boot.previous.log").c_str(),
+                   (dir+"boot.older.log").c_str()))return;
+  }else
   if (!g_log.open(kLogPath, "sdmc:/3ds/corsixth/boot.previous.log",
                   "sdmc:/3ds/corsixth/boot.older.log")) return;
 #if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
@@ -1408,6 +1413,7 @@ class Runtime {
     const auto presented=now_us();
     g_observations.timing.present_complete(presented, result);
     g_observations.sample_present(presented, result);
+    runner_present(result==PresentResult::Success);
     g_top_present_seen = g_top_present_ok = false;
   }
 
@@ -2327,6 +2333,7 @@ int l_window_identity(lua_State* state) {
 }
 int l_benchmark_state(lua_State* state){g_benchmark_active=lua_toboolean(state,1)!=0;return 0;}
 int l_benchmark_enabled(lua_State* state){
+  if(runner_active()){lua_pushboolean(state,true);return 1;}
   constexpr const char* marker="sdmc:/3ds/corsixth/benchmark-run.txt";
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){
@@ -2347,6 +2354,72 @@ int l_benchmark_mark(lua_State* state){
   g_observations.sample_mark(event,now_us(),{boot_log,boot_log_flush,nullptr});
   boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
     (unsigned long long)now_us(),event,speed,date);
+  return 0;
+}
+int l_runner_context(lua_State* state){
+  if(!runner_active()){lua_pushnil(state);return 1;}
+  lua_newtable(state);
+  for(const auto& item:runner_config()){lua_pushstring(state,item.second.c_str());lua_setfield(state,-2,item.first.c_str());}
+  lua_pushstring(state,(runner_directory()+"/").c_str());lua_setfield(state,-2,"root");return 1;
+}
+int l_runner_frames(lua_State* state){lua_pushinteger(state,runner_frames());return 1;}
+// Validate without C++ owners. The second traversal uses only nonallocating
+// Lua accessors on a table whose string keys cannot change during this call.
+void runner_validate_fields(lua_State* state,int index){
+  luaL_checktype(state,index,LUA_TTABLE);lua_pushnil(state);unsigned count=0;size_t total=0;
+  while(lua_next(state,index)){
+    size_t key_size=0,value_size=0;
+    if(lua_type(state,-2)!=LUA_TSTRING||lua_type(state,-1)!=LUA_TSTRING)
+      luaL_error(state,"runner fields must be strings");
+    const char* key=lua_tolstring(state,-2,&key_size);const char* value=lua_tolstring(state,-1,&value_size);
+    total+=key_size+value_size+2;
+    if(std::strspn(key,"abcdefghijklmnopqrstuvwxyz_0123456789")!=key_size||
+       std::strlen(value)!=value_size||std::strpbrk(value,"\r\n")||total>12000)
+      luaL_error(state,"runner fields have invalid bytes or total size");
+    if(++count>128||key_size>64||value_size>1024)luaL_error(state,"runner fields exceed bounds");
+    lua_pop(state,1);
+  }
+}
+void runner_read_fields(lua_State* state,int index,runner::Fields& fields){
+  lua_pushnil(state);
+  while(lua_next(state,index)){fields[lua_tostring(state,-2)]=lua_tostring(state,-1);lua_pop(state,1);}
+}
+int l_runner_checkpoint(lua_State* state){
+  if(!runner_active())return 0;
+  runner_validate_fields(state,1);char error[256]{};
+  try{runner::Fields fields;runner_read_fields(state,1,fields);
+    runner::atomicWrite(runner_directory()+"/artifacts/progress.kv",runner::encode(fields));}
+  catch(const std::exception& e){std::snprintf(error,sizeof(error),"progress persistence failed: %.200s",e.what());}
+  if(error[0])return luaL_error(state,"%s",error);
+  return 0;
+}
+int l_runner_error(lua_State* state){
+  size_t size=0;const char* error=luaL_checklstring(state,1,&size);
+  if(!runner_active())return 0;
+  bool ok=false;
+  try{
+    const auto path=runner_directory()+"/artifacts/error.txt";
+    if(FILE* file=std::fopen(path.c_str(),"wb")){
+      const auto count=std::min(size,size_t(8192));ok=std::fwrite(error,1,count,file)==count;
+      if(std::fclose(file))ok=false;
+    }
+  }catch(...){}
+  lua_pushboolean(state,ok);return 1;
+}
+int l_runner_finish(lua_State* state){
+  const auto* outcome=luaL_checkstring(state,1);const auto* reason=luaL_checkstring(state,2);
+  runner_validate_fields(state,3);char error[256]{};
+  try{runner::Fields fields;runner_read_fields(state,3,fields);
+  const auto memory=heap_snapshot();
+  fields["heap_available_low"]=std::to_string(memory.heap_available_low_water);
+  fields["heap_available_end"]=std::to_string(memory.heap_available_estimate);
+  fields["linear_free_end"]=std::to_string(memory.linear_free);
+  fields["lua_bytes_end"]=std::to_string(memory.lua_bytes);
+  fields["log_truncated"]=g_log.truncated()?"1":"0";
+  fields["log_failed"]=g_log.failed()?"1":"0";
+  runner_finish(outcome,reason,fields);}
+  catch(const std::exception& e){std::snprintf(error,sizeof(error),"result persistence failed: %.200s",e.what());}
+  if(error[0])return luaL_error(state,"%s",error);
   return 0;
 }
 int l_span_begin(lua_State* state) {
@@ -2641,6 +2714,11 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "trace_call", l_trace_call);
   set_function(state, "window_identity", l_window_identity);
   set_function(state, "benchmark_enabled", l_benchmark_enabled);
+  set_function(state, "runner_context", l_runner_context);
+  set_function(state, "runner_frames", l_runner_frames);
+  set_function(state, "runner_checkpoint", l_runner_checkpoint);
+  set_function(state, "runner_error", l_runner_error);
+  set_function(state, "runner_finish", l_runner_finish);
   set_function(state, "benchmark_state", l_benchmark_state);
   set_function(state, "benchmark_mark", l_benchmark_mark);
   return 1;
@@ -2721,6 +2799,10 @@ void report_fatal(const char* reason) noexcept {
   g_observations.terminal = true;
   runtime_flush_observations(true);
   runtime().show_fatal(text);
+  if(runner_active()){
+    try{runner_finish("FAIL","native_fatal");}catch(...){}
+    SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);return;
+  }
   // Give the player time to read the lower screen before the process leaves.
   for (int i = 0; i < 600 && aptMainLoop(); ++i) {
     hidScanInput();

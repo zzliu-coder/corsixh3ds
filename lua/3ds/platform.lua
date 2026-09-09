@@ -297,7 +297,9 @@ function Platform:installLoadTelemetry()
     -- The installer creates this separate, hash-verified Slot1 copy. Ordinary
     -- saves are never migrated automatically, and original bytes stay intact.
     if filename=="sdmc:/3ds/corsixth/Saves/R62-Recovered.sav" or
-       filename=="sdmc:/3ds/corsixth/Benchmark/r62-recovery.sav" then
+       filename=="sdmc:/3ds/corsixth/Benchmark/r62-recovery.sav" or
+       (self.native.runner_context and self.native.runner_context() and
+        filename==self.native.runner_context().root.."r62-recovery.sav") then
       self.save_prefix="R63-Recovered-"
       local repaired,count=pcall(require("3ds.state_health").repairR62,instance.world)
       if not repaired then
@@ -306,6 +308,7 @@ function Platform:installLoadTelemetry()
         return false,count
       end
       native_checkpoint(native,"save_load","r62-recovered",filename,count)
+      self.recovery_count=count
     else
       local basename=filename:match("([^/]+)$") or ""
       self.save_prefix=basename:match("^R63%-Recovered%-") and "R63-Recovered-" or nil

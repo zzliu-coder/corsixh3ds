@@ -173,6 +173,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             changes.extend(Change(path, "render-gpu") for path in patch_render_gpu(root))
             changes.extend(Change(path, "cpu-hotspots") for path in patch_cpu_hotspots(root))
             changes.extend(Change(path, "media") for path in patch_media(root))
+            from integration.runner_adapter import patch_runner_adapter
+            changes.extend(patch_runner_adapter(root))
         if not args.dry_run:
             integrated_manifest = manifest(root, overlay, provenance)
             manifest_path = root / "CorsixTH" / "Src" / "3ds" / "integration-manifest.json"

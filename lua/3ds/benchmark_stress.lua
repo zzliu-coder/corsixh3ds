@@ -21,10 +21,11 @@ local function fingerprint(app)
 end
 Stress.fingerprint=fingerprint
 
-function Stress.new(app,native,duration)
-  assert(app.savegame_dir==root.."Saves/" and app.config.autosave_frequency==0,
+function Stress.new(app,native,duration,save_dir)
+  save_dir=save_dir or root.."Saves/"
+  assert(app.savegame_dir==save_dir and app.config.autosave_frequency==0,
     "stress must own the private save route")
-  local self=setmetatable({app=app,native=native,cycle=0,phase="open",deadline=0,
+  local self=setmetatable({app=app,native=native,cycle=0,phase="open",deadline=0,save_dir=save_dir,
     finish_at=native.clock_ms()+(duration or 22*60000)},Stress)
   print("benchmark-stress: event=BEGIN duration_ms="..(duration or 22*60000).." saves=Benchmark/Saves user_saves_writable=0")
   return self
@@ -37,15 +38,21 @@ end
 
 function Stress:saveReload()
   local app=self.app
-  assert(app.savegame_dir==root.."Saves/" and app.config.autosave_frequency==0)
+  assert(app.savegame_dir==self.save_dir and app.config.autosave_frequency==0)
   app.world:setSpeed("Pause")
   Health.assertActive(app)
   local before=fingerprint(app)
-  assert(app:save(root.."Saves/r62-roundtrip.sav")==true,"private save failed")
-  assert(app:load(root.."Saves/r62-roundtrip.sav")==true,"private reload failed")
+  assert(app:save(self.save_dir.."r62-roundtrip.sav")==true,"private save failed")
+  assert(app:load(self.save_dir.."r62-roundtrip.sav")==true,"private reload failed")
   app.config.autosave_frequency=0;app.world.autosave_next_tick=false
   Health.assertActive(app)
   assert(fingerprint(app)==before,"private reload hospital fingerprint changed")
+  self.save_reload_count=(self.save_reload_count or 0)+1
+  if self.native.runner_checkpoint then
+    self.native.runner_checkpoint({phase="stress_save_reload",outcome="NOT_PROVEN",
+      cycles=tostring(self.cycle),save_reload_count=tostring(self.save_reload_count),
+      save_reload_outcome="PASS"})
+  end
   app.world:setSpeed("Normal")
   print("benchmark-stress: event=SAVE-RELOAD status=PASS cycle="..self.cycle.." checks=date,staff,wages,rooms,balance,plots,humanoids,ticks,timers,actions")
 end
@@ -65,7 +72,7 @@ function Stress:tick()
   else
     local app=self.app;local ui=app.ui
     if ui:anyMustPauseWindowOpen() then
-      error("mandatory event requires user decision; stress stopped without auto-answer")
+      error("TH3DS_NEEDS_INPUT")
     end
     self.cycle=self.cycle+1
     local name=windows[(self.cycle-1)%#windows+1]

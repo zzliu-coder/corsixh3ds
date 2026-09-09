@@ -10,6 +10,7 @@ void RuntimeObservations::reset(std::uint64_t now) noexcept {
   timing.reset_window(now);
   memory.clear();
   slow.clear();
+  frame_tail.reset();
   scene.fill(0);
   window_has_operation = window_scene_changed = false;
   terminal = terminal_saved = flush_requested = false;
@@ -27,6 +28,7 @@ void RuntimeObservations::reset(std::uint64_t now) noexcept {
   cpu_work.sample_rows={};
 }
 void RuntimeObservations::sample_present(std::uint64_t now, PresentResult result) noexcept {
+  frame_tail.present(now,result);
   if(!sample_active)return;
   if(now<sample_begin || (sample_anchor && now<sample_last)){sample_valid=false;return;}
   if(result==PresentResult::Failed){sample_valid=false;return;}
@@ -46,6 +48,8 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
   const bool begin=!std::strcmp(event,"SAMPLE-BEGIN");
   const bool interrupted=sample_active;
   if(sample_active){
+    const bool tail_open=frame_tail.active();
+    if(tail_open)frame_tail.close(now);
     const bool eligible=!std::strcmp(event,"SAMPLE-END") && sample_eligible(now);
     // Snapshot counters before the first log call, on the same official boundary.
     const auto final_clock=clock?*clock:SimulationClock::Statistics{};
@@ -68,6 +72,7 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
       (unsigned long long)sample_first,(unsigned long long)sample_last,
       (unsigned long long)initial,(unsigned long long)tail,(unsigned long long)d.count,
       (unsigned long long)d.total_us,(unsigned long long)d.p95_upper_us,(unsigned long long)d.maximum_us);
+    if(frame_tail.take_report())report_tail(event,output);
     if(sample_clock_valid) {
       if(clock_valid) {
         output.line("benchmark-clock: eligible=%d begin=%llu end=%llu elapsed_us=%llu steps=%llu completed=%llu failed=%llu debt_begin_us=%llu debt_end_us=%llu dropped_us=%llu rebases=%llu budget_exits=%llu step_us=18000",
@@ -94,12 +99,30 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
     sample_active=false;
   }
   if(begin && !interrupted){
+    frame_tail.begin(now);
     sample_intervals.clear();sample_begin=now;sample_first=sample_last=0;
     sample_anchor=false;sample_active=sample_valid=true;
     sample_clock_valid=clock!=nullptr;
     if(clock)sample_clock_begin=*clock;
     cpu_work.sample_rows={};cpu_work.sample_begin=now;cpu_work.sample_active=true;
   }
+}
+void RuntimeObservations::report_tail(const char* event,const ObservationOutput& output) const noexcept {
+  const auto& r=frame_tail.record();
+  output.line("benchmark-tail: schema=1 epoch=%u sequence=%llu begin=%llu end=%llu event=%s invalid=%u success=%llu failed=%llu skipped=%llu first=%llu last=%llu begin_phase=%s end_phase=%s flush_begin=%llu flush_end=%llu flush_reason=%u flush_action=%u flush_completed=%u residency=1",
+    r.epoch,(unsigned long long)r.sequence,(unsigned long long)r.begin,(unsigned long long)r.end,event,r.invalid,
+    (unsigned long long)r.success,(unsigned long long)r.failed,(unsigned long long)r.skipped,
+    (unsigned long long)r.first,(unsigned long long)r.last,
+    kFramePhaseNames[static_cast<unsigned>(r.begin_phase)],kFramePhaseNames[static_cast<unsigned>(r.end_phase)],
+    (unsigned long long)r.flush_begin,(unsigned long long)r.flush_end,r.flush_reason,static_cast<unsigned>(r.flush_action),r.flush_completed?1U:0U);
+  for(std::size_t i=0;i<kFramePhaseNames.size();++i)
+    output.line("benchmark-tail-phase: schema=1 epoch=%u sequence=%llu begin=%llu end=%llu name=%s whole_us=%llu first_prefix_us=%llu last_prefix_us=%llu",
+      r.epoch,(unsigned long long)r.sequence,(unsigned long long)r.begin,(unsigned long long)r.end,kFramePhaseNames[i],
+      (unsigned long long)r.whole[i],(unsigned long long)r.first_prefix[i],(unsigned long long)r.last_prefix[i]);
+}
+void RuntimeObservations::seal_tail(std::uint64_t now,const ObservationOutput& output,const char* event) noexcept {
+  if(frame_tail.active())frame_tail.close(now);
+  if(frame_tail.take_report())report_tail(event,output);
 }
 bool RuntimeObservations::due(std::uint64_t now, bool force) const noexcept {
   return !terminal_saved && (force || flush_requested || now-full_us>=60000000U || now-compact_us>=10000000U);
@@ -135,6 +158,7 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
   const auto p = timing.snapshot(now);
   const bool compact = force || terminal || now - compact_us >= 10000000U;
   if (compact) {
+    frame_tail.flush_action(FrameTail::FlushAction::Compact);
     slow.drain(output.line);
     const auto& m = inputs;
     output.line("perf: at_us=%llu scene=%s elapsed_us=%llu successful=%llu failed=%llu intervals=%llu mean_us=%.0f p95_us=%llu max_us=%llu gap_us=%llu heap_free=%llu heap_low=%llu lua=%llu linear_free=%llu log_us=%llu workload_us=%llu terminal=%d truncated=%d",
@@ -192,9 +216,11 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
   bool open = false;
   for (const auto& stage : p.stages) if (stage.open != 0) open = true;
   if (open && !terminal) {
+    frame_tail.flush_action(compact?FrameTail::FlushAction::CompactDeferred:FrameTail::FlushAction::Deferred);
     if (compact) output.flush();
     return;
   }
+  frame_tail.flush_action(terminal?FrameTail::FlushAction::Terminal:FrameTail::FlushAction::Full);
   output.line("observation: terminal=%d active_spans=%d reset_allowed=%d",terminal,open,!open);
   output.display();
   const auto& d = p.intervals;

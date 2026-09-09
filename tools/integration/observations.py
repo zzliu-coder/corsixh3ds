@@ -651,4 +651,33 @@ def patch_u3_observations(root: Path, dry_run: bool = False) -> list[Change]:
         content += "\n" + prefix + " CORSIXTH_3DS_U3_OBSERVATIONS_V1\n"
         write_text(root / relative, content, dry_run)
         changes.append(Change(relative, "patch"))
+    changes.extend(patch_frame_tail_gc(root))
     return changes
+
+
+def patch_frame_tail_gc(root: Path) -> list[Change]:
+    """Observe existing GC calls without changing their order or frequency."""
+    path = root / 'CorsixTH/Src/sdl_core.cpp'
+    before = text = read_text(path)
+    if '// CORSIXTH_3DS_FRAME_TAIL_GC_R69' in text:
+        return []
+    first = '      cth3ds::runtime_observe_memory("gc", "before", "incremental", cth3ds::MemoryGate::Operation);'
+    last = first.replace('"before"', '"after"')
+    for anchor in (first, last):
+        if text.count(anchor) != 1:
+            raise IntegrationError('frame tail GC observation anchor mismatch')
+        text = text.replace(anchor,
+            '      { cth3ds::RuntimePhaseScope phase(cth3ds::FramePhase::GCObserve);\n' +
+            anchor + '\n      }', 1)
+    anchor = '    lua_gc(L, LUA_GCSTEP, 2);'
+    if text.count(anchor) != 1:
+        raise IntegrationError('frame tail GC step anchor mismatch')
+    text = text.replace(anchor,
+        '#ifdef CORSIXTH_3DS\n'
+        '    { cth3ds::RuntimePhaseScope phase(cth3ds::FramePhase::GCStep);\n'
+        '#endif\n' + anchor + '\n#ifdef CORSIXTH_3DS\n    }\n#endif', 1)
+    text += '\n// CORSIXTH_3DS_FRAME_TAIL_GC_R69\n'
+    if text == before:
+        return []
+    write_text(path, text, False)
+    return [Change('CorsixTH/Src/sdl_core.cpp', 'frame-tail-gc')]

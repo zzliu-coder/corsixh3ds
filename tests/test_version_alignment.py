@@ -18,7 +18,7 @@ class VersionAlignmentTests(unittest.TestCase):
         self.assertIn(f'lua_pushstring(state, "{version}");', runtime)
         # Product displays identify the current build. The existing one-shot
         # request protocol remains R63 so installed runner/marker files work.
-        revision = "R68"
+        revision = "R69"
         for token in (f'"{revision} " + state.build_tag',
                       f'"CORSIXTH {revision} "', f'diagnostics: revision={revision}'):
             self.assertTrue(token in runtime, f'candidate identity is missing: {token}')

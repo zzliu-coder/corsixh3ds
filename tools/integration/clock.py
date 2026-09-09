@@ -51,12 +51,22 @@ def patch_simulation_clock(root: Path) -> list[Change]:
     # stay on the main thread; the 18ms SDL timer never writes a log or Lua.
     path = root / "CorsixTH/Src/sdl_core.cpp"
     before = text = read_text(path)
+    # Normalize only our own observation line so existing clock anchors and
+    # their repeat-generation checks keep a single canonical owner.
+    wait_phase = '    cth3ds::RuntimePhaseScope wait_phase(cth3ds::FramePhase::Wait); // R69 residency\n'
+    if text.count(wait_phase) > 1:
+        raise IntegrationError('duplicate frame tail wait phase')
+    text = text.replace(wait_phase, '')
     for old, new in SIMULATION_CLOCK_SITES + PRESENTATION_SITES:
         if text.count(new) == 1:
             continue
         if text.count(old) != 1:
             raise IntegrationError("simulation clock anchor mismatch")
         text = text.replace(old, new, 1)
+    anchor = '  auto u3_wait = [&]() {\n'
+    if text.count(anchor) != 1:
+        raise IntegrationError('frame tail wait anchor mismatch')
+    text = text.replace(anchor, anchor + wait_phase, 1)
     if text == before:
         return []
     write_text(path, text, False)

@@ -6,6 +6,7 @@
 #include "cth3ds/memory_telemetry.hpp"
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/slow_events.hpp"
+#include "cth3ds/frame_tail.hpp"
 
 namespace cth3ds {
 // Main-thread observation owns only records. No SDL/Lua/allocator access,
@@ -33,6 +34,7 @@ class RuntimeObservations {
   Telemetry timing;
   MemoryTelemetry memory;
   SlowEvents slow;
+  FrameTail frame_tail;
   std::array<char,96> scene{};
   bool window_has_operation{}, window_scene_changed{};
   bool terminal{}, terminal_saved{}, flush_requested{};
@@ -43,12 +45,14 @@ class RuntimeObservations {
   void sample_mark(const char* event, std::uint64_t now, const ObservationOutput& output,
                    const SimulationClock::Statistics* clock = nullptr) noexcept;
   void sample_present(std::uint64_t now, PresentResult result) noexcept;
+  void seal_tail(std::uint64_t now, const ObservationOutput& output,const char* event="SHUTDOWN") noexcept;
   bool sample_open() const noexcept { return sample_active; }
   bool sample_can_close(std::uint64_t now) const noexcept {
     return sample_active && now>=sample_begin && (!sample_anchor || now>=sample_last);
   }
   bool sample_eligible(std::uint64_t now) const noexcept;
  private:
+  void report_tail(const char* event,const ObservationOutput& output) const noexcept;
   DurationDistribution sample_intervals;
   std::uint64_t sample_begin{},sample_first{},sample_last{};
   bool sample_active{},sample_valid{},sample_anchor{};

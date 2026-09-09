@@ -346,6 +346,8 @@ end
                     r'(?ms)^int preserve_lua_error\(.*?^\}',
                     r'(?ms)^struct AdapterCall \{.*?^\};',
                     r'(?ms)^int l_protected_adapter_call\(.*?^\}',
+                    r'(?ms)^FrameTail::Token runtime_phase_begin\(.*?^\}',
+                    r'(?ms)^void runtime_phase_end\(.*?^\}',
                     r'(?ms)^bool call_platform_method\(.*?^\}']
         extracted = '\n'.join(re.search(pattern, runtime).group() for pattern in patterns)
         body = r'''

@@ -103,8 +103,10 @@ function Benchmark:mark(event,progress)
   local world=self.app.world
   local date=world and world.game_date and world.game_date:tostring() or "unknown"
   local speed=world and world:getCurrentSpeed() or "No world"
-  -- Opening diagnostics happen before the window; closing diagnostics happen
-  -- after it. Native returns the exact timestamp used by its frame window.
+  -- Synchronous opening output precedes the window; closing output follows it.
+  -- flush_observations only requests a later main-loop flush. Its actual cost
+  -- can fall inside this sample and is retained in native phase residency.
+  -- Native returns the exact timestamp used by its frame window.
   local function boundary()
     local at_us,frames=self.native.benchmark_mark(event,speed,date)
     if progress and self.run then

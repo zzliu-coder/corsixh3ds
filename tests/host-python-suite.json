@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 325,
-  "selected_sorted_ids_sha256": "e3d67a5e2ae2dd3542b9359bfc5f828765979826a2d832d3f7d5cb71862ee202",
+  "selected_count": 327,
+  "selected_sorted_ids_sha256": "5624f6134ee0d9ec9488225e3ba487e04028b880eadaa0062ce2c81bc1d81681",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_benchmark.BenchmarkTests.test_expanded_profile_handoff_and_failed_cleanup_restore_private_route",
@@ -196,6 +196,8 @@
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_cross_build_gate_requires_real_call_edge_without_whole_archive",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_current_cross_build_proof_when_supplied",
     "test_final_elf_runtime_core.FinalElfRuntimeCoreTests.test_production_runtime_constructs_and_owns_the_session",
+    "test_frame_tail.FrameTailTests.test_actual_deferred_flush_generated_gc_wait_and_real_lua_marks",
+    "test_frame_tail.FrameTailTests.test_bounded_ledger_conservation_scope_and_partial",
     "test_generated_view.GeneratedViewTests.test_build_binding_rejects_mixed_lua_binary_and_old_port",
     "test_generated_view.GeneratedViewTests.test_complete_dry_run_and_publish_share_late_transform_and_check",
     "test_generated_view.GeneratedViewTests.test_complete_identity_includes_world_staff_and_all_lua",

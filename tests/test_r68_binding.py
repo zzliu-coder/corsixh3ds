@@ -362,7 +362,14 @@ print('PASS 42 cleanup success/failure/reentry routes: actual Stress, raw error 
             self.assertEqual(re.search(r'R"'+delimiter+r'\((.*)\)'+delimiter+r'"',header,re.S).group(1),
                              (ROOT/'lua/3ds'/filename).read_text())
         self.assertIn('++epoch_;\n    reset_benchmark_activation();',runtime)
-        self.assertIn('void shutdown() noexcept {\n    reset_benchmark_activation();',runtime)
+        shutdown=function_body(runtime,'  void shutdown() noexcept {')
+        self.assertLess(shutdown.index('seal_observation_tail("SHUTDOWN");'),
+                        shutdown.index('reset_benchmark_activation();'))
+        self.assertIn('int l_shutdown(lua_State*) {runtime().shutdown();return 0;}',runtime)
+        wrapper=function_body(runtime,'void runtime_shutdown(')
+        self.assertLess(wrapper.index('seal_observation_tail'),wrapper.index('runtime_flush_observations(true)'))
+        self.assertIn('runtime().shutdown();',wrapper)
+        self.assertIn('reset_runtime_observations();',function_body(runtime,'void register_lua_module('))
         self.assertIn('g_operation_blocked=false;\n  reset_benchmark_activation();',runtime)
         compiler,flags,links=native_inputs()
         code=r'''

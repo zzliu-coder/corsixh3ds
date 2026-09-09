@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <memory>
 #include "cth3ds/telemetry.hpp"
+#include "cth3ds/frame_tail.hpp"
 #include "cth3ds/memory_telemetry.hpp"
 #include "runner/adapter.hpp"
 
@@ -50,6 +51,17 @@ class RuntimeTimingScope {
   void finish(bool success = true) noexcept { if (token_) runtime_span_end(token_, success); token_ = 0; }
  private:
   std::uint64_t token_; bool success_{true};
+};
+FrameTail::Token runtime_phase_begin(FramePhase phase) noexcept;
+void runtime_phase_end(FrameTail::Token token) noexcept;
+class RuntimePhaseScope {
+ public:
+  explicit RuntimePhaseScope(FramePhase phase) noexcept : token_(runtime_phase_begin(phase)) {}
+  ~RuntimePhaseScope() { runtime_phase_end(token_); }
+  RuntimePhaseScope(const RuntimePhaseScope&) = delete;
+  RuntimePhaseScope& operator=(const RuntimePhaseScope&) = delete;
+ private:
+  FrameTail::Token token_;
 };
 void runtime_begin_frame() noexcept;
 void runtime_top_present_complete(bool success) noexcept;

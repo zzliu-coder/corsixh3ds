@@ -340,6 +340,11 @@ void boot_log_flush() noexcept {
   g_log_time_us += now_us() - started;
 }
 
+void seal_observation_tail(const char* event) noexcept {
+  const ObservationOutput output{boot_log,boot_log_flush,[](){}};
+  g_observations.seal_tail(now_us(),output,event);
+}
+
 void boot_log_close() {
 #if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD)
   if (g_stderr_sink) {
@@ -800,6 +805,14 @@ bool call_platform_method(lua_State* state, const char* method,
                           const Action* action = nullptr,
                           std::string* error = nullptr, InputContext* context = nullptr) {
   CpuWorkScope profile(context ? CpuWork::InputState : CpuWork::InputAction);
+  // Only the actual benchmark callback gets this nested residency label.
+  // Ordinary actions keep their caller's phase without an extra clock read.
+  const bool benchmark_call=!std::strcmp(method,"benchmarkTick") || !std::strcmp(method,"benchmarkCancel");
+  struct PhaseRestore {
+    bool enabled;
+    FrameTail::Token token;
+    ~PhaseRestore(){if(enabled)runtime_phase_end(token);}
+  } phase_restore{benchmark_call,benchmark_call?runtime_phase_begin(FramePhase::Benchmark):FrameTail::Token{}};
   const auto began = now_us();
   const int base = lua_gettop(state);
   AdapterCall request{method, action, context};
@@ -956,6 +969,7 @@ class Runtime {
   std::uint64_t epoch() const {return epoch_;}
 
   void shutdown() noexcept {
+    seal_observation_tail("SHUTDOWN");
     reset_benchmark_activation();
 #ifdef CORSIXTH_3DS_GPU
     gpu_quiesce();
@@ -1918,7 +1932,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R68 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R69 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -2012,7 +2026,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R68 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R69 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2834,11 +2848,15 @@ int luaopen_th3ds(lua_State* state) {
   return 1;
 }
 
+void reset_runtime_observations() noexcept {
+  seal_observation_tail("RESET");
+  g_observations.reset(now_us());
+}
 void register_lua_module(lua_State* state) {
 #ifdef CORSIXTH_3DS_GPU
   gpu_submit_sample_end(now_us(),false);
 #endif
-  g_observations.reset(now_us());
+  reset_runtime_observations();
   g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
   g_operation_blocked=false;
@@ -2875,7 +2893,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R68 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
+  boot_log("diagnostics: revision=R69 boundary_schema=1 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
@@ -2994,7 +3012,11 @@ void runtime_top_present_complete(bool success) noexcept {
   g_top_present_ok = g_top_present_seen ? g_top_present_ok && success : success;
   g_top_present_seen = true;
 }
-void runtime_frame_skipped() noexcept { g_observations.timing.present_complete(now_us(), PresentResult::Skipped); }
+void runtime_frame_skipped() noexcept {
+  const auto now=now_us();
+  g_observations.timing.present_complete(now, PresentResult::Skipped);
+  g_observations.frame_tail.present(now, PresentResult::Skipped);
+}
 void runtime_operation_boundary() noexcept {
   g_simulation_clock.interrupt();
   g_observations.window_has_operation=true;
@@ -3050,6 +3072,18 @@ void runtime_note_logic_callback(bool success) noexcept {
 void runtime_flush_observations(bool force) noexcept {
   const auto now=now_us();
   if(!g_observations.due(now,force))return;
+  const auto phase=g_observations.frame_tail.enter(FramePhase::Flush,now);
+  const std::uint32_t reason=(g_observations.flush_requested?1U:0U) |
+    (now-g_observations.full_us>=60000000U?2U:0U) |
+    (now-g_observations.compact_us>=10000000U?4U:0U) |
+    (force?8U:0U) | (g_observations.terminal?16U:0U);
+  g_observations.frame_tail.flush_begin(now,reason);
+  // Fatal output can be slow or reentrant. Freeze only the D2 record now;
+  // the existing frame/clock owner still closes with this same inputs.now.
+  if(g_observations.terminal && g_observations.frame_tail.active()) {
+    g_observations.frame_tail.flush_action(FrameTail::FlushAction::Terminal);
+    g_observations.frame_tail.close(now);
+  }
   boot_log("memory-sampling: interval_us=%llu sampled=%llu skipped=%llu forced=%llu failure_and_operation=always large_request_min=262144 peaks=sampled lua_allocator_peak=every_allocation admission=fresh",
       static_cast<unsigned long long>(MemoryObservationGate::interval_us),
       static_cast<unsigned long long>(g_memory_sampling.sampled),static_cast<unsigned long long>(g_memory_sampling.skipped),
@@ -3068,6 +3102,9 @@ void runtime_flush_observations(bool force) noexcept {
 #ifdef CORSIXTH_3DS_GPU
   if(terminal_sample)gpu_submit_sample_log();
 #endif
+  const auto ended=now_us();
+  g_observations.frame_tail.flush_end(ended);
+  g_observations.frame_tail.leave(phase,ended);
 }
 
 void runtime_after_frame(bool draw_success) noexcept { runtime().after_frame(draw_success); }
@@ -3087,8 +3124,19 @@ bool runtime_audio_reserve(std::size_t bytes,const char* identity) noexcept {
   (void)identity;
   return true;
 }
-void runtime_tick(lua_State* state) { RuntimeTimingScope timing(TimingStage::Runtime); runtime().tick(state); timing.finish(runtime().assert_ready(state)); }
-void runtime_shutdown(lua_State*) noexcept { runtime_flush_observations(true); runtime().shutdown(); g_observation_state=nullptr; }
+FrameTail::Token runtime_phase_begin(FramePhase phase) noexcept {
+  return g_observations.frame_tail.enter(phase,g_observations.frame_tail.active()?now_us():0);
+}
+void runtime_phase_end(FrameTail::Token token) noexcept {
+  g_observations.frame_tail.leave(token,g_observations.frame_tail.active()?now_us():0);
+}
+void runtime_tick(lua_State* state) { RuntimePhaseScope phase(FramePhase::Runtime); RuntimeTimingScope timing(TimingStage::Runtime); runtime().tick(state); timing.finish(runtime().assert_ready(state)); }
+void runtime_shutdown(lua_State*) noexcept {
+  // Only the new residency ledger seals a partial window here. Existing sample
+  // marks, forced-flush rules and shutdown order retain their original owner.
+  seal_observation_tail("SHUTDOWN");
+  runtime_flush_observations(true); runtime().shutdown(); g_observation_state=nullptr;
+}
 bool runtime_consume_sdl_event(const SDL_Event& event) noexcept {
   return runtime().consumes_event(event);
 }

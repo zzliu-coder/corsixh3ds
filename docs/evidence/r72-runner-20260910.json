@@ -1,0 +1,734 @@
+{
+  "format": 1,
+  "product_revision": "R72",
+  "installed_product_commit": "117aacd91ff1070e5fa6d55f659b0ad3ead8d373",
+  "source_digest": "4c54c91ef9ac47e638fe1d94079b25915900dee5f5df6e0ba6479bd8fec877f5",
+  "source_files": 496,
+  "run_id": "20260910-053703-3e27bd1119fb",
+  "run_count": 1,
+  "artifact_sha256": "4ada08ef458f7505230409a23ccb9873094f18d5c43b4379b149775254c25dae",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "config_sha256": "87009606d0eb7e1d15c1bcc37221b44881ceb50189bb73808af7809844111eb2",
+  "boot_log_sha256": "642b012e9e9a16a2bf01f91a5c66a9edca6ee2c523ed381995091474780f9d6b",
+  "identity": "PASS",
+  "launcher_roundtrip": "PASS",
+  "original_protection": {
+    "status": "PASS",
+    "original_files": 27,
+    "saves": 25
+  },
+  "connections_closed": true,
+  "ftp_ownership_returned": true,
+  "game": "PASS",
+  "game_reason": "COMPLETE",
+  "errors": "0",
+  "stress": {
+    "requested_ms": 1320000,
+    "observed_ms": 1352952,
+    "cycles": 73,
+    "save_reload_count": 10,
+    "world": 56589,
+    "hours": 18857,
+    "entities": 583348,
+    "frames": 18804
+  },
+  "private_save_reload": {
+    "outcome": "PASS",
+    "completed_count": 10,
+    "files_observed": [
+      "save/recovery-before-load.sav",
+      "save/r62-roundtrip.sav",
+      "save/completed.sav"
+    ],
+    "file_presence_alone_proves_reload": false
+  },
+  "sample": {
+    "index": 1,
+    "completed_metrics": {
+      "world": 2658,
+      "hours": 886,
+      "entities": 28719,
+      "frames": 886,
+      "at": 60117
+    },
+    "simulation_completed": "PASS",
+    "performance_observation": "PASS",
+    "reason": "accepted native coverage (boundary tolerance 250ms)",
+    "precise_elapsed_us": 60117244,
+    "timing_source": "sample_elapsed_us",
+    "begin_log_excluded_us": 125,
+    "sample_presented_hz": 14.738,
+    "boundary_diagnostics": {
+      "schema": 1,
+      "outcome": "PASS",
+      "scope": "exclusive wall-clock residency; not CPU utilization",
+      "epoch": 2,
+      "sequence": 1,
+      "begin": 23574137392,
+      "end": 23634254636,
+      "successful_presents": 886,
+      "complete_intervals": 885,
+      "prefix_state": "complete_intervals",
+      "elapsed_us": 60117244,
+      "first_delay_us": 51035,
+      "interval_sum_us": 60003733,
+      "open_gap_us": 62476,
+      "begin_phase": "benchmark_call",
+      "end_phase": "benchmark_call",
+      "last_flush": {
+        "begin": 23634192220,
+        "end": 23634243838,
+        "reason_bits": 2,
+        "action": "full",
+        "completed": true
+      },
+      "phases": {
+        "loop_other": {
+          "whole_us": 56205215,
+          "first_delay_us": 50611,
+          "interval_us": 56154476,
+          "open_gap_us": 128
+        },
+        "gc_observe": {
+          "whole_us": 259285,
+          "first_delay_us": 0,
+          "interval_us": 259265,
+          "open_gap_us": 20
+        },
+        "gc_step": {
+          "whole_us": 475274,
+          "first_delay_us": 0,
+          "interval_us": 475268,
+          "open_gap_us": 6
+        },
+        "observation_flush": {
+          "whole_us": 2014326,
+          "first_delay_us": 0,
+          "interval_us": 1962708,
+          "open_gap_us": 51618
+        },
+        "event_wait": {
+          "whole_us": 45233,
+          "first_delay_us": 0,
+          "interval_us": 45183,
+          "open_gap_us": 50
+        },
+        "runtime": {
+          "whole_us": 423946,
+          "first_delay_us": 37,
+          "interval_us": 423856,
+          "open_gap_us": 53
+        },
+        "benchmark_call": {
+          "whole_us": 693965,
+          "first_delay_us": 387,
+          "interval_us": 682977,
+          "open_gap_us": 10601
+        }
+      }
+    },
+    "native_interval_hz": 14.749,
+    "native_frame_line": 595
+  },
+  "performance": {
+    "index": 1,
+    "clock": {
+      "outcome": "PASS",
+      "begin_us": 23574137392,
+      "end_us": 23634254636,
+      "elapsed_us": 60117244,
+      "steps": 2658,
+      "completed": 2658,
+      "failed": 0,
+      "debt_begin_us": 88639,
+      "debt_end_us": 90000,
+      "dropped_us": 12249929,
+      "rebases": 0,
+      "budget_exits": 879,
+      "completed_steps_hz": 44.21360367085357,
+      "normal_world_nominal_hz": 55.55555555555556,
+      "normal_entity_nominal_hz": 18.51851851851852,
+      "dropped_seconds": 12.249929,
+      "scope": "clock boundary delta; scheduling unchanged; not hardware utilization",
+      "completed_rates_hz": {
+        "world": 44.21360367085357,
+        "hours": 14.737867890284525,
+        "entities": 477.71651009151384,
+        "frames": 14.737867890284525
+      }
+    },
+    "gpu_submit": {
+      "outcome": "PASS",
+      "begin_us": 23574137392,
+      "end_us": 23634254636,
+      "counts": {
+        "calls": 851459,
+        "culled": 232902,
+        "errors": 0,
+        "pieces": 622455,
+        "whole": 847620,
+        "multi_excluded": 3839,
+        "partial_excluded": 0,
+        "hits": 622103,
+        "uploads": 352,
+        "page_switches": 70015,
+        "checkpoint_objects": 0,
+        "checkpoint_commands": 0,
+        "checkpoint_eviction": 2,
+        "sampled": 9587,
+        "rejected": 3703,
+        "floor_calls": 575014,
+        "floors": 886,
+        "frames": 886,
+        "floor_pieces": 361488,
+        "floor_switches": 0
+      },
+      "classes": {
+        "hit": {
+          "samples": 8528,
+          "ticks": {
+            "bridge": 16938712,
+            "geometry": 8479152,
+            "atlas_queue": 5669746,
+            "c2d": 10723312
+          },
+          "sampled_total_us": {
+            "bridge": 63177.78054544518,
+            "geometry": 31625.42726197084,
+            "atlas_queue": 21146.942491047466,
+            "c2d": 39995.665092855874
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": 7.408276330375842,
+            "geometry": 3.708422521338044,
+            "atlas_queue": 2.4797071401322075,
+            "c2d": 4.689923205072218
+          }
+        },
+        "hit_switch": {
+          "samples": 1052,
+          "ticks": {
+            "bridge": 2277318,
+            "geometry": 1068984,
+            "atlas_queue": 831026,
+            "c2d": 6779364
+          },
+          "sampled_total_us": {
+            "bridge": 8493.91009400196,
+            "geometry": 3987.082167675569,
+            "atlas_queue": 3099.549614844336,
+            "c2d": 25285.580806243794
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": 8.074059024716691,
+            "geometry": 3.7900020605281073,
+            "atlas_queue": 2.946339938064958,
+            "c2d": 24.035723199851514
+          }
+        },
+        "upload": {
+          "samples": 7,
+          "ticks": {
+            "bridge": 15560,
+            "geometry": 7050,
+            "atlas_queue": 280618,
+            "c2d": 23412
+          },
+          "sampled_total_us": {
+            "bridge": 58.03547904274699,
+            "geometry": 26.294995324637938,
+            "atlas_queue": 1046.6452479445743,
+            "c2d": 87.32176319722318
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": 8.290782720392427,
+            "geometry": 3.7564279035197052,
+            "atlas_queue": 149.52074970636775,
+            "c2d": 12.47453759960331
+          }
+        },
+        "checkpoint": {
+          "samples": 0,
+          "ticks": {
+            "bridge": 0,
+            "geometry": 0,
+            "atlas_queue": 0,
+            "c2d": 0
+          },
+          "sampled_total_us": {
+            "bridge": 0,
+            "geometry": 0,
+            "atlas_queue": 0,
+            "c2d": 0
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": null,
+            "geometry": null,
+            "atlas_queue": null,
+            "c2d": null
+          }
+        }
+      },
+      "tick_hz": 268111856,
+      "collector_bytes": 384,
+      "floor_first_pass_total_us": 7137013.96330642,
+      "floor_first_pass_fraction_of_window": 0.11871824934799771,
+      "floor_first_pass_mean_us": 8055.320500345846,
+      "scope": "actual selected calls only; no x64 extrapolation; floor includes adjacent shadows and traversal; potential saving upper bound; no hardware utilization",
+      "floor_switches_per_emitted_floor_piece": 0,
+      "page_switches_per_emitted_piece": 0.11248202681318328,
+      "floor_piece_fraction": 0.5807455960671856,
+      "floor_count_scope": "actual emitted pieces and page transitions during first floor pass; no sampled-tick extrapolation"
+    },
+    "boundary_diagnostics": {
+      "schema": 1,
+      "outcome": "PASS",
+      "scope": "exclusive wall-clock residency; not CPU utilization",
+      "epoch": 2,
+      "sequence": 1,
+      "begin": 23574137392,
+      "end": 23634254636,
+      "successful_presents": 886,
+      "complete_intervals": 885,
+      "prefix_state": "complete_intervals",
+      "elapsed_us": 60117244,
+      "first_delay_us": 51035,
+      "interval_sum_us": 60003733,
+      "open_gap_us": 62476,
+      "begin_phase": "benchmark_call",
+      "end_phase": "benchmark_call",
+      "last_flush": {
+        "begin": 23634192220,
+        "end": 23634243838,
+        "reason_bits": 2,
+        "action": "full",
+        "completed": true
+      },
+      "phases": {
+        "loop_other": {
+          "whole_us": 56205215,
+          "first_delay_us": 50611,
+          "interval_us": 56154476,
+          "open_gap_us": 128
+        },
+        "gc_observe": {
+          "whole_us": 259285,
+          "first_delay_us": 0,
+          "interval_us": 259265,
+          "open_gap_us": 20
+        },
+        "gc_step": {
+          "whole_us": 475274,
+          "first_delay_us": 0,
+          "interval_us": 475268,
+          "open_gap_us": 6
+        },
+        "observation_flush": {
+          "whole_us": 2014326,
+          "first_delay_us": 0,
+          "interval_us": 1962708,
+          "open_gap_us": 51618
+        },
+        "event_wait": {
+          "whole_us": 45233,
+          "first_delay_us": 0,
+          "interval_us": 45183,
+          "open_gap_us": 50
+        },
+        "runtime": {
+          "whole_us": 423946,
+          "first_delay_us": 37,
+          "interval_us": 423856,
+          "open_gap_us": 53
+        },
+        "benchmark_call": {
+          "whole_us": 693965,
+          "first_delay_us": 387,
+          "interval_us": 682977,
+          "open_gap_us": 10601
+        }
+      }
+    },
+    "fps_reference": {
+      "target_hz": 30,
+      "classification": "informational",
+      "measured_presented_hz": 14.738,
+      "scope": "measured FPS; no release failure is inferred from being below 30"
+    },
+    "initial_context": {
+      "outcome": "PASS",
+      "exact_state_ab": "NOT_PROVEN",
+      "scope": "pre-window initial-state description; fixed-wall-time warmup; completed work and state are not locked",
+      "warmup_work": {
+        "world": 1342,
+        "hours": 448,
+        "entities": 14062,
+        "frames": 450,
+        "observed_ms": 30029
+      },
+      "scene_begin": {
+        "date": "1-09-09T48",
+        "camera_x": 523,
+        "camera_y": 1614,
+        "staff": 17,
+        "patients": 9
+      }
+    }
+  },
+  "cpu_inclusive_not_additive": [
+    {
+      "line": 605,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "temperature",
+      "calls": "886",
+      "total_us": "5009161",
+      "max_us": "15163",
+      "units": "14516224",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 606,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "pathfind",
+      "calls": "442",
+      "total_us": "118653",
+      "max_us": "4729",
+      "units": "442",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 607,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "input_action",
+      "calls": "891",
+      "total_us": "704133",
+      "max_us": "32371",
+      "units": "891",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 608,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world",
+      "calls": "2658",
+      "total_us": "25822400",
+      "max_us": "393370",
+      "units": "2658",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 609,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "ui",
+      "calls": "2658",
+      "total_us": "4805682",
+      "max_us": "170122",
+      "units": "2658",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 610,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "gpu_upload",
+      "calls": "352",
+      "total_us": "36583",
+      "max_us": "662",
+      "units": "2139832",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 611,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "gpu_prepare",
+      "calls": "119",
+      "total_us": "68727",
+      "max_us": "43266",
+      "units": "653008",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 612,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_calendar",
+      "calls": "886",
+      "total_us": "1951065",
+      "max_us": "93051",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 613,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_animations",
+      "calls": "886",
+      "total_us": "60987",
+      "max_us": "262",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 614,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_hospitals",
+      "calls": "886",
+      "total_us": "1345629",
+      "max_us": "108106",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 615,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_entities",
+      "calls": "886",
+      "total_us": "16550978",
+      "max_us": "141650",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 616,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_map",
+      "calls": "886",
+      "total_us": "5089096",
+      "max_us": "15249",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 617,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_ui",
+      "calls": "886",
+      "total_us": "531436",
+      "max_us": "365865",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 618,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_dispatch",
+      "calls": "886",
+      "total_us": "27950",
+      "max_us": "144",
+      "units": "886",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 619,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "memory_observe",
+      "calls": "303",
+      "total_us": "448837",
+      "max_us": "3276",
+      "units": "303",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 620,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_entity_staff",
+      "calls": "935",
+      "total_us": "876736",
+      "max_us": "11169",
+      "units": "935",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 621,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_entity_patient",
+      "calls": "554",
+      "total_us": "64351",
+      "max_us": "10628",
+      "units": "554",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 622,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_entity_object",
+      "calls": "295",
+      "total_us": "24006",
+      "max_us": "241",
+      "units": "295",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 623,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_base",
+      "calls": "942",
+      "total_us": "204360",
+      "max_us": "5300",
+      "units": "942",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 624,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_rest",
+      "calls": "942",
+      "total_us": "114395",
+      "max_us": "391",
+      "units": "942",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 625,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_attributes",
+      "calls": "942",
+      "total_us": "245362",
+      "max_us": "1188",
+      "units": "942",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 626,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_litter",
+      "calls": "942",
+      "total_us": "87420",
+      "max_us": "353",
+      "units": "942",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 627,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_speed",
+      "calls": "942",
+      "total_us": "244676",
+      "max_us": "1002",
+      "units": "942",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    }
+  ],
+  "memory_low_bytes": {
+    "heap_available_low": 19475408,
+    "linear_low": 2199552,
+    "min_heap_available": 19475408,
+    "min_linear_free": 2199552
+  },
+  "workload_observed": {
+    "rows": 138,
+    "patients_min": 9,
+    "patients_max": 17,
+    "staff_min": 9,
+    "staff_max": 17,
+    "rooms_min": 14,
+    "rooms_max": 14,
+    "scene": "Levels/example.level",
+    "scope": "periodic observed workload rows; no busy-hospital capacity proof"
+  },
+  "logger": {
+    "integrity": "NOT_PROVEN",
+    "issues": [
+      "slow-event ring dropped rows"
+    ],
+    "write_failure": 0,
+    "truncation": 0,
+    "cost_scope": "logger software only; not exact benchmark window or final process total",
+    "snapshot_count": 34,
+    "last": {
+      "format_calls": 7959,
+      "format_us": 548599,
+      "format_max_us": 730,
+      "fast": 7678,
+      "fallback": 281,
+      "write_calls": 8097,
+      "write_us": 7951241,
+      "write_max_us": 421142,
+      "flush_calls": 311,
+      "flush_us": 35481707,
+      "flush_max_us": 432035,
+      "valid": 1,
+      "line": 8098
+    }
+  },
+  "save_writer": {
+    "records": 21,
+    "min_ms": 2075,
+    "max_ms": 2886,
+    "scope": "stream16k including close, excluding atomic commit"
+  },
+  "deployment": {
+    "uploaded_files": 4,
+    "uploaded_bytes": 2979089,
+    "file_retr_count": 70,
+    "file_retr_bytes": 31051006,
+    "scope": "file transfers only; excludes control and runner result traffic"
+  },
+  "independent_local_replay": {
+    "status": "PASS",
+    "elapsed_seconds": 0.267,
+    "raw_and_saved_analyses_equal": true,
+    "extra_game_submissions": 0,
+    "remote_connections": 0,
+    "first_entry": "FAIL before replay: old R71 resolver accepted only the 180-second stress recipe",
+    "corrected_entry": "explicit R72 duration resolver; all shared identity, original-file and timing checks preserved"
+  },
+  "annual_confirmation_count": "NOT_PROVEN",
+  "annual_evidence_limit": "Lua print markers were not retained by the runner artifact path",
+  "exact_state_ab": "NOT_PROVEN",
+  "net_performance_gain": "NOT_PROVEN",
+  "fps_policy": "30 Hz informational only",
+  "pending": [
+    "busy hospital and large level",
+    "level transition and reclamation",
+    "natural reception service",
+    "HOME and lid resume",
+    "longer soak",
+    "annual confirmation retained evidence",
+    "actual audio and physical input followup when affected"
+  ]
+}

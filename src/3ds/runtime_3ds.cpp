@@ -701,6 +701,19 @@ void push_action(lua_State* state, const Action& action) {
   }
 }
 
+// Runs while the failed Lua frames still exist. Preserve non-string error
+// object identity; retain its stack in the log rather than replacing it.
+int preserve_lua_error(lua_State* state) {
+  const bool string_error=lua_type(state,1)==LUA_TSTRING;
+  const char* message=string_error?lua_tostring(state,1):"non-string Lua error";
+  luaL_traceback(state,state,message,1);
+  if(!string_error) {
+    boot_log("lua-error-stack: %s",lua_tostring(state,-1));
+    lua_pushvalue(state,1);
+  }
+  return 1;
+}
+
 struct AdapterCall {
   const char* method{nullptr};
   const Action* action{nullptr};
@@ -762,7 +775,19 @@ int l_protected_adapter_call(lua_State* state) {
     else return luaL_error(state,"inputState unknown context: %s",name);
     lua_pop(state, 1);
     g_input_owner_epoch = static_cast<std::uint64_t>(table_integer(state, -2, "input_epoch", 0));
-  } else if (!std::strcmp(request->method,"handleAction") || !std::strcmp(request->method,"handlePointer") || !std::strcmp(request->method,"cancelPointer") || !std::strcmp(request->method,"prepareInput") || !std::strcmp(request->method,"samplePerformanceContext")) {
+  } else if (!std::strcmp(request->method,"handleAction")) {
+    if(!lua_isboolean(state,-2)||!lua_toboolean(state,-2))
+      return luaL_error(state,"%s rejected: %s",request->method,lua_tostring(state,-1)?lua_tostring(state,-1):"expected true");
+    // true means handled, not necessarily that game state changed. No-op and
+    // unsupported are successful transport outcomes and never abort a batch.
+    std::size_t length=0;
+    const char* outcome=lua_type(state,-1)==LUA_TSTRING?lua_tolstring(state,-1,&length):nullptr;
+    const bool valid=outcome && length<=96 &&
+      ((length==7 && !std::memcmp(outcome,"applied",7)) ||
+       (length>5 && !std::memcmp(outcome,"noop:",5)) ||
+       (length>12 && !std::memcmp(outcome,"unsupported:",12)));
+    if(!valid)return luaL_error(state,"handleAction invalid outcome contract");
+  } else if (!std::strcmp(request->method,"handlePointer") || !std::strcmp(request->method,"cancelPointer") || !std::strcmp(request->method,"prepareInput") || !std::strcmp(request->method,"samplePerformanceContext")) {
     if(!lua_isboolean(state,-2)||!lua_toboolean(state,-2))
       return luaL_error(state,"%s rejected: %s",request->method,lua_tostring(state,-1)?lua_tostring(state,-1):"expected true");
   }
@@ -776,11 +801,13 @@ bool call_platform_method(lua_State* state, const char* method,
   const auto began = now_us();
   const int base = lua_gettop(state);
   AdapterCall request{method, action, context};
+  lua_pushcfunction(state, preserve_lua_error);
   lua_pushcfunction(state, l_protected_adapter_call);
   lua_pushlightuserdata(state, &request);
-  if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-    const char* message = lua_tostring(state, -1);
-    const std::string detail = message != nullptr ? message : "unknown error";
+  if (lua_pcall(state, 1, 0, base + 1) != LUA_OK) {
+    const char* message = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : nullptr;
+    const std::string detail = message != nullptr ? message :
+      std::string("non-string Lua error (") + luaL_typename(state,-1) + ")";
     if (error != nullptr) {
       *error = detail;
     }
@@ -2274,18 +2301,6 @@ std::uint64_t checked_non_negative_integer(lua_State* state, int index) {
 int l_request_observation_flush(lua_State*) {
   g_observations.flush_requested = true;
   return 0;
-}
-// Runs while the failed Lua frames still exist. Preserve non-string error
-// object identity; retain its stack in the log rather than replacing it.
-int preserve_lua_error(lua_State* state) {
-  const bool string_error=lua_type(state,1)==LUA_TSTRING;
-  const char* message=string_error?lua_tostring(state,1):"non-string Lua error";
-  luaL_traceback(state,state,message,1);
-  if(!string_error) {
-    boot_log("lua-error-stack: %s",lua_tostring(state,-1));
-    lua_pushvalue(state,1);
-  }
-  return 1;
 }
 int protected_lua_call(lua_State* state) {
   const int arguments=lua_gettop(state)-1;

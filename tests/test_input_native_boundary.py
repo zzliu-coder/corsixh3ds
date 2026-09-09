@@ -161,7 +161,7 @@ do
  assert(p.cursor_remainder_x==0 and ui.cursor_x==639)
  assert(p:moveCursor(-1/16,0));assert(ui.cursor_x==638)
  for _,bad in ipairs({0/0,math.huge,-math.huge}) do
-  local ok=p:moveCursor(bad,0);assert(ok==false and ui.cursor_x==638)
+  local ok=pcall(p.moveCursor,p,bad,0);assert(ok==false and ui.cursor_x==638)
  end
 end
 UIMenuBar={}

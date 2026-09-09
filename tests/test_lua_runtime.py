@@ -95,11 +95,12 @@ local native = {{span_begin=function()return 1 end,span_end=function()end,operat
   request_redraw = function() end,
 }}
 
+UITownMap={{}}
 local bottom = {{
   visible = true,
   message_queue = {{}}, message_windows = {{}},
   dialogBuildRoom = function() calls.build = calls.build + 1 end,
-  dialogTownMap = function() calls.town = calls.town + 1 end,
+  dialogTownMap = function(_,enable) assert(enable==true);calls.town = calls.town + 1 end,
 }}
 local world = {{
   game_speed = 1,
@@ -110,7 +111,7 @@ local hospital = {{balance = 12345, reputation = 678, patients = {{{{}}}}, staff
 local app = {{
   savegame_dir = temp_root,
   world = world,
-  ui = {{windows = {{}}, bottom_panel = bottom, hospital = hospital, cursor_x=320, cursor_y=240, setMouseReleased=function() end}},
+  ui = {{windows = {{}}, bottom_panel = bottom, hospital = hospital, cursor_x=320, cursor_y=240, setMouseReleased=function() end, getWindow=function() return nil end}},
   dispatch = function(self, ...) dispatches[#dispatches + 1] = {{...}}; local e={{...}}; if e[1]=="motion" then self.ui.cursor_x,self.ui.cursor_y=e[2],e[3] end end,
   save = function(self, filename)
     local handle = assert(io.open(filename, "wb"))
@@ -551,9 +552,9 @@ end)
 check('pointer_failures_are_explicit',function()
   local p,app,ui=fresh()
   ui.setMouseReleased=false
-  local ok,err=p:handlePointer{kind='motion',x=200,y=200}
+  local ok,err=pcall(p.handlePointer,p,{kind='motion',x=200,y=200})
   assert(ok==false and err:find('capture unavailable'))
-  local result,detail=p:handleAction{type='cursor_step',dx=1,dy=0}
+  local result,detail=pcall(p.handleAction,p,{type='cursor_step',dx=1,dy=0})
   assert(result==false and detail:find('capture unavailable'))
 end)
 check('actual_window_button_receives_a_b_and_two_detail_clicks_at_ui_point',function()

@@ -59,7 +59,7 @@ w.setSpeed=function()end
 assert(p:handleAction{type='speed_cycle'} and #checkpoints==count)
 assert(notices[#notices]:find('UNCHANGED',1,true))
 w.setSpeed=function()error('injected speed failure')end
-local ok,detail=p:handleAction{type='speed_cycle'}
+local ok,detail=pcall(p.handleAction,p,{type='speed_cycle'})
 assert(ok==false and detail:find('injected speed failure',1,true))
 app.world=nil;assert(p:handleAction{type='speed_cycle'})
 ''')

@@ -7,6 +7,15 @@ Platform.__index = Platform
 -- World:setSpeed owns their timing; this list contains no platform rates.
 local game_speeds = {"Slowest", "Slower", "Normal", "Max speed", "And then some more"}
 
+-- These pinned toolbar handlers take an explicit enable argument. The other
+-- handlers (build/hire/furnish/edit/message) implement their own toggles.
+local bottom_dialog_types = {
+  dialogTownMap="UITownMap", dialogStaffManagement="UIStaffManagement",
+  dialogStatus="UIProgressReport", dialogBankManager="UIBankManager",
+  dialogDrugCasebook="UICasebook", dialogResearch="UIResearch",
+  dialogPolicy="UIPolicy", dialogCharts="UIGraphs",
+}
+
 local function clamp(value, low, high)
   if value < low then return low end
   if value > high then return high end
@@ -30,12 +39,22 @@ local function count_table(value)
   return count
 end
 
-local function safe_call(target, method, ...)
+-- Optional legacy-panel observations only. Game actions use the protected
+-- native boundary and must never discard a callback's exception here.
+local function observed_call(target, method, ...)
   if target and type(target[method]) == "function" then
     local ok, result = pcall(target[method], target, ...)
     if ok then return result end
     print("CorsixTH 3DS: " .. method .. " failed: " .. tostring(result))
   end
+end
+
+local function required_method(target, method)
+  local callback = target and target[method]
+  if type(callback) ~= "function" then
+    error("required action method missing: " .. method, 2)
+  end
+  return callback
 end
 
 local function safe_value(callback, fallback)
@@ -204,26 +223,26 @@ function Platform:editText()
   for _, box in ipairs(ui.textboxes or {}) do
     if box.enabled and box.visible and box.active and type(box.text) == "string" then selected = box; break end
   end
-  if not selected then return true end
+  if not selected then return true, "noop:no-text-focus" end
   if type(self.native.text_keyboard) ~= "function" then
-    native_notice(self.native, "KEYBOARD UNAVAILABLE - USE SAVE SLOTS", false); return true
+    native_notice(self.native, "KEYBOARD UNAVAILABLE - USE SAVE SLOTS", false); return true, "unsupported:keyboard"
   end
   local limit = math.min(selected.char_limit or 40, 40)
   local ok, text = self.native.text_keyboard(selected.text, limit)
-  if not ok then return true end -- Cancel preserves the original text.
-  if self.app.ui ~= ui or not selected.active or not selected.visible then return true end
+  if not ok then return true, "noop:keyboard-cancelled" end
+  if self.app.ui ~= ui or not selected.active or not selected.visible then return true, "noop:text-owner-changed" end
   local registered = false
   for _, box in ipairs(ui.textboxes or {}) do if box == selected then registered = true end end
-  if not registered then return true end
+  if not registered then return true, "noop:text-owner-changed" end
   -- English input until the measured Chinese font/input work is enabled.
   if type(text) ~= "string" or #text > limit or text:find("[^A-Za-z0-9 _%-]") or not text:find("%S") then
-    native_notice(self.native, "USE ENGLISH LETTERS NUMBERS SPACE - _", false); return true
+    native_notice(self.native, "USE ENGLISH LETTERS NUMBERS SPACE - _", false); return true, "noop:text-rejected"
   end
   selected:setText(text)
   selected:setActive(true) -- refresh byte cursor after replacement
   -- Confirm only updates the field callback; saves still use overwrite checks.
   selected:confirm()
-  return true
+  return self:finishAction()
 end
 
 function Platform:installAtomicSaves()
@@ -459,7 +478,6 @@ end
 
 -- Logical pixels only. The native bridge converts bottom pixels exactly once.
 function Platform:handlePointer(event)
-  local ok, err = pcall(function()
     local state = self:inputState()
     local kind = event.kind
     assert(kind == "motion" or kind == "down" or kind == "up" or kind == "click",
@@ -491,11 +509,8 @@ function Platform:handlePointer(event)
       end
     end
     if menu_was_active and ui == self.app.ui and not menu.active_menu and
-       menu.disappear_counter ~= nil then self:closeMenuBar() end
-    self.native.request_redraw()
-  end)
-  if not ok then return false, tostring(err) end
-  return true
+       menu.disappear_counter ~= nil and self:closeMenuBar() then return true, "applied" end
+    return self:finishAction()
 end
 
 -- Lifecycle cancellation must not call onMouseUp: upstream uses release to
@@ -529,11 +544,11 @@ end
 
 function Platform:dateParts(world)
   if not world or type(world.date) ~= "function" then return 1, 1, 1 end
-  local date = safe_call(world, "date")
+  local date = observed_call(world, "date")
   if not date then return 1, 1, 1 end
-  local day = safe_call(date, "dayOfMonth") or 1
-  local month = safe_call(date, "monthOfYear") or 1
-  local year = safe_call(date, "year") or safe_value(function() return date.year end, 1)
+  local day = observed_call(date, "dayOfMonth") or 1
+  local month = observed_call(date, "monthOfYear") or 1
+  local year = observed_call(date, "year") or safe_value(function() return date.year end, 1)
   return day, month, year
 end
 
@@ -693,13 +708,12 @@ function Platform:cancelPointer()
   ui.buttons_down.mouse_middle = nil
   ui.tick_scroll_amount_mouse = false
   if ui.cursor == ui.down_cursor then ui:setCursor(ui.default_cursor) end
-  self.native.request_redraw()
-  return true
+  return self:finishAction()
 end
 
 function Platform:moveCursor(dx, dy, precise)
   local state = self:inputState()
-  if not finite(dx) or not finite(dy) then return false, "cursor delta must be finite" end
+  assert(finite(dx) and finite(dy), "cursor delta must be finite")
   if precise then self:resetCursorResidual() end
   local function advance(position, delta, remainder, maximum)
     local movement = delta * 16 + remainder
@@ -714,10 +728,14 @@ function Platform:moveCursor(dx, dy, precise)
   end
   local x, rx = advance(state.cursor_x, dx, self.cursor_remainder_x, 639)
   local y, ry = advance(state.cursor_y, dy, self.cursor_remainder_y, 479)
-  if not x or not y then return false, "cursor delta overflow" end
-  local ok, err = self:handlePointer{kind = "motion", x = x, y = y, relative = true}
+  assert(x and y, "cursor delta overflow")
+  if x == state.cursor_x and y == state.cursor_y then
+    self.cursor_remainder_x, self.cursor_remainder_y = rx, ry
+    return true, "noop:subpixel-or-edge"
+  end
+  local ok, outcome = self:handlePointer{kind = "motion", x = x, y = y, relative = true}
   if ok then self.cursor_remainder_x, self.cursor_remainder_y = rx, ry end
-  return ok, err
+  return ok, outcome
 end
 
 function Platform:click(button, double_click)
@@ -728,35 +746,54 @@ end
 function Platform:invokeBottom(method)
   local ui = self.app.ui
   local bottom = ui and ui.bottom_panel
-  if bottom and type(bottom[method]) == "function" then
-    return safe_call(bottom, method)
+  if not bottom then return true, "noop:no-bottom-panel" end
+  local callback = required_method(bottom, method)
+  if method == "openFirstMessage" and #bottom.message_windows == 0 then
+    return true, "noop:no-messages"
   end
+  local dialog_name = bottom_dialog_types[method]
+  local enable
+  if dialog_name then
+    local dialog_type = assert(rawget(_G, dialog_name), "required toolbar dialog type missing")
+    enable = not required_method(ui, "getWindow")(ui, dialog_type)
+  end
+  -- Always run the upstream policy: a refused action may reset toggle states,
+  -- play a sound or show research advice. editRoom owns editing_allowed itself.
+  callback(bottom, enable) -- Upstream callbacks legitimately return nil/false.
+  if method == "editRoom" then
+    if not ui.editing_allowed then return self:finishAction("noop:editing-prohibited") end
+  elseif method ~= "openFirstMessage" and self.app.world and
+         self.app.world.user_actions_allowed == false then
+    return self:finishAction("noop:actions-prohibited")
+  elseif method == "dialogResearch" and not ui.hospital.research_dep_built then
+    return self:finishAction("noop:research-unavailable")
+  end
+  return self:finishAction()
 end
 
 function Platform:cycleSpeed()
   local world = self.app.world
-  if not world then return true end
+  if not world then return true, "noop:no-world" end
   -- World uses named rates, and setSpeed returns false even on success.
   -- Read back the authoritative rate; mandatory pauses take precedence.
   local current = world:getCurrentSpeed()
   if current == "Pause" or world:mustPause() then
     native_notice(self.native, "PAUSED - RESUME BEFORE CHANGING SPEED", false)
-    return true
+    return true, "noop:paused"
   end
   local next_speed = "Normal"
   for index, name in ipairs(game_speeds) do
     if current == name then next_speed = game_speeds[index % #game_speeds + 1]; break end
   end
-  local ok, err = pcall(world.setSpeed, world, next_speed)
-  if not ok then return false, "speed change: " .. tostring(err) end
+  world:setSpeed(next_speed)
   local actual = world:getCurrentSpeed()
   if actual ~= next_speed then
     native_notice(self.native, "SPEED UNCHANGED: " .. tostring(actual), false)
-    return true
+    return true, "noop:speed-unchanged"
   end
   native_notice(self.native, "SPEED: " .. actual:upper(), false)
   native_checkpoint(self.native, "game_speed", "selected", actual)
-  return true
+  return self:finishAction()
 end
 
 --! Zoom is deliberately disabled on Old 3DS.
@@ -768,14 +805,16 @@ end
 -- full-screen render target is allocated per frame.
 function Platform:adjustZoom(_)
   native_notice(self.native, "ZOOM LOCKED ON 3DS", false)
+  return true, "unsupported:engine-zoom"
 end
 
 function Platform:placeRoomRectangle(action)
   local ui = self.app.ui
   local edit = ui and ui.edit_room
-  if not edit or edit.phase ~= "walls" or type(edit.setBlueprintRect) ~= "function" then
-    return
+  if type(edit) ~= "table" or edit.phase ~= "walls" then
+    return true, "noop:no-blueprint"
   end
+  local set_rectangle = required_method(edit, "setBlueprintRect")
   local width = math.max(1, tonumber(action.rect_w) or 1)
   local height = math.max(1, tonumber(action.rect_h) or 1)
   local cursor_x = tonumber(edit.mouse_cell_x) or 1
@@ -783,10 +822,20 @@ function Platform:placeRoomRectangle(action)
   -- The lower grid is 19x8. Its centre follows the current world cursor.
   local x = cursor_x + (tonumber(action.rect_x) or 0) - 9
   local y = cursor_y + (tonumber(action.rect_y) or 0) - 3
-  safe_call(edit, "setBlueprintRect", x, y, width, height)
+  set_rectangle(edit, x, y, width, height)
+  return self:finishAction()
+end
+
+-- A true first result means the input was handled, including a legitimate
+-- no-op. The second result is mandatory at the native action boundary. These
+-- interned strings add no per-HID result table or per-action log allocation.
+function Platform:finishAction(outcome)
+  self.native.request_redraw()
+  return true, outcome or "applied"
 end
 
 function Platform:handleAction(action)
+  assert(type(action) == "table" and type(action.type) == "string", "invalid action envelope")
   local kind = action.type
   local ui = self.app.ui
   local world = self.app.world
@@ -800,90 +849,99 @@ function Platform:handleAction(action)
     if action.value == 1 then return self:cancelPointer() end
     return self:handlePointer{kind = "up"}
   elseif kind == "pan_camera" then
-    if (context == "world" or context == "build_room" or context == "place_object") and
-       ui and type(ui.scrollMap) == "function" and (ui.down_count or 0) == 0 then
-      -- Same screen-offset convention as upstream's arrow-key handlers.
-      ui:scrollMap(action.dx or 0, action.dy or 0)
-      if type(ui.onCursorWorldPositionChange) == "function" then
-        ui:onCursorWorldPositionChange()
-      end
+    if context ~= "world" and context ~= "build_room" and context ~= "place_object" then
+      return true, "noop:pan-context"
+    end
+    if (ui.down_count or 0) ~= 0 then return true, "noop:pointer-held" end
+    local dx, dy = action.dx or 0, action.dy or 0
+    assert(finite(dx) and finite(dy), "camera delta must be finite")
+    if dx == 0 and dy == 0 then return true, "noop:zero-pan" end
+    local scroll = required_method(ui, "scrollMap")
+    local x, y = ui.screen_offset_x, ui.screen_offset_y
+    scroll(ui, dx, dy)
+    if ui.onCursorWorldPositionChange then ui:onCursorWorldPositionChange() end
+    if x ~= nil and y ~= nil and x == ui.screen_offset_x and y == ui.screen_offset_y then
+      return true, "noop:map-edge"
     end
   elseif kind == "cursor_step" then
-    local ok, err = self:moveCursor(action.dx or 0, action.dy or 0, action.value == 1)
-    if not ok then return false, err end
+    return self:moveCursor(action.dx or 0, action.dy or 0, action.value == 1)
   elseif kind == "confirm" then
-    local ok, err = self:click(1, false)
-    if not ok then return false, err end
+    return self:click(1, false)
   elseif kind == "cancel" or kind == "close_top_window" then
     self:resetCursorResidual()
     if top_window(ui) == ui.menu_bar and self:closeMenuBar() then
       -- The menu owns cancellation; do not send Escape into the world.
+      return true, "applied"
     elseif kind == "close_top_window" or context == "dialog" or
        context == "menu" or context == "text_input" or
        context == "place_object" or context == "build_room" then
       self:dispatchKey("Escape")
     else
-      local ok, err = self:click(3, false)
-      if not ok then return false, err end
+      return self:click(3, false)
     end
   elseif kind == "open_quick_menu" then
-    if ui and type(ui.showMenuBar) == "function" then
-      ui:showMenuBar()
-      -- Explicit X also refocuses a menu already visible after a hover.
-      self.focus_owners.window = nil
-      return self:prepareInput()
-    end
+    if not world then return true, "noop:no-world-menu" end
+    required_method(ui, "showMenuBar")(ui)
+    -- Explicit X also refocuses a menu already visible after a hover.
+    self.focus_owners.window = nil
+    self:prepareInput()
   elseif kind == "rotate_object" then
-    local ok, err = self:click(3, false)
-    if not ok then return false, err end
+    return self:click(3, false)
   elseif kind == "toggle_walls" then
-    if ui and type(ui.toggleTransparent) == "function" then safe_call(ui, "toggleTransparent") end
+    if not world then return true, "noop:no-world" end
+    required_method(ui, "toggleTransparent")(ui)
   elseif kind == "show_details" then
-    local ok, err = self:click(1, true)
-    if not ok then return false, err end
+    return self:click(1, true)
   elseif kind == "zoom_in" then
-    self:adjustZoom(1.125)
+    return self:adjustZoom(1.125)
   elseif kind == "zoom_out" then
-    self:adjustZoom(1 / 1.125)
+    return self:adjustZoom(1 / 1.125)
   elseif kind == "pause_toggle" then
-    if world then safe_call(world, "pauseOrUnpause") end
+    if not world then return true, "noop:no-world" end
+    local pause = required_method(world, "pauseOrUnpause")
+    if world.mustPause and world:mustPause() then return true, "noop:mandatory-pause" end
+    pause(world)
   elseif kind == "speed_cycle" then
     return self:cycleSpeed()
   elseif kind == "overview" or kind == "open_town_map" then
-    self:invokeBottom("dialogTownMap")
+    return self:invokeBottom("dialogTownMap")
   elseif kind == "open_build" then
-    self:invokeBottom("dialogBuildRoom")
+    return self:invokeBottom("dialogBuildRoom")
   elseif kind == "open_staff" then
-    self:invokeBottom("dialogStaffManagement")
+    return self:invokeBottom("dialogStaffManagement")
   elseif kind == "open_patients" then
-    self:invokeBottom("dialogStatus")
+    return self:invokeBottom("dialogStatus")
   elseif kind == "open_finance" or kind == "open_bank" then
-    self:invokeBottom("dialogBankManager")
+    return self:invokeBottom("dialogBankManager")
   elseif kind == "open_messages" then
-    self:invokeBottom("openFirstMessage")
+    return self:invokeBottom("openFirstMessage")
   elseif kind == "open_casebook" then
-    self:invokeBottom("dialogDrugCasebook")
+    return self:invokeBottom("dialogDrugCasebook")
   elseif kind == "open_research" then
-    self:invokeBottom("dialogResearch")
+    return self:invokeBottom("dialogResearch")
   elseif kind == "open_policy" then
-    self:invokeBottom("dialogPolicy")
+    return self:invokeBottom("dialogPolicy")
   elseif kind == "open_charts" then
-    self:invokeBottom("dialogCharts")
+    return self:invokeBottom("dialogCharts")
   elseif kind == "hire_staff" then
-    self:invokeBottom("dialogHireStaff")
+    return self:invokeBottom("dialogHireStaff")
   elseif kind == "furnish_corridor" then
-    self:invokeBottom("dialogFurnishCorridor")
+    return self:invokeBottom("dialogFurnishCorridor")
   elseif kind == "edit_room" then
-    self:invokeBottom("editRoom")
+    return self:invokeBottom("editRoom")
   elseif kind == "quick_save" then
-    if world then return self.app:quickSave() end
+    if not world then return true, "noop:no-world" end
+    local accepted, detail = self.app:quickSave()
+    if accepted ~= true then return false, detail end -- AR2 owns save failure policy.
   elseif kind == "open_save_slots" then
     if world then
       ui:addWindow(UISaveGame(ui))
       self.focus_owners.window = nil
-      return self:prepareInput()
+      self:prepareInput()
+      return self:finishAction()
     end
     native_notice(self.native, "START OR LOAD A HOSPITAL TO SAVE", false)
+    return true, "noop:no-world"
   elseif kind == "show_help" then
     ui:addWindow(UIInformation(ui, {
       "CIRCLE: VIEW / EDGE: SCROLL MAP", "PEN: POINT / CLICK / DRAG",
@@ -892,39 +950,49 @@ function Platform:handleAction(action)
       "START: PAUSE    SELECT: SPEED", "R + START: SAVE SLOTS",
       "TEXT FIELD + A: KEYBOARD", "R + SELECT: THIS HELP",
     }))
-    return self:prepareInput()
+    self:prepareInput()
   elseif kind == "text_keyboard" then
     return self:editText()
   elseif kind == "quick_load" then
-    if world then return self.app:quickLoad() end
+    if not world then return true, "noop:no-world" end
+    local accepted, detail = self.app:quickLoad()
+    if accepted ~= true then return false, detail end -- AR2 owns load failure policy.
   elseif kind == "build_room_rectangle" then
-    self:placeRoomRectangle(action)
+    return self:placeRoomRectangle(action)
   elseif kind == "place_item" then
-    local ok, err = self:click(1, false)
-    if not ok then return false, err end
+    return self:click(1, false)
   elseif kind == "previous_category" then
     self:dispatchKey("Left")
   elseif kind == "next_category" then
     self:dispatchKey("Right")
   elseif kind == "lifecycle_suspend" then
     self:resetCursorResidual()
-    if world and not self.suspended_world then
-      self.saved_speed = world:getCurrentSpeed()
-      self.suspended_world = world
-      world:setSpeed("Pause")
-    end
+    if not world or self.suspended_world then return true, "noop:not-suspendable" end
+    self.saved_speed = world:getCurrentSpeed()
+    self.suspended_world = world
+    world:setSpeed("Pause")
   elseif kind == "lifecycle_resume" then
     self:resetCursorResidual()
-    if world and world == self.suspended_world and self.saved_speed then
-      world:setSpeed(self.saved_speed)
-    end
+    local resumable = world and world == self.suspended_world and self.saved_speed
+    if resumable then world:setSpeed(self.saved_speed) end
     self.saved_speed, self.suspended_world = nil, nil
+    if not resumable then return true, "noop:not-resumable" end
   elseif kind == "lifecycle_exit" then
     -- The native layer queues SDL_QUIT after the atomic quicksave request.
+    return true, "noop:native-exit"
+  elseif kind == "none" then
+    return true, "noop:none"
+  elseif kind == "move_viewport" or kind == "toggle_view" or kind == "open_dashboard" then
+    -- Native view/panel owners consume these before the Lua game adapter.
+    return true, "unsupported:native-owned"
+  elseif kind == "tap" or kind == "double_tap" or kind == "long_press" then
+    -- Legacy panel gestures must be translated by BottomUi, not clicked twice.
+    return true, "unsupported:untranslated-gesture"
+  else
+    error("unknown action: " .. kind, 0)
   end
 
-  self.native.request_redraw()
-  return true
+  return self:finishAction()
 end
 
 -- CORSIXTH_3DS_BEGIN: U3-checked-operation-spans

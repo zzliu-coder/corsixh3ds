@@ -27,16 +27,86 @@ function Stress.new(app,native,duration,save_dir)
     "stress must own the private save route")
   local self=setmetatable({app=app,native=native,cycle=0,phase="open",deadline=0,save_dir=save_dir,
     finish_at=native.clock_ms()+(duration or 22*60000)},Stress)
+  local annual,button=rawget(_G,"UIAnnualReport"),rawget(_G,"Button")
+  self.annual_class=annual;self.annual_close=annual and annual.close
+  self.annual_awards=annual and annual.updateAwards
+  self.button_class=button;self.button_click=button and button.handleClick
+  self.watch_class=rawget(_G,"UIWatch")
+  self.annual_attempts=setmetatable({},{__mode="k"});self.annual_count=0
   print("benchmark-stress: event=BEGIN duration_ms="..(duration or 22*60000).." saves=Benchmark/Saves user_saves_writable=0")
   return self
+end
+
+-- Only the original annual settlement confirmation is automatic. Scan before
+-- every due action, including closing our window and either private save.
+function Stress:checkMandatory()
+  assert(not self.annual_failed,"annual confirmation previously failed")
+  local app=self.app;local ui,world=app.ui,app.world
+  local paused=ui:anyMustPauseWindowOpen()
+  local annual,n=nil,0
+  local class,button_class=self.annual_class,self.button_class
+  local function owned(window)
+    return not window.closed and window.parent==ui and window.ui==ui
+      and ui.modal_windows and ui.modal_windows[window.modal_class]==window
+      and ((window==self.window and self.window_class
+        and getmetatable(window)==self.window_class._metatable)
+        or (self.watch_class and getmetatable(window)==self.watch_class._metatable
+          and window.modal_class=="open_countdown"))
+  end
+  for _,window in pairs(ui.windows or {})do
+    if window:mustPause() then annual=window;n=n+1 end
+    if window.modal_class and not owned(window)
+      and not (class and getmetatable(window)==class._metatable) then
+      error("TH3DS_NEEDS_INPUT")
+    end
+  end
+  if not paused and n==0 then return end
+  local button=annual and annual.second_close
+  local panel=button and button.panel_for_sprite
+  local attached_button,attached_panel=0,0
+  for _,item in pairs(annual and annual.buttons or {})do if item==button then attached_button=attached_button+1 end end
+  for _,item in pairs(annual and annual.panels or {})do if item==panel then attached_panel=attached_panel+1 end end
+  local valid=n==1 and class and button_class and rawget(_G,"TheApp")==app
+    and type(self.annual_close)=="function" and type(self.annual_awards)=="function"
+    and type(self.button_click)=="function"
+    and app.savegame_dir==self.save_dir and app.config.autosave_frequency==0
+    and ui.app==app and annual.parent==ui and annual.ui==ui and not annual.closed and annual.visible==true
+    and getmetatable(annual)==class._metatable and rawget(_G,"UIAnnualReport")==class
+    and annual.close==self.annual_close and class.close==self.annual_close
+    and annual.updateAwards==self.annual_awards and class.updateAwards==self.annual_awards
+    and button and getmetatable(button)==button_class._metatable
+    and rawget(_G,"Button")==button_class and button.handleClick==self.button_click
+    and button_class.handleClick==self.button_click and button.ui==ui
+    and button.on_click_self==annual and button.on_click==self.annual_close
+    and button.enabled==true and button.visible==true and not button.is_toggle and not button.is_repeat
+    and panel and panel.window==annual and panel.visible==true and attached_button==1 and attached_panel==1
+    and (annual.state==2 or annual.state==3)
+    and not self.annual_attempts[annual] and self.annual_count<32
+  if not valid then error("TH3DS_NEEDS_INPUT") end
+  self.annual_attempts[annual]=true;self.annual_failed=true
+  print("benchmark-stress: event=ANNUAL-CONFIRM status=ATTEMPT cycle="..self.cycle)
+  self.button_click(button,"left")
+  assert(app.ui==ui and app.world==world and rawget(_G,"TheApp")==app,
+    "annual confirmation replaced world or ui")
+  assert(annual.closed,"annual confirmation did not close")
+  for _,window in pairs(ui.windows or {})do assert(window~=annual,"annual confirmation still attached") end
+  self.annual_count=self.annual_count+1;self.annual_failed=false
+  print("benchmark-stress: event=ANNUAL-CONFIRM status=PASS count="..self.annual_count.." cycle="..self.cycle)
+  for _,window in pairs(ui.windows or {})do
+    if window:mustPause() or (window.modal_class and not owned(window)) then
+      error("TH3DS_NEEDS_INPUT")
+    end
+  end
 end
 
 function Stress:close()
   local window=self.window;self.window=nil
   if window and not window.closed then window:close() end
+  assert(not self.annual_failed,"annual confirmation incomplete; cleanup blocked")
 end
 
 function Stress:saveReload()
+  self:checkMandatory()
   local app=self.app
   assert(app.savegame_dir==self.save_dir and app.config.autosave_frequency==0)
   app.world:setSpeed("Pause")
@@ -59,6 +129,7 @@ end
 
 function Stress:tick()
   local now=self.native.clock_ms()
+  self:checkMandatory()
   if now<self.deadline then return false end
   if self.phase=="close" then
     self:close();self.phase="open"
@@ -80,6 +151,7 @@ function Stress:tick()
     local result=panel:addDialog(name)
     assert(result~=false,"window preflight rejected "..name)
     self.window=assert(ui:getWindow(_G[name]),"window did not open: "..name)
+    self.window_class=_G[name]
     print("benchmark-stress: event=OPEN status=PASS cycle="..self.cycle.." class="..name)
     self.deadline=self.native.clock_ms()+5000;self.phase="close"
   end

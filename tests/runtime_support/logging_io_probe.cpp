@@ -24,6 +24,7 @@ ssize_t write_cookie(void*,const char* text,std::size_t count) {
   const auto size=static_cast<std::size_t>(count);
   const auto accepted=logging_io::short_write&&size?size-1:size;
   logging_io::delivered.append(text,accepted);
+  if(logging_io::on_deliver)logging_io::on_deliver(text,accepted);
   if(accepted<size)errno=EIO;
   return static_cast<decltype(count)>(accepted);
 }

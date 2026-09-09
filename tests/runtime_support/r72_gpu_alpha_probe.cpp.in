@@ -1,0 +1,62 @@
+// Insert after gpu_renderer_probe.cpp's delayed GPU model, replacing its main.
+#include "cth3ds/sdl_blitter.hpp"
+#include <stdexcept>
+#define CORSIXTH_3DS 1
+constexpr int thdf_flip_horizontal=1,thdf_flip_vertical=2,thdf_alpha_50=4,thdf_alpha_75=8;
+const float frect_overdraw=.01F;
+struct render_target {
+ SDL_Renderer* renderer; SDL_Surface* game_surface;
+ struct Scope { SDL_Rect rect; bool scale; void offset(SDL_FRect& r) {r.x-=float(rect.x);r.y-=float(rect.y);} };
+ Scope* current_target=nullptr; double global_scale_factor=1.;
+ double draw_scale() {return current_target&&!current_target->scale?1.:global_scale_factor;}
+ void draw(SDL_Texture*,const SDL_Rect*,const SDL_Rect*,int);
+ void reference_draw(SDL_Texture*,const SDL_Rect*,const SDL_Rect*,int);
+};
+// INSERT_SCALE
+// INSERT_DRAW
+// INSERT_REFERENCE_DRAW
+int main() {
+ using namespace cth3ds;assert(SDL_Init(0)==0);assert(gpu_initialize());
+ auto* out=SDL_CreateRGBSurfaceWithFormat(0,640,480,32,SDL_PIXELFORMAT_ABGR8888);
+ auto* renderer=SDL_CreateSoftwareRenderer(out);assert(renderer);render_target target{renderer,out};
+ std::vector<u32> pattern(32*32);for(int y=0;y<32;++y)for(int x=0;x<32;++x)pattern[y*32+x]=0xff000000U|u32(x*7)|u32(y*5)<<8U|u32((x+y)*3)<<16U;
+ std::vector<u32> original;unsigned queued_batches=0;
+ for(int variant=0;variant<2;++variant) {
+  auto* texture=gpu_image_create(renderer,32,32,pattern.data());assert(texture);
+  assert(gpu_begin());assert(gpu_clear(0xff102030U));
+  const auto waits_before=waits;const auto draws_before=render_work.draws;const auto flips_before=render_work.flipped_fallback;
+  // Keep all calls pending; the same handle is recoloured between commands.
+  for(int i=0;i<32;++i) {
+   int flags=((i%4)==0?0:(i%4)==1?4:(i%4)==2?8:12)|(i/4%4);
+   SDL_Rect cut{10+i%3,9+i%5,60,60};gpu_clip(&cut);
+   SDL_Rect dst{8+i%7,7+i%11,32,32};
+   if(variant)target.draw(texture,nullptr,&dst,flags);else target.reference_draw(texture,nullptr,&dst,flags);
+   assert(in_frame&&pending.empty()&&!commands.empty());assert(waits==waits_before);
+  }
+  assert(render_work.draws-draws_before==32);assert(render_work.flipped_fallback-flips_before==24);
+  gpu_clip(nullptr);
+  // Four independent sentinel regions use literal expected alpha, including
+  // both flags -> 128. All source pixels opaque, avoiding oracle aliasing.
+  std::vector<u32> solid(32*32,0xff204080U);auto* sentinel=gpu_image_create(renderer,32,32,solid.data());assert(sentinel);
+  for(int i=0;i<4;++i) {
+   SDL_Rect dst{120+i*40,100,32,32};int flags=i==0?0:i==1?4:i==2?8:12;
+   if(variant)target.draw(sentinel,nullptr,&dst,flags);else target.reference_draw(sentinel,nullptr,&dst,flags);
+  }
+  // A literal painter-order sentinel distinguishes reversed command order.
+  SDL_Rect ordered{320,100,32,32};
+  SDL_SetTextureColorMod(sentinel,255,0,0);
+  if(variant)target.draw(sentinel,nullptr,&ordered,0);else target.reference_draw(sentinel,nullptr,&ordered,0);
+  SDL_SetTextureColorMod(sentinel,0,255,0);
+  if(variant)target.draw(sentinel,nullptr,&ordered,4);else target.reference_draw(sentinel,nullptr,&ordered,4);
+  assert(in_frame&&pending.empty()&&commands.size()>=38);++queued_batches;
+  // Destroy while queued: production must finish consumers before release.
+  gpu_image_destroy(texture);gpu_image_destroy(sentinel);assert(gpu_read_pixels(out));
+  for(int i=0;i<4;++i) {unsigned a=i==0?255:i==2?64:128;assert(static_cast<u32*>(out->pixels)[110*640+130+i*40]==blend((a<<24U)|0x204080U,0xff102030U));}
+  auto* p=static_cast<u32*>(out->pixels);assert(p[110*640+330]==blend(0x80004000U,0xff000080U));
+  if(!variant)original.assign(p,p+640*480);else assert(std::equal(original.begin(),original.end(),p));
+  assert(source_live==0);assert(commands.empty()&&pending.empty()&&!in_frame);
+ }
+ gpu_images_release(renderer);gpu_shutdown();assert(live==0&&source_live==0);
+ SDL_DestroyRenderer(renderer);SDL_FreeSurface(out);SDL_Quit();
+ std::printf("PASS R72 alpha production GPU delayed queue: batches=%u draws=76 fixed oracle, literal alpha and order sentinels, flip/clip, delete-before-completion, zero ownership\n",queued_batches);
+}

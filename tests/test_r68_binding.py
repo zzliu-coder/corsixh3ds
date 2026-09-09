@@ -276,7 +276,7 @@ local Stress=require('3ds.benchmark_stress') -- complete actual module; close cl
 local cases=0
 for _,route in ipairs({'finish','runner','cancel','runner_cancel','error','runner_error','terminal'})do
  for _,fault in ipairs({{},{bad=true,value='first window failure'},{bad=true,value=token},
-   {bad=true,value=false},{bad=true},{bad=true,value=47}})do
+   {bad=true,value=false},{bad=true},{bad=true,value=47},{bad=true,annual=true}})do
   native_reset();assert(native_step())
   local app,n,c,caps=fixture(false);c.enabled=true
   local writes,reads,exits,terminals=0,0,0,{}
@@ -290,12 +290,12 @@ for _,route in ipairs({'finish','runner','cancel','runner_cancel','error','runne
   Activity.stop=function()order[#order+1]='activity'end
   app.world={setSpeed=function(_,v)order[#order+1]='speed:'..v end}
   n.benchmark_state=function(v)c.active=v;order[#order+1]='activation'end
-  b.stress=setmetatable({window={close=function()
+  b.stress=setmetatable({annual_failed=fault.annual,window={close=function()
    attempts=attempts+1;order[#order+1]='window'
    -- A callback may reenter terminal routes while its owner is cleaning up.
    b:finish();b:cancel('nested');b:tick();b:terminal('PASS','COMPLETE')
    assert(#terminals==0 and exits==0 and not b.cleanup_finished)
-   if fault.bad then error(fault.value,0)end
+   if fault.bad and not fault.annual then error(fault.value,0)end
   end}},Stress)
   b.stress_progress={world=0,hours=0,entities=0,frames=0,at=0}
   b.progress=function()return {world=1,hours=1,entities=1,frames=1,at=1}end
@@ -318,7 +318,8 @@ for _,route in ipairs({'finish','runner','cancel','runner_cancel','error','runne
    assert(not pcall(app.save,app,'blocked.sav') and not pcall(app.load,app,'blocked.sav'))
    assert(not pcall(p.benchmarkTick,p))
    assert(type(b.results.cleanup_error)=='string' and #b.results.cleanup_error<=1024)
-   if type(fault.value)=='string' then assert(b.results.cleanup_error==fault.value)
+   if fault.annual then assert(b.results.cleanup_error:find('annual confirmation incomplete; cleanup blocked',1,true))
+   elseif type(fault.value)=='string' then assert(b.results.cleanup_error==fault.value)
    else assert(b.results.cleanup_error=='non-string Lua error ('..type(fault.value)..')')end
    if b.run then assert(#terminals==1 and terminals[1][1]=='FAIL' and terminals[1][2]=='CLEANUP_FAILED')end
   else
@@ -336,8 +337,8 @@ for _,route in ipairs({'finish','runner','cancel','runner_cancel','error','runne
   cases=cases+1
  end
 end
-assert(calls==0 and cases==42)
-print('PASS 42 cleanup success/failure/reentry routes: actual Stress, raw error kinds, direct save/load and native no-HID gate')
+assert(calls==0 and cases==49)
+print('PASS 49 cleanup success/failure/reentry routes: actual Stress, annual incomplete, raw error kinds, direct save/load and native no-HID gate')
 '''
         compiler,flags,links=native_inputs()
         with tempfile.TemporaryDirectory(prefix='cth-r68-cleanup-') as name:

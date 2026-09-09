@@ -98,6 +98,25 @@ def transform(text):
         begin=text.index('void raw_bitmap::load_from_th_file(')
         end=text.index('\n}',begin)+2
         text=text[:begin]+RAW_LOAD+text[end:]
+    old='''  SDL_SetTextureAlphaMod(pTexture, 0xFF);
+  if (iFlags & thdf_alpha_50) {
+    SDL_SetTextureAlphaMod(pTexture, 0x80);
+  } else if (iFlags & thdf_alpha_75) {
+    SDL_SetTextureAlphaMod(pTexture, 0x40);
+  }'''
+    new='''#ifdef CORSIXTH_3DS
+  SDL_SetTextureAlphaMod(pTexture, (iFlags & thdf_alpha_50) ? 0x80 :
+      ((iFlags & thdf_alpha_75) ? 0x40 : 0xFF));
+#else
+  SDL_SetTextureAlphaMod(pTexture, 0xFF);
+  if (iFlags & thdf_alpha_50) {
+    SDL_SetTextureAlphaMod(pTexture, 0x80);
+  } else if (iFlags & thdf_alpha_75) {
+    SDL_SetTextureAlphaMod(pTexture, 0x40);
+  }
+#endif'''
+    if new not in text:
+        text=replace_exact(text,old,new,'one final 3DS texture alpha')
     return text
 
 def patch_render_fast(root: Path, dry_run=False):

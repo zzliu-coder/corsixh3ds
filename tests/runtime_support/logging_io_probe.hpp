@@ -10,10 +10,12 @@ inline std::string delivered;
 inline std::size_t writes{},closes{},fail_after=static_cast<std::size_t>(-1);
 inline bool short_write{},close_failure{};
 inline void (*on_write)(){};
+inline void (*on_deliver)(const char*,std::size_t){};
 inline void reset() {
   delivered.clear();writes=closes=0;fail_after=static_cast<std::size_t>(-1);
   short_write=close_failure=false;
   on_write=nullptr;
+  on_deliver=nullptr;
 }
 }
 std::FILE* logging_open(const char*,const char*);

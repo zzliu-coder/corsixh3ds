@@ -27,7 +27,9 @@ bool gpu_read_pixels(SDL_Surface*) noexcept;
 void gpu_log_statistics() noexcept;
 void gpu_submit_sample_begin(std::uint64_t boundary_us) noexcept;
 void gpu_submit_sample_end(std::uint64_t boundary_us,bool eligible) noexcept;
-void gpu_submit_sample_log() noexcept;
+// Standalone reports publish before returning. A synchronous aggregate owner
+// may defer only until its own final flush, including its trailing event row.
+void gpu_submit_sample_log(bool flush=true) noexcept;
 void gpu_submit_bridge_begin() noexcept;
 void gpu_submit_bridge_end() noexcept;
 void gpu_submit_floor_begin() noexcept;

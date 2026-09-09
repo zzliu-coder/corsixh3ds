@@ -177,12 +177,12 @@ void render_target::draw'''
     # an already assembled tree; counter order and meaning stay unchanged.
     if draw_head + bridge in text:
         draw_head += bridge
-    text = replace_exact(text, draw_head + '  SDL_SetTextureAlphaMod', draw_head + '''
+    text = replace_exact(text, draw_head, draw_head + '''
 #ifdef CORSIXTH_3DS
   ++cth3ds::render_work.draws;
   if (iFlags & (thdf_flip_horizontal | thdf_flip_vertical)) ++cth3ds::render_work.flipped_fallback;
 #endif
-  SDL_SetTextureAlphaMod'''.lstrip('\n'), 'actual draw counters')
+'''.lstrip('\n'), 'actual draw counters')
     text = text.replace('  for (auto& texture : sprites[iNumber].flipped_texture) {\n    sprite_texture_forget',
                         '  for (auto& texture : sprites[iNumber].flipped_texture) {\n    if (!texture) continue;\n    sprite_texture_forget')
     return text

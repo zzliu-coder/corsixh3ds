@@ -380,12 +380,13 @@ bool gpu_initialize() noexcept {
   if(!startup_self_test()){
     gpu_shutdown();boot_log("gpu: selected=software reason=startup-pixel-contract-failed");return false;
   }
-  boot_log("gpu: selected=citro2d canvas=1024x512 logical=640x480 atlas_pages=3 atlas_linear_bytes=3145728 canvas_vram_bytes=2097152 screens_vram_bytes=691200 depth_bytes=0 stereo=0 linear_free=%lu vram_free=%lu",
+  buffered_log("gpu: selected=citro2d canvas=1024x512 logical=640x480 atlas_pages=3 atlas_linear_bytes=3145728 canvas_vram_bytes=2097152 screens_vram_bytes=691200 depth_bytes=0 stereo=0 linear_free=%lu vram_free=%lu",
     static_cast<unsigned long>(linearSpaceFree()),static_cast<unsigned long>(vramSpaceFree()));
-  boot_log("gpu: existing_lcd_format_top=%u bottom=%u SDL_owns_framebuffers=1",
+  buffered_log("gpu: existing_lcd_format_top=%u bottom=%u SDL_owns_framebuffers=1",
     static_cast<unsigned>(gfxGetScreenFormat(GFX_TOP)),static_cast<unsigned>(gfxGetScreenFormat(GFX_BOTTOM)));
-  boot_log("gpu: atlas_floor_affinity=%u affinity_bytes=%u extra_texture_bytes=0",
+  buffered_log("gpu: atlas_floor_affinity=%u affinity_bytes=%u extra_texture_bytes=0",
     CTH3DS_GPU_ATLAS_AFFINITY?1U:0U,unsigned(sizeof(affinity)));
+  runtime_diagnostic_flush();
   return true;
 failed:
   gpu_shutdown();boot_log("gpu: selected=software reason=allocation-or-init-failed");return false;
@@ -616,7 +617,7 @@ void gpu_submit_floor_end() noexcept {
   submit.add(submit.floor_ticks,submit.delta(submit.floor_start,svcGetSystemTick()));
   submit.inc(GpuSubmitSample::Floors);submit.floor=false;
 }
-void gpu_submit_sample_log() noexcept {
+void gpu_submit_sample_log(bool flush) noexcept {
   if(submit.enabled)return;
   buffered_log("gpu-submit-window: begin_us=%llu end_us=%llu",(unsigned long long)submit.begin_us,(unsigned long long)submit.end_us);
   buffered_log("gpu-submit-sample: eligible=%u sampled_calls_only=1 stride=64 bytes=%u overflow=%u clock_rollback=%u tick_hz=%llu floor_ticks=%llu floor_is_upper_bound=1",
@@ -629,9 +630,9 @@ void gpu_submit_sample_log() noexcept {
   for(unsigned i=0;i<4;++i)buffered_log("gpu-submit-ticks: class=%s bridge=%llu geometry=%llu atlas_queue=%llu c2d=%llu sampled_only=1 samples=%llu",
     kinds[i],(unsigned long long)submit.ticks[i][0],(unsigned long long)submit.ticks[i][1],
     (unsigned long long)submit.ticks[i][2],(unsigned long long)submit.ticks[i][3],(unsigned long long)submit.samples[i]);
-  // Normal, cancelled, invalid-order/time and terminal callers all return
-  // with the complete report visible, including before a Lua error.
-  runtime_diagnostic_flush();
+  // Aggregate callers synchronously publish after their trailing rows; the
+  // standalone default keeps this complete report visible before returning.
+  if(flush)runtime_diagnostic_flush();
 }
 bool gpu_top(RectI view) noexcept {
   if(!in_frame)return false;

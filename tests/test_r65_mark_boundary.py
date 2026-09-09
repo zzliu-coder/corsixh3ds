@@ -32,12 +32,13 @@ void lua_pushnumber(lua_State* s,double n){s->boundary=n;}
 void lua_pushinteger(lua_State* s,lua_Integer n){s->frames=n;}
 uint64_t runner_frames(){return 42;}
 void boot_log(const char*,unsigned long long stamp,...){logged_us=stamp;clock_us+=log_cost;}
-void boot_log_flush(){}
+unsigned flushes=0;
+void boot_log_flush(){++flushes;}
 struct Output{decltype(&boot_log) line;decltype(&boot_log_flush) flush;void* unused;};
 bool gpu_open=false,gpu_eligible=false;uint64_t gpu_begin=0,gpu_end=0;
 void gpu_submit_sample_begin(uint64_t t){gpu_open=true;gpu_begin=t;}
 void gpu_submit_sample_end(uint64_t t,bool eligible){gpu_open=false;gpu_end=t;gpu_eligible=eligible;}
-void gpu_submit_sample_log(){assert(!gpu_open);}
+void gpu_submit_sample_log(bool=true){assert(!gpu_open);}
 struct Observation{
  bool open=false;uint64_t start=0;
  bool sample_open(){return open;}
@@ -57,22 +58,28 @@ struct Observation{
 '''+method+r'''
 int main(){
  lua_State begin{"SAMPLE-BEGIN"};assert(l_benchmark_mark(&begin)==2);
+ assert(flushes==0);
  assert(logged_us==1000000&&marked_us==1500000&&begin.boundary==1500000&&begin.frames==42);
  bool rejected=false;try{l_benchmark_mark(&begin);}catch(const std::exception&){rejected=true;}assert(rejected);
+ assert(flushes==1);
  assert(!g_observations.open); // invalid order closes the real observation window
  clock_us=1000000;l_benchmark_mark(&begin);
  clock_us=61500000;lua_State end{"SAMPLE-END"};assert(l_benchmark_mark(&end)==2);
  assert(marked_us==61500000&&end.boundary==61500000&&logged_us==61500000&&clock_us==62000000);
  assert(end.boundary-begin.boundary==60000000);
+ assert(flushes==2);
 #ifdef CORSIXTH_3DS_GPU
  assert(gpu_begin==1500000&&gpu_end==61500000&&gpu_eligible);
 #endif
  rejected=false;try{l_benchmark_mark(&end);}catch(const std::exception&){rejected=true;}assert(rejected);
+ assert(flushes==2); // no open sample, no report, no new synchronous flush
  clock_us=80000000;l_benchmark_mark(&begin);clock_us+=1000000;
  lua_State abort{"ABORT-user"};l_benchmark_mark(&abort);
  assert(!g_observations.open&&!gpu_open&&!gpu_eligible);
+ assert(flushes==3);
  clock_us=70000000;l_benchmark_mark(&begin);clock_us=static_cast<uint64_t>(begin.boundary)-1;
  rejected=false;try{l_benchmark_mark(&end);}catch(const std::exception&){rejected=true;}assert(rejected);
+ assert(flushes==4);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

@@ -25,7 +25,14 @@ struct Heap {
 Heap heap_snapshot(){return {};}
 struct MemoryObservationGate {static constexpr std::uint64_t interval_us=250000;};
 struct Sampling {std::uint64_t sampled{},skipped{},forced{};}g_memory_sampling;
-struct Runtime {void log_display_stats(){gpu_log_statistics();}};
+bool nested_diagnostic=false;
+struct Runtime {void log_display_stats(){
+  if(nested_diagnostic) {
+    runtime_diagnostic_line("nested-immediate");
+    assert(logging_io::delivered.find("nested-immediate\n")!=std::string::npos);
+  }
+  gpu_log_statistics();
+}};
 Runtime& runtime(){static Runtime value;return value;}
 // INSERT_NATIVE_LOGGING
 }
@@ -41,6 +48,22 @@ static void exercise_report_boundaries() {
     while((at=text.find(prefix,at))!=std::string::npos){++n;at+=std::strlen(prefix);}
     return n;
   };
+  gpu_shutdown();open();
+  static unsigned selected_writes;
+  selected_writes=0;
+  logging_io::on_deliver=[](const char* bytes,std::size_t n) {
+    const std::string text(bytes,n);
+    if(text.find("gpu: selected=citro2d")!=std::string::npos) {
+      ++selected_writes;
+      assert(text.find("gpu: existing_lcd_format_top=")!=std::string::npos);
+      assert(text.find("gpu: atlas_floor_affinity=")!=std::string::npos);
+    }
+  };
+  assert(gpu_initialize());assert(selected_writes==1);
+  assert(count(logging_io::delivered,"gpu: selected=citro2d")==1);
+  assert(logging_io::delivered.find("gpu: selected=citro2d")<logging_io::delivered.find("gpu: existing_lcd_format_top="));
+  assert(logging_io::delivered.find("gpu: existing_lcd_format_top=")<logging_io::delivered.find("gpu: atlas_floor_affinity="));
+  std::puts("QUANT gpu-success-selected-lines=3 underlying_writes=1 explicit_group_flushes=1");
   open();
   runtime_diagnostic_line("startup %s literal");
   assert(logging_io::delivered=="startup %s literal\n"&&g_log.flushes()==1);
@@ -73,6 +96,13 @@ static void exercise_report_boundaries() {
     open();g_observations.reset(log_clock);g_simulation_clock.reset();mark("SAMPLE-BEGIN");
     log_clock+=50000;g_observations.sample_present(log_clock,PresentResult::Success);
   };
+  const auto report=[](const char* name) {
+    std::printf("QUANT scenario=%s explicit_flushes=%lu underlying_writes=%lu bytes=%lu\n",
+      name,static_cast<unsigned long>(g_log.flushes()),static_cast<unsigned long>(logging_io::writes),
+      static_cast<unsigned long>(logging_io::delivered.size()));
+  };
+  begin();log_clock+=60000000;runtime_flush_observations();report("full");
+  assert(g_log.flushes()==1);
   for(const char* event:{"SAMPLE-END","ABORT-user","SAMPLE-BEGIN","INVALID-TIME"}) {
     begin();
     const bool backwards=!std::strcmp(event,"INVALID-TIME");
@@ -84,6 +114,9 @@ static void exercise_report_boundaries() {
     assert(logging_io::delivered.find("benchmark-tail: schema=1")!=std::string::npos);
     assert(logging_io::delivered.find("end_us="+std::to_string(boundary))!=std::string::npos);
     assert(count(logging_io::delivered,"gpu-submit-")==26);
+    report(event);
+    if(!backwards && std::strcmp(event,"SAMPLE-BEGIN"))
+      assert(logging_io::delivered.find(std::string(" event=")+event+" speed=\"Normal\"")!=std::string::npos);
     assert(logging_io::delivered.find("class=checkpoint")!=std::string::npos);
   }
   begin();log_clock+=100000;g_observations.terminal=true;
@@ -93,8 +126,23 @@ static void exercise_report_boundaries() {
   assert(logging_io::delivered.find("end_event=TERMINAL")!=std::string::npos);
   assert(logging_io::delivered.find("end_us="+std::to_string(terminal_boundary))!=std::string::npos);
   assert(count(logging_io::delivered,"gpu-submit-")==26);
+  report("terminal");
+  assert(g_log.flushes()==1);
   const auto final_flushes=g_log.flushes();runtime_flush_observations(true);
   assert(g_log.flushes()==final_flushes);
+  open();g_observations.reset(log_clock);g_observations.terminal=true;
+  runtime_flush_observations(true);
+  assert(g_log.flushes()==1 && g_observations.terminal_saved);
+  begin();log_clock+=100000;g_observations.terminal=true;nested_diagnostic=true;
+  runtime_flush_observations(true);nested_diagnostic=false;
+  assert(g_log.flushes()==2 && logging_io::delivered.find("gpu-submit-ticks: class=checkpoint")!=std::string::npos);
+  begin();logging_io::fail_after=0;log_clock+=60000000;
+  mark("SAMPLE-END");assert(g_log.failed()&&!g_observations.sample_open());
+  const auto aggregate_failed_writes=logging_io::writes;
+  runtime_diagnostic_line("discarded after aggregate failure");
+  assert(logging_io::writes==aggregate_failed_writes);
+  begin();log_clock+=100000;g_observations.terminal=true;logging_io::fail_after=0;
+  runtime_flush_observations(true);assert(g_log.failed()&&g_observations.terminal_saved);
 
   begin();log_clock+=100000;const auto partial_boundary=log_clock;
   seal_observation_tail("SHUTDOWN");
@@ -114,6 +162,7 @@ static void exercise_report_boundaries() {
   const auto& tail=g_observations.frame_tail.record();
   assert(g_log.flushes()==1&&tail.flush_completed&&tail.flush_end>tail.flush_begin);
   assert(logging_io::delivered.find("capacity=8192")!=std::string::npos);
+  report("compact");
   open();g_log.emergency();const auto urgent=g_log.flushes();gpu_log_statistics();
   assert(g_log.flushes()==urgent+3);
   assert(logging_io::delivered.find("gpu-work:")!=std::string::npos);

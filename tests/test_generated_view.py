@@ -17,6 +17,7 @@ import integrate_corsixth as assembly
 from integration.generated_view import (RECEIPT, SourceView, inventory,
                                         input_inventory, verify_view, seal_view)
 from integration.common import IntegrationError
+from integration.final_sources import PINNED_INPUTS
 from source_view import binding, verify_build, independent_environment
 from support.pinned_upstream import original_sources
 
@@ -66,6 +67,26 @@ class GeneratedViewTests(unittest.TestCase):
             assembly.generate_private(view, ROOT, again)
             self.assertEqual(inventory(view), inventory(again))
             self.assertEqual(verify_view(again, ROOT), receipt)
+            # Final files are ordinary captured inputs, used from the explicit
+            # overlay even when the executing tools live in another checkout.
+            from integration.generated_view import snapshot_overlay
+            overlay = root / "overlay"
+            snapshot_overlay(ROOT, overlay)
+            for name in PINNED_INPUTS:
+                key = "upstream_overrides/" + name
+                self.assertIn(key, receipt["inputs"])
+                final = overlay / key
+                final.write_bytes(final.read_bytes() + b"\n-- captured overlay identity\n")
+            custom = root / "custom"
+            assembly.generate_private(source, overlay, custom)
+            changed = verify_view(custom, overlay)
+            self.assertNotEqual(changed["input_sha256"], receipt["input_sha256"])
+            for name in PINNED_INPUTS:
+                key = "upstream_overrides/" + name
+                self.assertEqual((custom / name).read_bytes(), (overlay / key).read_bytes())
+                self.assertEqual(changed["inputs"][key], input_inventory(overlay)[key])
+            with self.assertRaises(IntegrationError):
+                verify_view(custom, ROOT)
 
     def test_private_authority_roots_keep_inode_and_reject_links_nonempty_overlap(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -116,6 +137,24 @@ class GeneratedViewTests(unittest.TestCase):
             self.assertEqual(self.invoke(source, "--dry-run"), 2)
             self.assertEqual(self.invoke(source, "--output", root / "view"), 2)
             self.assertEqual(inventory(source), before)
+            gfx.write_text(body)
+            # Unknown edits in either final-source input must fail identically
+            # before publication, retaining the exact edited input and overlay.
+            for name in PINNED_INPUTS:
+                path = source / name
+                original = path.read_bytes()
+                path.write_bytes(original + b"\n-- unknown upstream edit\n")
+                before, overlay = inventory(source), input_inventory(ROOT)
+                for flags in (("--dry-run",), ("--output", root / "rejected"),
+                              ("--private-output", root / "private-rejected")):
+                    with self.subTest(source=name, mode=flags[0]):
+                        self.assertEqual(self.invoke(source, *flags), 2)
+                        self.assertEqual(inventory(source), before)
+                        self.assertEqual(input_inventory(ROOT), overlay)
+                        self.assertFalse((root / "rejected").exists())
+                        self.assertFalse((root / "private-rejected").exists())
+                        self.assertEqual(list(root.glob(".cth3ds-view-*")), [])
+                path.write_bytes(original)
             # Inventory additions are detected, not only known-file mutations.
             with SourceView(source, ROOT, None) as view:
                 (source / "added.txt").write_text("editor race")

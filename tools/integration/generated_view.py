@@ -92,8 +92,8 @@ def input_paths(root: Path) -> list[Path]:
     """Bounded executable/overlay closure; no media, builds or dependency cache.
 
     All top-level Python tools and integration modules are included because
-    generation imports both. The explicit overrides seam is reserved for the
-    next Staff/World batch and is covered even before those files are consumed.
+    generation imports both. Ordinary final Staff/World sources are captured
+    with the overlay and included in its input identity.
     """
     paths = {p for p, _ in iter_overlay_files(root)}
     paths.update(root.glob("tools/*.py"))

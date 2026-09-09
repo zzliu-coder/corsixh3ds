@@ -194,8 +194,8 @@ print('PASS SHA-pinned reception start -> raw walk -> real Entity timer -> seate
             action = root / 'CorsixTH/Lua/humanoid_actions/staff_reception.lua'
             action.parent.mkdir(parents=True)
             action.write_text((FIXTURE / 'staff_reception.lua').read_text())
-            # Reception is the first transform; unrelated staff-site patches
-            # have their own fixed-source pipeline and are tested separately.
+            # Reception binding has its own transform. Staff's final source
+            # is installed by the complete pipeline and tested separately.
             first = next(staff_hotspots.transforms(root))
             self.assertEqual(first[0], str(action.relative_to(root)))
             action.write_text(first[1])

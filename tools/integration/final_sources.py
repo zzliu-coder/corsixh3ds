@@ -12,6 +12,8 @@ from .common import IntegrationError
 PINNED_INPUTS = {
     "CorsixTH/Lua/entities/humanoids/staff.lua":
         "9beb46ca9bd1749f21746989d113df549f50019845287df95214015e44cc0264",
+    "CorsixTH/Lua/world.lua":
+        "bbd640fa9b58b0953b950a3532d0ef78c9124f765b6131f3b78a677cd6edb91a",
 }
 
 

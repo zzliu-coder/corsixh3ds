@@ -1,4 +1,4 @@
-"""Reduce repeated staff UI allocations; sample real work without skipping ticks."""
+"""Bind the reception action's permanent identity for state recovery."""
 from sound_lifetime import replace_exact
 
 def reception_binding(text):

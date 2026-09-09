@@ -77,13 +77,3 @@ def transforms(root):
   end''' + text[end:]
         text += METHODS
     yield path, text
-    path = 'CorsixTH/Lua/world.lua'
-    text = (root/path).read_text()
-    new = '''function World:afterLoad(old, new)
-  -- R61: compact the decoded legacy dense index before entity reconciliation.
-  if self.entity_map then self.entity_map:compact() end'''
-    if new not in text:
-        text = replace_exact(text, 'function World:afterLoad(old, new)', new, 'legacy index migration')
-    text = text.replace('self.entity_map:getObjectsAtCoordinate(', 'self.entity_map:peekObjectsAtCoordinate(')
-    text = text.replace('self.entity_map:getHumanoidsAtCoordinate(', 'self.entity_map:peekHumanoidsAtCoordinate(')
-    yield path, text

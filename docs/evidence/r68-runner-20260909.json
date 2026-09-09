@@ -1,0 +1,192 @@
+{
+  "format": 2,
+  "product": "R68",
+  "source_commit": "acf11760220d61e237a47de9066e147b31d2ba46",
+  "source_tree": "e5e1148a296c530eb71f6d59fbe4397a16404d5b",
+  "source_digest": "fee5942b63cf9079c86ea015fd5a1ee88a6a8fc535647d6e27fdac4417d9c24a",
+  "source_files": 465,
+  "source_unchanged_during_validation": true,
+  "artifact_sha256": "792a7dccc7a3ee76d8ed3ffd080a6244115e93883f4bb92b3650c88d5cfe6ff9",
+  "artifact_bytes": 2819992,
+  "elf_sha256": "d336a937f0c44d4993f3efcc1db7870eae041dd3b11abb2f736fffe25e2ea98b",
+  "config_sha256": "d6834196df61f0a362286cf340809bf310113a6cdc7aa676589b427cd488d7ed",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "run_id": "20260909-202925-4bf7de94e535",
+  "run_count": 1,
+  "identity": "PASS",
+  "launcher_roundtrip": "PASS",
+  "game_outcome": "PASS",
+  "game_reason": "COMPLETE",
+  "return_boot": "fd2cd36203de093011f0f510f8d633dc",
+  "deployment": {
+    "outcome": "PASS",
+    "files": 10,
+    "bytes": 3161311,
+    "binary_last": true,
+    "full_asset_download": false
+  },
+  "host_suite": {
+    "stage": "r68-host-full-02",
+    "outcome": "PASS",
+    "discovered": 310,
+    "selected": 310,
+    "executed": 310,
+    "passed": 309,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 1,
+    "baseline_retained": 143,
+    "sorted_ids_sha256": "90ef2f9ac5ab18c3a91c90c0397f75a1955bb259da88d93ede3828fa85890f98",
+    "manifest_sha256": "b14396fbf735fb815d1b958af4954fdb38c84d228d1ab1aeac61f43bd669b39a",
+    "allowed_skip": "test_packer.PackerTests.test_case_insensitive_collision_is_rejected",
+    "allowed_skip_reason": "case-insensitive filesystem cannot create collision fixture",
+    "earlier_failed_stage": "r68-host-full-01",
+    "earlier_failed_stage_preserved": true
+  },
+  "assembly": {
+    "outcome": "PASS",
+    "repeat_identical_files": 735,
+    "syntax_checked_lua": 305,
+    "actual_generated_modules_loaded": 7,
+    "repository_lua_fallback": false,
+    "integration_manifest_sha256": "4cf20e5967b7f158289eb9d338c3e4b49a6046d8403f4424fc9b8111dc8bde7f"
+  },
+  "arm": {
+    "outcome": "PASS",
+    "stage": "r68-arm-build-03",
+    "verified_debug_files": 7,
+    "stack_rows": 651,
+    "cumulative_stack_high_water": "NOT_PROVEN"
+  },
+  "stage_seconds": {
+    "full_host": 1202.415,
+    "arm": 17.795,
+    "runner": 533.14,
+    "parent_readback": 0.81
+  },
+  "sample": {
+    "completed_metrics": {
+      "world": 2481,
+      "hours": 827,
+      "entities": 27584,
+      "frames": 828,
+      "errors": 0
+    },
+    "simulation_completed": "PASS",
+    "precise_elapsed_us": 60486816,
+    "raw_presented_hz": 13.689,
+    "performance_observation": "NOT_PROVEN",
+    "native_interval_sum_us": 60037968,
+    "native_interval_count": 827,
+    "first_delay_us": 51197,
+    "open_tail_us": 397651,
+    "coverage_gap_us": 448848,
+    "existing_tolerance_us": 250000,
+    "reason": "native first and open-tail gap exceeds existing tolerance; no threshold relaxation or repeat run",
+    "frame_p95_upper_us": 131071,
+    "frame_max_us": 679199,
+    "frame_distribution_acceptance": "NOT_PROVEN",
+    "clock": "NOT_PROVEN",
+    "gpu_submit": "NOT_PROVEN",
+    "initial_context": "NOT_PROVEN"
+  },
+  "recovery": {
+    "qualification": "PASS",
+    "qualified_staff": 17,
+    "immediate_private_roundtrip": "PASS",
+    "continuity_private_roundtrip": "PASS",
+    "natural_windows": [
+      {
+        "seconds": 25,
+        "count": 17,
+        "updated": 17,
+        "action_covered": 16,
+        "reception_service_uncovered": 2
+      },
+      {
+        "seconds": 25,
+        "count": 17,
+        "updated": 17,
+        "action_covered": 16,
+        "reception_service_uncovered": 2
+      }
+    ],
+    "all_original_staff_updated_both_windows": true,
+    "all_future_behavior": "NOT_PROVEN"
+  },
+  "healthy_stress": {
+    "outcome": "PASS",
+    "elapsed_ms": 209535,
+    "window_cycles": 11,
+    "private_save_reload_count": 2,
+    "file_presence_alone_proves_reload": false
+  },
+  "protection": {
+    "outcome": "PASS",
+    "original_files": 27,
+    "save_files": 25,
+    "snapshot_sets": 3,
+    "baseline_before_after_sha256_equal": true,
+    "parent_recomputed_retained_bytes": true
+  },
+  "normal_completion_cleanup": "PASS",
+  "device_fault_injection": "NOT_PROVEN",
+  "memory": {
+    "heap_available_low_estimate_bytes": 20943608,
+    "linear_free_low_bytes": 2199552,
+    "contiguous_allocation_capacity": "NOT_PROVEN",
+    "large_hospital_capacity": "NOT_PROVEN"
+  },
+  "media": {
+    "language": "Chinese (simplified)",
+    "voice": "zh",
+    "music_configured": true,
+    "audible_playback": "NOT_PROVEN",
+    "unchanged_resource_evidence_reused": true
+  },
+  "log": {
+    "write_failures": 0,
+    "truncated": 0,
+    "slow_event_ring_dropped": 9,
+    "complete_slow_event_inventory": "NOT_PROVEN"
+  },
+  "exact_state_ab": "NOT_PROVEN",
+  "net_performance_benefit": "NOT_PROVEN",
+  "long_term_gameplay": "NOT_PROVEN",
+  "hardware_utilization": "NOT_PROVEN",
+  "fps_policy": "30 FPS is informational; normal simulation, state correctness and save protection remain gates",
+  "excluded_private_candidates": [
+    "AR3 complete generated-source pipeline",
+    "B3 static constexpr thermal reciprocal table"
+  ],
+  "parent_readback": {
+    "outcome": "PASS",
+    "stage": "r68-parent-readback-01",
+    "recomputed_analyzer_outputs": 2,
+    "extra_ftp_connections": 0,
+    "queue_idle": true
+  },
+  "local_evidence_root": "/Users/zheliu/Documents/Codex/2026-09-01/chatgpt-conversation-6a91c02a-5884-83e8-99ec/work/iterations/20260909-r68-architecture",
+  "local_evidence": [
+    {
+      "file": "full-host-suite-02.json",
+      "sha256": "a18a22df8d5e28dd5f68c9cb624398adb2f4337186160e8649be6935642c52a3"
+    },
+    {
+      "file": "test-validation/device-run-summary.json",
+      "sha256": "4cec18ab0e5b0b94321871503c772891d8db3ff4216c79fa0a1e05c650444cf5"
+    },
+    {
+      "file": "run-analysis.json",
+      "sha256": "3efa882035697f90d86be7d4379749e1797218e30540c9f24c88f0677f0b1da0"
+    },
+    {
+      "file": "run-analysis-r68.json",
+      "sha256": "e94319f3188bb722bac7af760a3e5d4dac7dc4ecd134936820c57ea2929c9a0b"
+    },
+    {
+      "file": "runs/20260909-202925-4bf7de94e535/artifacts/boot.log",
+      "sha256": "17280238fe67adaeb33038a3391f9c45cfa5e32fe9b457ea81944e46ea3741c8"
+    }
+  ]
+}

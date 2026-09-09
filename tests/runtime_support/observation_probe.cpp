@@ -133,6 +133,28 @@ int main() {
   std::puts("PASS in-place reset stale records retired tokens invalidated");
   std::puts("PASS compact throttle terminal partial spans retained no false completion");
   const ObservationOutput sink{log_line,log_flush,display};
+  // Strict clock snapshots cannot include warmup or post-END log work.
+  for(const char* event:{"SAMPLE-END","FAILED","ABORT-user","TERMINAL"}) {
+    observations.reset(0);output.clear();
+    SimulationClock::Statistics first{100,200,3,4,5000,99,1};
+    observations.sample_mark("SAMPLE-BEGIN",1000000,sink,&first);
+    observations.sample_present(1100000,PresentResult::Success);
+    observations.sample_present(60900000,PresentResult::Success);
+    auto last=first;last.steps+=30;last.completed_steps+=29;last.failed_steps+=1;
+    last.dropped_us+=700;last.rebases+=1;last.budget_exits+=2;last.debt_us=9000;
+    slow_sample_output=true;
+    observations.sample_mark(event,61000000,sink,&last);
+    slow_sample_output=false;
+    CHECK(output.find(std::string("benchmark-clock: eligible=")+
+      (!std::strcmp(event,"SAMPLE-END")?"1":"0"))!=std::string::npos);
+    CHECK(output.find("begin=1000000 end=61000000 elapsed_us=60000000 steps=30 completed=29 failed=1 debt_begin_us=5000 debt_end_us=9000 dropped_us=700 rebases=1 budget_exits=2")!=std::string::npos);
+    CHECK(!observations.sample_open());
+  }
+  observations.reset(0);output.clear();
+  SimulationClock::Statistics before_reset{1,1,1,1,1,1,1},after_reset{};
+  observations.sample_mark("SAMPLE-BEGIN",1,sink,&before_reset);
+  observations.sample_mark("SAMPLE-END",60000001,sink,&after_reset);
+  CHECK(output.find("reason=missing_or_reset_counters")!=std::string::npos);
   observations.reset(0);output.clear();
   observations.timing.present_complete(1,PresentResult::Success);
   observations.sample_mark("SAMPLE-BEGIN",2000000,sink);

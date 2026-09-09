@@ -1878,7 +1878,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R65 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R66 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1972,7 +1972,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R65 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R66 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2368,7 +2368,16 @@ int l_benchmark_mark(lua_State* state){
   const bool begin=!std::strcmp(event,"SAMPLE-BEGIN");
   const bool end=!std::strcmp(event,"SAMPLE-END");
   if((begin && g_observations.sample_open()) || (end && !g_observations.sample_open())) {
-    g_observations.sample_mark("INVALID-ORDER",now_us(),{boot_log,boot_log_flush,nullptr});
+    const auto invalid_boundary=now_us();
+    const auto clock=g_simulation_clock.statistics();
+#ifdef CORSIXTH_3DS_GPU
+    const bool was_open=g_observations.sample_open();
+    gpu_submit_sample_end(invalid_boundary,false);
+#endif
+    g_observations.sample_mark("INVALID-ORDER",invalid_boundary,{boot_log,boot_log_flush,nullptr},&clock);
+#ifdef CORSIXTH_3DS_GPU
+    if(was_open)gpu_submit_sample_log();
+#endif
     return luaL_error(state,"benchmark sample marks out of order");
   }
   // Begin logging belongs to warmup. End logging belongs to the closed window's
@@ -2377,11 +2386,28 @@ int l_benchmark_mark(lua_State* state){
     (unsigned long long)now_us(),event,speed,date);
   const auto boundary=now_us();
   const auto frames=runner_frames();
+  const auto clock=g_simulation_clock.statistics();
   if(end && !g_observations.sample_can_close(boundary)) {
-    g_observations.sample_mark("INVALID-TIME",boundary,{boot_log,boot_log_flush,nullptr});
+#ifdef CORSIXTH_3DS_GPU
+    gpu_submit_sample_end(boundary,false);
+#endif
+    g_observations.sample_mark("INVALID-TIME",boundary,{boot_log,boot_log_flush,nullptr},&clock);
+#ifdef CORSIXTH_3DS_GPU
+    gpu_submit_sample_log();
+#endif
     return luaL_error(state,"benchmark sample clock moved backwards");
   }
-  g_observations.sample_mark(event,boundary,{boot_log,boot_log_flush,nullptr});
+  const bool closing=g_observations.sample_open();
+#ifdef CORSIXTH_3DS_GPU
+  if(begin)gpu_submit_sample_begin(boundary);
+  else if(closing)gpu_submit_sample_end(boundary,end&&g_observations.sample_eligible(boundary));
+#endif
+  g_observations.sample_mark(event,boundary,{boot_log,boot_log_flush,nullptr},&clock);
+#ifdef CORSIXTH_3DS_GPU
+  if(closing)gpu_submit_sample_log();
+#else
+  (void)closing;
+#endif
   if(!begin)
   boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
     (unsigned long long)boundary,event,speed,date);
@@ -2758,6 +2784,9 @@ int luaopen_th3ds(lua_State* state) {
 }
 
 void register_lua_module(lua_State* state) {
+#ifdef CORSIXTH_3DS_GPU
+  gpu_submit_sample_end(now_us(),false);
+#endif
   g_observations.reset(now_us());
   g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
@@ -2793,7 +2822,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R65 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us");
+  boot_log("diagnostics: revision=R66 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
@@ -2975,7 +3004,14 @@ void runtime_flush_observations(bool force) noexcept {
     m.lua_bytes,m.linear_free,g_log_time_us,g_workload_time_us,g_log.flushes(),g_log.bytes(),
     g_log.failed(),g_log.truncated(),g_simulation_clock.statistics()};
   const ObservationOutput output{boot_log,boot_log_flush,[](){runtime().log_display_stats();}};
+#ifdef CORSIXTH_3DS_GPU
+  const bool terminal_sample=g_observations.terminal&&g_observations.sample_open();
+  if(terminal_sample)gpu_submit_sample_end(now,false);
+#endif
   g_observations.flush(inputs,output,force);
+#ifdef CORSIXTH_3DS_GPU
+  if(terminal_sample)gpu_submit_sample_log();
+#endif
 }
 
 void runtime_after_frame(bool draw_success) noexcept { runtime().after_frame(draw_success); }

@@ -25,5 +25,20 @@ bool gpu_top(RectI view) noexcept;
 bool gpu_bottom(RectI view,const std::uint32_t* rgba,int overlay_height) noexcept;
 bool gpu_read_pixels(SDL_Surface*) noexcept;
 void gpu_log_statistics() noexcept;
+void gpu_submit_sample_begin(std::uint64_t boundary_us) noexcept;
+void gpu_submit_sample_end(std::uint64_t boundary_us,bool eligible) noexcept;
+void gpu_submit_sample_log() noexcept;
+void gpu_submit_bridge_begin() noexcept;
+void gpu_submit_bridge_end() noexcept;
+void gpu_submit_floor_begin() noexcept;
+void gpu_submit_floor_end() noexcept;
+struct GpuSubmitBridgeScope {
+  GpuSubmitBridgeScope() noexcept {gpu_submit_bridge_begin();}
+  ~GpuSubmitBridgeScope() {gpu_submit_bridge_end();}
+};
+struct GpuSubmitFloorScope {
+  GpuSubmitFloorScope() noexcept {gpu_submit_floor_begin();}
+  ~GpuSubmitFloorScope() {gpu_submit_floor_end();}
+};
 #endif
 } // namespace cth3ds

@@ -65,6 +65,7 @@ assert(table.concat(events,',')=='begin,prepare,write,commit,end')
 events={};app.gfx={};assert(app:save('PRIVATE/slot.sav'))
 assert(table.concat(events,',')=='begin,prepare,write,commit,end')
 local observed,paused=0,0
+package.loaded['3ds.recovery_activity']={capture=function()return {}end}
 package.loaded['3ds.state_health']={
  repairR62=function()error('staff has no resumable timer: 15')end,
  auditR62=function(w,emit)

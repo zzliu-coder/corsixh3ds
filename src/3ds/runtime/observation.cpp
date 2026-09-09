@@ -22,6 +22,7 @@ void RuntimeObservations::reset(std::uint64_t now) noexcept {
   sample_intervals.clear();
   sample_active=sample_valid=sample_anchor=false;
   sample_begin=sample_first=sample_last=0;
+  sample_clock_valid=false;
   cpu_work.sample_active=false;
   cpu_work.sample_rows={};
 }
@@ -34,10 +35,27 @@ void RuntimeObservations::sample_present(std::uint64_t now, PresentResult result
   else {sample_first=now;sample_anchor=true;}
   sample_last=now;
 }
-void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const ObservationOutput& output) noexcept {
+bool RuntimeObservations::sample_eligible(std::uint64_t now) const noexcept {
+  if(!sample_can_close(now) || !sample_valid || !sample_anchor)return false;
+  const auto d=sample_intervals.snapshot();
+  return !d.total_overflowed && d.count>0 && now-sample_begin>=60000000U &&
+    sample_first-sample_begin<=1000000U && now-sample_last<=1000000U;
+}
+void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const ObservationOutput& output,
+                                     const SimulationClock::Statistics* clock) noexcept {
   const bool begin=!std::strcmp(event,"SAMPLE-BEGIN");
   const bool interrupted=sample_active;
   if(sample_active){
+    const bool eligible=!std::strcmp(event,"SAMPLE-END") && sample_eligible(now);
+    // Snapshot counters before the first log call, on the same official boundary.
+    const auto final_clock=clock?*clock:SimulationClock::Statistics{};
+    const bool clock_valid=sample_clock_valid && clock &&
+      final_clock.steps>=sample_clock_begin.steps &&
+      final_clock.completed_steps>=sample_clock_begin.completed_steps &&
+      final_clock.failed_steps>=sample_clock_begin.failed_steps &&
+      final_clock.dropped_us>=sample_clock_begin.dropped_us &&
+      final_clock.rebases>=sample_clock_begin.rebases &&
+      final_clock.budget_exits>=sample_clock_begin.budget_exits;
     // Freeze both collectors before invoking any potentially slow log sink.
     sample_active=false;
     cpu_work.sample_active=false;
@@ -45,14 +63,26 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
     const auto elapsed=now>=sample_begin?now-sample_begin:0;
     const auto initial=sample_anchor?sample_first-sample_begin:elapsed;
     const auto tail=sample_anchor&&now>=sample_last?now-sample_last:elapsed;
-    const bool eligible=!std::strcmp(event,"SAMPLE-END") && sample_valid && !d.total_overflowed &&
-      now>=sample_begin && (!sample_anchor || now>=sample_last) &&
-      d.count>0 && elapsed>=60000000U && initial<=1000000U && tail<=1000000U;
     output.line("benchmark-frames: end_event=%s eligible=%d begin=%llu end=%llu elapsed=%llu coverage_begin=%llu coverage_end=%llu first_delay_us=%llu open_gap_us=%llu intervals=%llu sum_us=%llu p95_hi_us=%llu max_us=%llu workload_guard=lua_each_tick presentation_api_timing=1",
       event,eligible,(unsigned long long)sample_begin,(unsigned long long)now,(unsigned long long)elapsed,
       (unsigned long long)sample_first,(unsigned long long)sample_last,
       (unsigned long long)initial,(unsigned long long)tail,(unsigned long long)d.count,
       (unsigned long long)d.total_us,(unsigned long long)d.p95_upper_us,(unsigned long long)d.maximum_us);
+    if(sample_clock_valid) {
+      if(clock_valid) {
+        output.line("benchmark-clock: eligible=%d begin=%llu end=%llu elapsed_us=%llu steps=%llu completed=%llu failed=%llu debt_begin_us=%llu debt_end_us=%llu dropped_us=%llu rebases=%llu budget_exits=%llu step_us=18000",
+          eligible,(unsigned long long)sample_begin,(unsigned long long)now,(unsigned long long)elapsed,
+          (unsigned long long)(final_clock.steps-sample_clock_begin.steps),
+          (unsigned long long)(final_clock.completed_steps-sample_clock_begin.completed_steps),
+          (unsigned long long)(final_clock.failed_steps-sample_clock_begin.failed_steps),
+          (unsigned long long)sample_clock_begin.debt_us,(unsigned long long)final_clock.debt_us,
+          (unsigned long long)(final_clock.dropped_us-sample_clock_begin.dropped_us),
+          (unsigned long long)(final_clock.rebases-sample_clock_begin.rebases),
+          (unsigned long long)(final_clock.budget_exits-sample_clock_begin.budget_exits));
+      } else output.line("benchmark-clock: eligible=0 begin=%llu end=%llu reason=missing_or_reset_counters",
+          (unsigned long long)sample_begin,(unsigned long long)now);
+    }
+    sample_clock_valid=false;
     cpu_work.sample_active=false;
     for(std::size_t i=0;i<cpu_work.sample_rows.size();++i){
       const auto& row=cpu_work.sample_rows[i];
@@ -66,6 +96,8 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
   if(begin && !interrupted){
     sample_intervals.clear();sample_begin=now;sample_first=sample_last=0;
     sample_anchor=false;sample_active=sample_valid=true;
+    sample_clock_valid=clock!=nullptr;
+    if(clock)sample_clock_begin=*clock;
     cpu_work.sample_rows={};cpu_work.sample_begin=now;cpu_work.sample_active=true;
   }
 }
@@ -96,7 +128,7 @@ void RuntimeObservations::observe(const char* checkpoint, const MemoryObservatio
 void RuntimeObservations::flush(const ObservationInputs& inputs, const ObservationOutput& output, bool force) noexcept {
   if (terminal_saved) return;
   const auto now = inputs.now;
-  if(terminal && sample_active)sample_mark("TERMINAL",now,output);
+  if(terminal && sample_active)sample_mark("TERMINAL",now,output,&inputs.clock);
   flush_requested = flush_requested || force;
   const bool full = flush_requested || now - full_us >= 60000000U;
   if (!full && now - compact_us < 10000000U) return;

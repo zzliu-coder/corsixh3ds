@@ -245,7 +245,7 @@ local function make()
  local app={savegame_dir='USER/',config={autosave_frequency=2},
   eventHandlers={timer=function()end},_3ds={simulation_errors=0}}
  function app:load(name)
-  self.ui={hospital={staff={},balance=200}}
+  self.ui={hospital={staff={},balance=200},anyMustPauseWindowOpen=function()return false end}
   self.world={entities={{kind=Staff,ticks=true,timer_time=12,
     action_queue={{name='walk',must_happen=true}}},{kind=Patient,ticks=true}},
    rooms={},map={th={getPlotCount=function()return 0 end}},
@@ -282,6 +282,10 @@ for _,damage in ipairs{false,true}do
  function a:load(path)
   assert(path:sub(1,#root)==root and self.savegame_dir==root..'Saves/')
   load(self,path)
+  self.world.entities[1].humanoid_class='Doctor'
+  if path==root..'r62-recovery.sav' then
+   self._3ds.recovery_cohort={{index=1,source_index=1,kind='Doctor'}}
+  end
   if damage and path==root..'Saves/r63-recovery-roundtrip.sav' then
    self.world.entities[1].timer_time=13
   end
@@ -289,7 +293,7 @@ for _,damage in ipairs{false,true}do
  end
  local b=B.new(a,native);b:tick();assert(writes==1)
  if damage then assert(b.phase=='done' and events[#events]=='FAILED')
- else assert(b.phase=='warmup' and b.recovery_verified);b:cancel('test')end
+ else assert(b.phase=='recovery' and b.recovery_window==1 and b.recovery_verified);b:cancel('test')end
  assert(a.savegame_dir=='USER/')
 end
 io.open=open

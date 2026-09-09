@@ -89,6 +89,18 @@ FILE_PREFIX = '''function SaveGameFile(filename)
 '''
 
 
+OLD_REPORT = '''    print("save-stream: mode=stream16k bytes="..tostring(bytes).." flush_count="..tostring(flushes or "unknown")
+      .." elapsed_ms="..tostring(elapsed).." writer_includes_io=1 scope=save_file_including_close commit_included=0")'''
+
+NEW_REPORT = '''    -- CORSIXTH_3DS_SAVE_REPORT_R66: one bounded native boot.log record.
+    -- Emitted only after writer, map cleanup and close succeed. The caller's
+    -- atomic commit has not run; this is a closed temporary file observation.
+    local report = "save-stream: mode=stream16k bytes="..tostring(bytes).." flush_count="..tostring(flushes or "unknown")
+      .." elapsed_ms="..tostring(elapsed).." writer_includes_io=1 scope=save_file_including_close close_ok=1 commit_included=0"
+    if TH3DS and TH3DS.diagnostic_line then TH3DS.diagnostic_line(report)
+    else print(report) end'''
+
+
 def transforms(root):
     path = 'CorsixTH/Lua/persistance.lua'
     text = (root / path).read_text()
@@ -103,4 +115,6 @@ def transforms(root):
         text = replace_exact(text, old, SAVE_TRANSACTION, 'shared stream save transaction')
         text = replace_exact(text, 'function SaveGameFile(filename)\n', FILE_PREFIX,
                              'early-open stream save with unconditional close')
+    if 'CORSIXTH_3DS_SAVE_REPORT_R66' not in text:
+        text = replace_exact(text, OLD_REPORT, NEW_REPORT, 'collectable closed-file save counters')
     yield path, text

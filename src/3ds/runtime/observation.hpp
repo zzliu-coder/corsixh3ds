@@ -40,16 +40,20 @@ class RuntimeObservations {
   bool due(std::uint64_t now, bool force) const noexcept;
   void observe(const char* site, const MemoryObservation& observation) noexcept;
   void flush(const ObservationInputs& inputs, const ObservationOutput& output, bool force) noexcept;
-  void sample_mark(const char* event, std::uint64_t now, const ObservationOutput& output) noexcept;
+  void sample_mark(const char* event, std::uint64_t now, const ObservationOutput& output,
+                   const SimulationClock::Statistics* clock = nullptr) noexcept;
   void sample_present(std::uint64_t now, PresentResult result) noexcept;
   bool sample_open() const noexcept { return sample_active; }
   bool sample_can_close(std::uint64_t now) const noexcept {
     return sample_active && now>=sample_begin && (!sample_anchor || now>=sample_last);
   }
+  bool sample_eligible(std::uint64_t now) const noexcept;
  private:
   DurationDistribution sample_intervals;
   std::uint64_t sample_begin{},sample_first{},sample_last{};
   bool sample_active{},sample_valid{},sample_anchor{};
+  SimulationClock::Statistics sample_clock_begin{};
+  bool sample_clock_valid{};
   struct OperationSample {std::array<char,24> site{};MemoryObservation observation;};
   std::array<OperationSample,64> operations{};
   std::size_t operation_count{};

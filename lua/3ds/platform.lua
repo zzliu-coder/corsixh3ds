@@ -305,8 +305,15 @@ function Platform:installLoadTelemetry()
        (self.native.runner_context and self.native.runner_context() and
         filename==self.native.runner_context().root.."r62-recovery.sav") then
       self.save_prefix="R63-Recovered-"
-      local repaired,count=pcall(require("3ds.state_health").repairR62,instance.world)
+      self.recovery_cohort=nil
+      local repaired,count=pcall(function()
+        local cohort=require("3ds.recovery_activity").capture(instance.world)
+        local count=require("3ds.state_health").repairR62(instance.world)
+        self.recovery_cohort=cohort -- scalar identities only; original bytes untouched
+        return count
+      end)
       if not repaired then
+        self.recovery_cohort=nil
         if instance.world then instance.world:setSpeed("Pause") end
         -- Audit observes the refused copy only. It cannot relax recovery or
         -- replace its original error, even if diagnostic output itself fails.
@@ -321,6 +328,7 @@ function Platform:installLoadTelemetry()
       native_checkpoint(native,"save_load","r62-recovered",filename,count)
       self.recovery_count=count
     else
+      self.recovery_cohort=nil
       local basename=filename:match("([^/]+)$") or ""
       self.save_prefix=basename:match("^R63%-Recovered%-") and "R63-Recovered-" or nil
     end
@@ -340,6 +348,12 @@ function Platform:installErrorTelemetry()
   self.app.errorHandler=function(app,event,detail)
     self.simulation_errors=self.simulation_errors+1
     self.staff_sampler=nil
+    -- The engine's existing protected boundary owns the original exception.
+    -- Observe a failed entity without wrapping every successful entity update.
+    local activity=package.loaded["3ds.recovery_activity"]
+    if activity and activity.active and app.world and app.world.current_tick_entity then
+      pcall(activity.after,app.world.current_tick_entity,false)
+    end
     print("engine-error: sequence="..self.simulation_errors.." event="..tostring(event)
       .." detail="..tostring(detail))
     native_checkpoint(self.native,"simulation","error",tostring(event))

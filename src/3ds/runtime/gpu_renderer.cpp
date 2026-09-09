@@ -15,6 +15,7 @@
 #include "cth3ds/gpu_pixels.hpp"
 #include "cth3ds/cpu_work.hpp"
 #include "cth3ds/gpu_diagnostics.hpp"
+#include "cth3ds/gpu_submit_sample.hpp"
 #include "runtime_3ds.hpp"
 
 namespace cth3ds {
@@ -51,6 +52,7 @@ bool active{},c3_ready{},c2_ready{},in_frame{},pending{},empty_clip{},canvas_cli
 unsigned objects{};std::uint64_t epoch{1},touch_sequence{};
 SDL_Rect clip{0,0,640,480};
 Image* images{};
+GpuSubmitSample submit;
 
 float command_usage() noexcept {
   // The public libctru cursor reports this job, unlike C3D's last-split metric.
@@ -115,8 +117,8 @@ bool checkpoint() noexcept {
 }
 bool room_for_draw() noexcept {
   if(!in_frame && !begin_job())return false;
-  if(objects>=max_objects-32 || command_pressure())
-    if(!checkpoint())return false;
+  if(objects>=max_objects-32){submit.inc(GpuSubmitSample::ObjectCheckpoint);if(!checkpoint())return false;}
+  else if(command_pressure()){submit.inc(GpuSubmitSample::CommandCheckpoint);if(!checkpoint())return false;}
   ++objects;return true;
 }
 void texture_settings(C3D_Tex& tex) noexcept {
@@ -125,6 +127,7 @@ void texture_settings(C3D_Tex& tex) noexcept {
 }
 bool place(Image& image,Piece& piece) noexcept {
   if(piece.page>=0 && piece.generation==pages[piece.page].generation){
+    submit.inc(GpuSubmitSample::Hits);
     pages[piece.page].used=epoch;pages[piece.page].touched=++touch_sequence;++stats.hits;return true;
   }
   int selected=-1,x=0,y=0;
@@ -135,7 +138,7 @@ bool place(Image& image,Piece& piece) noexcept {
       for(unsigned i=1;i<page_count;++i){if(pages[i].touched<pages[n].touched)n=i;}
       return n;};
     unsigned n=oldest();
-    if(pages[n].used==epoch){if(!checkpoint())return false;n=oldest();}
+    if(pages[n].used==epoch){submit.inc(GpuSubmitSample::EvictCheckpoint);if(!checkpoint())return false;n=oldest();}
     auto& page=pages[n];page.shelf={};++page.generation;++stats.evictions;
     if(!page.shelf.allocate(piece.w,piece.h,x,y))return false;
     selected=static_cast<int>(n);
@@ -150,6 +153,7 @@ bool place(Image& image,Piece& piece) noexcept {
     else gpu_upload_prepared(output,512,x,y,piece.pixels.get(),piece.w,piece.h);
   }
   piece.page=selected;piece.generation=page.generation;piece.x=x;piece.y=y;
+  submit.inc(GpuSubmitSample::Uploads);
   page.used=epoch;page.touched=++touch_sequence;++stats.uploads;stats.upload_bytes+=piece.w*piece.h*4U;
   return true;
 }
@@ -400,6 +404,7 @@ void gpu_shutdown() noexcept {
 }
 bool gpu_begin() noexcept {
   if(!active)return false;
+  submit.frame();
   if(in_frame)end_job();
   clip={0,0,640,480};empty_clip=false;
   stats.frame_upload_start=stats.upload_bytes;stats.frame_eviction_start=stats.evictions;
@@ -496,17 +501,33 @@ void gpu_images_release(SDL_Renderer* renderer) noexcept {
   auto* image=images;while(image){auto* next=image->next;if(image->renderer==renderer)forget(image);image=next;}
 }
 int gpu_image_draw(SDL_Texture* texture,const SDL_Rect* source,const SDL_FRect* destination,SDL_RendererFlip flip) noexcept {
+  submit.inc(GpuSubmitSample::Calls);
+  if(submit.floor)submit.inc(GpuSubmitSample::FloorCalls);
+  const bool chosen=submit.enabled && (submit.bridge?submit.selected:submit.choose());
+  const auto entry=chosen?svcGetSystemTick():0;
+  bool emitted=false,failed=true,accepted=false;
+  struct Finish {
+    bool chosen;bool &emitted,&failed,&accepted;
+    ~Finish(){
+      if(failed)submit.inc(GpuSubmitSample::Errors);
+      else if(!emitted)submit.inc(GpuSubmitSample::Culled);
+      if(chosen&&!accepted)submit.inc(GpuSubmitSample::Rejected);
+    }
+  } finish{chosen,emitted,failed,accepted};
   auto* image=texture?static_cast<Image*>(SDL_GetTextureUserData(texture)):nullptr;
   if(!image||!destination||!std::isfinite(destination->x)||!std::isfinite(destination->y)||
      !std::isfinite(destination->w)||!std::isfinite(destination->h))return SDL_SetError("Invalid GPU draw");
-  if(empty_clip||destination->w<=0||destination->h<=0)return 0;
+  if(empty_clip||destination->w<=0||destination->h<=0){failed=false;return 0;}
   const SDL_Rect src=source?*source:SDL_Rect{0,0,image->width,image->height};
-  if(src.w<=0||src.h<=0)return 0;
+  if(src.w<=0||src.h<=0){failed=false;return 0;}
   if(src.x<0||src.y<0||src.x>image->width-src.w||src.y>image->height-src.h)return SDL_SetError("GPU source outside image");
   Uint8 r=255,g=255,b=255,a=255;SDL_GetTextureColorMod(texture,&r,&g,&b);SDL_GetTextureAlphaMod(texture,&a);
   const bool fx=(flip&SDL_FLIP_HORIZONTAL)!=0,fy=(flip&SDL_FLIP_VERTICAL)!=0;
   const bool whole=image->pieces.size()==1 && src.x==0 && src.y==0 &&
     src.w==image->width && src.h==image->height;
+  submit.inc(whole?GpuSubmitSample::Whole:(image->pieces.size()>1?GpuSubmitSample::Multi:GpuSubmitSample::Partial));
+  const bool timed=chosen&&whole;
+  const auto metadata=timed?svcGetSystemTick():0;
   for(auto& piece:image->pieces){
     SDL_Rect intersection=src;SDL_FRect dst=*destination;
     if(!whole){
@@ -521,18 +542,72 @@ int gpu_image_draw(SDL_Texture* texture,const SDL_Rect* source,const SDL_FRect* 
       (right-left)*destination->w,(bottom-top)*destination->h};
     }
     if(dst.x+dst.w<=clip.x||dst.y+dst.h<=clip.y||dst.x>=clip.x+clip.w||dst.y>=clip.y+clip.h)continue;
+    const auto geometry=timed?svcGetSystemTick():0;
+    const auto uploads=submit.count[GpuSubmitSample::Uploads];
+    const auto checkpoints=stats.splits;
     if(!room_for_draw()||!place(*image,piece))return SDL_SetError("GPU atlas allocation failed");
+    const auto placed=timed?svcGetSystemTick():0;
     const int x=piece.x+intersection.x-piece.sx,y=piece.y+intersection.y-piece.sy;
     Tex3DS_SubTexture sub{static_cast<u16>(intersection.w),static_cast<u16>(intersection.h),
       x/512.0f,1.0f-y/512.0f,(x+intersection.w)/512.0f,1.0f-(y+intersection.h)/512.0f};
+    const auto prepared=timed?svcGetSystemTick():0;
     if(!draw_image(pages[piece.page].texture,sub,dst,C2D_Color32(r,g,b,a),fx,fy))return SDL_SetError("GPU vertex buffer exhausted");
+    const auto drawn=timed?svcGetSystemTick():0;
+    const bool switched=submit.last_page>=0&&submit.last_page!=piece.page;
+    if(submit.enabled){submit.last_page=piece.page;if(switched)submit.inc(GpuSubmitSample::Switches);}
+    submit.inc(GpuSubmitSample::Pieces);emitted=true;
+    if(timed){
+      // Disjoint classes: queue boundary, upload, hit with page switch, plain hit.
+      const unsigned kind=stats.splits!=checkpoints?3:submit.count[GpuSubmitSample::Uploads]!=uploads?2:switched?1:0;
+      submit.inc(GpuSubmitSample::Sampled);
+      submit.add(submit.samples[kind]);
+      submit.add(submit.ticks[kind][0],submit.delta(entry,metadata));
+      if(submit.bridge)submit.add(submit.ticks[kind][0],submit.delta(submit.bridge_start,entry));
+      submit.add(submit.ticks[kind][1],submit.delta(metadata,geometry));
+      submit.add(submit.ticks[kind][1],submit.delta(placed,prepared));
+      submit.add(submit.ticks[kind][2],submit.delta(geometry,placed));
+      submit.add(submit.ticks[kind][3],submit.delta(prepared,drawn));
+      accepted=true;
+    }
     ++stats.draws;if(whole)++stats.full_sprite_draws;
   }
-  return 0;
+  failed=false;return 0;
+}
+void gpu_submit_sample_begin(std::uint64_t boundary_us) noexcept {submit.begin(boundary_us);}
+void gpu_submit_sample_end(std::uint64_t boundary_us,bool eligible) noexcept {submit.end(boundary_us,eligible&&active);}
+void gpu_submit_bridge_begin() noexcept {
+  if(!submit.enabled)return;
+  submit.bridge=true;submit.selected=submit.choose();
+  if(submit.selected)submit.bridge_start=svcGetSystemTick();
+}
+void gpu_submit_bridge_end() noexcept {submit.bridge=false;submit.selected=false;}
+void gpu_submit_floor_begin() noexcept {
+  if(!submit.enabled)return;
+  submit.floor=true;submit.floor_start=svcGetSystemTick();
+}
+void gpu_submit_floor_end() noexcept {
+  if(!submit.enabled||!submit.floor)return;
+  submit.add(submit.floor_ticks,submit.delta(submit.floor_start,svcGetSystemTick()));
+  submit.inc(GpuSubmitSample::Floors);submit.floor=false;
+}
+void gpu_submit_sample_log() noexcept {
+  if(submit.enabled)return;
+  boot_log("gpu-submit-window: begin_us=%llu end_us=%llu",(unsigned long long)submit.begin_us,(unsigned long long)submit.end_us);
+  boot_log("gpu-submit-sample: eligible=%u sampled_calls_only=1 stride=64 bytes=%u overflow=%u clock_rollback=%u tick_hz=%llu floor_ticks=%llu floor_is_upper_bound=1",
+    submit.eligible?1U:0U,unsigned(sizeof(submit)),submit.overflow?1U:0U,submit.rollback?1U:0U,
+    (unsigned long long)SYSCLOCK_ARM11,(unsigned long long)submit.floor_ticks);
+  static const char* names[]={"calls","culled","errors","pieces","whole","multi_excluded","partial_excluded","hits","uploads","page_switches","checkpoint_objects","checkpoint_commands","checkpoint_eviction","sampled","rejected","floor_calls","floors","frames"};
+  for(unsigned i=0;i<GpuSubmitSample::Count;++i)
+    boot_log("gpu-submit-count: name=%s value=%llu",names[i],(unsigned long long)submit.count[i]);
+  static const char* kinds[]={"hit","hit_switch","upload","checkpoint"};
+  for(unsigned i=0;i<4;++i)boot_log("gpu-submit-ticks: class=%s bridge=%llu geometry=%llu atlas_queue=%llu c2d=%llu sampled_only=1 samples=%llu",
+    kinds[i],(unsigned long long)submit.ticks[i][0],(unsigned long long)submit.ticks[i][1],
+    (unsigned long long)submit.ticks[i][2],(unsigned long long)submit.ticks[i][3],(unsigned long long)submit.samples[i]);
 }
 bool gpu_top(RectI view) noexcept {
   if(!in_frame)return false;
-  if(objects>=max_objects-32 || command_pressure())if(!checkpoint())return false;
+  if(objects>=max_objects-32){submit.inc(GpuSubmitSample::ObjectCheckpoint);if(!checkpoint())return false;}
+  else if(command_pressure()){submit.inc(GpuSubmitSample::CommandCheckpoint);if(!checkpoint())return false;}
   return screen_image(top_target,view,400,240);
 }
 bool gpu_bottom(RectI view,const std::uint32_t* rgba,int height) noexcept {

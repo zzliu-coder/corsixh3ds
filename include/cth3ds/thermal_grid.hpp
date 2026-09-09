@@ -6,6 +6,12 @@
 #include "cth3ds/cpu_work.hpp"
 
 namespace cth3ds {
+// Exact floor(999*v/1000) for uint16 input only. Neighbour mixing stays
+// within this range. The largest intermediate is 2232515821 (< 2^32).
+inline std::uint32_t thermal_cool_uint16(std::uint16_t value) noexcept {
+  const std::uint32_t v=value;
+  return v-((v*33554U+33554431U)>>25U);
+}
 // Exact division for the neighbour sum (<= 16*65535), no ARM software divide.
 inline std::uint32_t thermal_average(std::uint32_t n,unsigned d) noexcept {
   constexpr std::array<std::uint32_t,17> reciprocal{{0,0,2147483648U,1431655766U,
@@ -119,7 +125,7 @@ class ThermalGrid {
       }
       if(!(cell.flags&16U))value=(value*99U+air)/100U;
       else if(cell.flags&64U)value=(value+radiator)/2U;
-      else value=value*999U/1000U;
+      else value=thermal_cool_uint16(static_cast<std::uint16_t>(value));
       tiles[i].aiTemperature[current]=static_cast<std::uint16_t>(value);
       next_[i]=static_cast<std::uint16_t>(value);
     }

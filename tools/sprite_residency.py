@@ -171,13 +171,18 @@ void render_target::draw'''
   }
 #endif
   if (sprites[iNumber].data != nullptr) {''', 'flipped texture destruction')
-    text = replace_exact(text, '''                         const SDL_Rect* prcDstRect, int iFlags) {
-  SDL_SetTextureAlphaMod''', '''                         const SDL_Rect* prcDstRect, int iFlags) {
+    draw_head = '                         const SDL_Rect* prcDstRect, int iFlags) {\n'
+    bridge = '#ifdef CORSIXTH_3DS_GPU\n  cth3ds::GpuSubmitBridgeScope submit_bridge;\n#endif\n'
+    # R66 adds a scope immediately after the signature. Retain it when checking
+    # an already assembled tree; counter order and meaning stay unchanged.
+    if draw_head + bridge in text:
+        draw_head += bridge
+    text = replace_exact(text, draw_head + '  SDL_SetTextureAlphaMod', draw_head + '''
 #ifdef CORSIXTH_3DS
   ++cth3ds::render_work.draws;
   if (iFlags & (thdf_flip_horizontal | thdf_flip_vertical)) ++cth3ds::render_work.flipped_fallback;
 #endif
-  SDL_SetTextureAlphaMod''', 'actual draw counters')
+  SDL_SetTextureAlphaMod'''.lstrip('\n'), 'actual draw counters')
     text = text.replace('  for (auto& texture : sprites[iNumber].flipped_texture) {\n    sprite_texture_forget',
                         '  for (auto& texture : sprites[iNumber].flipped_texture) {\n    if (!texture) continue;\n    sprite_texture_forget')
     return text

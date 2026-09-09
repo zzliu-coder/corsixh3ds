@@ -3,6 +3,9 @@ from pathlib import Path
 from sound_lifetime import replace_exact, SoundPatchError
 
 SITES=(
+ ('                         const SDL_Rect* prcDstRect, int iFlags) {',
+  '                         const SDL_Rect* prcDstRect, int iFlags) {\n'
+  '#ifdef CORSIXTH_3DS_GPU\n  cth3ds::GpuSubmitBridgeScope submit_bridge;\n#endif'),
  ('  SDL_RendererInfo info;\n  SDL_GetRendererInfo(renderer, &info);',
   '#ifdef CORSIXTH_3DS_GPU\n  (void)cth3ds::gpu_initialize();\n#endif\n'
   '  SDL_RendererInfo info;\n  SDL_GetRendererInfo(renderer, &info);'),
@@ -23,9 +26,23 @@ def patch_render_gpu(root: Path,dry_run=False):
     old=text=path.read_text()
     for before,after in SITES:
         if after not in text:text=replace_exact(text,before,after,'GPU real renderer entry')
-    if text==old:return []
-    if not dry_run:path.write_text(text)
-    return ['CorsixTH/Src/th_gfx_sdl.cpp']
+    changed=[]
+    if text!=old:
+        changed.append('CorsixTH/Src/th_gfx_sdl.cpp')
+        if not dry_run:path.write_text(text)
+    path=root/'CorsixTH/Src/th_map.cpp'
+    old=text=path.read_text()
+    before='                           int iCanvasY) const {\n  for (map_tile_iterator'
+    after=('                           int iCanvasY) const {\n'
+           '#ifdef CORSIXTH_3DS_GPU\n  cth3ds::GpuSubmitFloorScope submit_floor;\n#endif\n'
+           '  for (map_tile_iterator')
+    if after not in text:text=replace_exact(text,before,after,'GPU floor owner')
+    include='#ifdef CORSIXTH_3DS_GPU\n#include "cth3ds/gpu_api.hpp"\n#endif\n'
+    if include not in text:text=include+text
+    if text!=old:
+        changed.append('CorsixTH/Src/th_map.cpp')
+        if not dry_run:path.write_text(text)
+    return changed
 
 def check_render_gpu(root):
     try:return ['GPU renderer site missing: '+p for p in patch_render_gpu(root,True)]

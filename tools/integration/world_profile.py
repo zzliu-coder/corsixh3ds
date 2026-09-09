@@ -94,4 +94,19 @@ function World:onTick()''','entity sample counter')
   if progress then progress.world_completed = progress.world_completed + 1 end''',
             'world callback successful completion')
         text=text[:begin]+method+text[end:]
+    if '-- CORSIXTH_3DS_RECOVERY_ACTIVITY_R66' not in text:
+        text=replace_exact(text,'      for _, entity in ipairs(self.entities) do',
+            '''      -- CORSIXTH_3DS_RECOVERY_ACTIVITY_R66: no per-entity observer
+      -- calls outside the private recovery window. No new protected-call layer.
+      local activity = package.loaded["3ds.recovery_activity"]
+      activity = activity and activity.active and activity
+      for _, entity in ipairs(self.entities) do''','bounded recovery activity lookup')
+        text=replace_exact(text,'          self.current_tick_entity = entity',
+            '''          self.current_tick_entity = entity
+          if activity then activity.before(entity) end''','recovered entity before actual tick')
+        text=replace_exact(text,
+            '          if progress then progress.entity_completed = progress.entity_completed + 1 end',
+            '''          if activity then activity.after(entity, true) end
+          if progress then progress.entity_completed = progress.entity_completed + 1 end''',
+            'recovered entity successful completion')
     yield path,text

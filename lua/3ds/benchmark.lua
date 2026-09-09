@@ -6,6 +6,7 @@ Benchmark.__index=Benchmark
 local root="sdmc:/3ds/corsixth/Benchmark/"
 local speeds={"Normal","And then some more"}
 local Health=require("3ds.state_health")
+local Activity=require("3ds.recovery_activity")
 local NEEDS_INPUT="TH3DS_NEEDS_INPUT"
 
 function Benchmark.new(app,native)
@@ -139,8 +140,9 @@ function Benchmark:terminal(outcome,reason)
   local fields={simulation_ticks=tostring(self.sample_ticks),frames=tostring(self.sample_frames),
     elapsed_us=tostring(math.floor(self.sample_elapsed_us or self.sample_elapsed*1000)),recovery_outcome="NOT_PROVEN",
     recovery_roundtrip_outcome=self.recovery_verified and "PASS" or "NOT_PROVEN",
+    recovery_qualification_outcome="NOT_PROVEN",
     recovery_behavior_outcome="NOT_PROVEN",
-    healthy_baseline_outcome=outcome,errors=tostring(self.app._3ds.simulation_errors or 0),
+    healthy_baseline_outcome=self.healthy_started and outcome or "NOT_PROVEN",errors=tostring(self.app._3ds.simulation_errors or 0),
     voice_playback="NOT_PROVEN",exact_state_ab="NOT_PROVEN"}
   for k,v in pairs(self.results)do fields[k]=tostring(v) end
   if self.phase=="sample" and self.sample_progress then
@@ -174,6 +176,7 @@ function Benchmark:cleanup()
 end
 
 function Benchmark:restore()
+  Activity.stop()
   local closed=true
   if self.stress then
     local detail;closed,detail=pcall(self.stress.close,self.stress)
@@ -216,16 +219,21 @@ function Benchmark:load()
   self.app.config.autosave_frequency=0
   if self.media_profiles then self.app.audio:stopBackgroundTrack();self.app.config.play_music=false end
   if self.recovery_copy and not self.recovery_verified then
+    self.results.recovery_stage="qualification"
     -- The installer supplies a byte-identical copy of the affected Slot1.
     -- Platform only repairs that explicit name; these writes stay private.
     local recovered,reason=self.app:load(root.."r62-recovery.sav")
     self.recovery_copy=false -- one independent qualification attempt
     if recovered~=true then
       self.recovery_refused=true
+      self.results.recovery_qualification_outcome="REFUSED"
       self.results.recovery_reason=tostring(reason):gsub("[\r\n]"," "):sub(1,1024)
       print("benchmark-recovery: status=REFUSED original_slot1=untouched reason="..tostring(reason))
     else
     local health=Health.assertActive(self.app)
+    self.results.recovery_qualification_outcome="PASS"
+    self.results.recovery_stage="paused_roundtrip"
+    local cohort=self.app._3ds.recovery_cohort
     self.app.world:setSpeed("Pause")
     local fingerprint=require("3ds.benchmark_stress").fingerprint
     local before=fingerprint(self.app)
@@ -239,6 +247,9 @@ function Benchmark:load()
     self.results.recovery_repaired_count=self.app._3ds.recovery_count or "NOT_PROVEN"
     print("benchmark-recovery: status=PASS staff="..health.staff.." patients="..health.patients
       .." ticks=active action_timer_state=preserved original_slot1=untouched")
+    self.recovery_cohort=cohort
+    self:beginRecoveryObservation(1)
+    return
     end
   end
   local profile=self.profiles[self.index]
@@ -246,6 +257,7 @@ function Benchmark:load()
   assert(ok==true,"benchmark copy load failed: "..tostring(detail))
   assert(self.app.world,"benchmark copy has no world")
   local health=Health.assertActive(self.app)
+  self.healthy_started=true
   self.expected_errors=self.app._3ds and self.app._3ds.simulation_errors or 0
   self.last_health_check=self.native.clock_ms()
   print("benchmark-health: event=LOAD staff="..health.staff.." patients="..health.patients
@@ -274,6 +286,104 @@ function Benchmark:load()
   self.native.set_notice("AUTO BENCHMARK - WARMUP",false)
 end
 
+function Benchmark:beginRecoveryObservation(window)
+  self.results.recovery_stage="observation_"..window
+  self.recovery_window=window
+  self.app.config.autosave_frequency=0;self.app.world.autosave_next_tick=false
+  self.expected_errors=self.app._3ds.simulation_errors or 0
+  self.last_health_check=self.native.clock_ms()
+  self.phase="recovery"
+  self.results.recovery_behavior_outcome="NOT_PROVEN"
+  if window==1 and self.media_profiles and self.profiles and self.profiles[self.index] then
+    local profile=self.profiles[self.index]
+    self:applyMedia(profile.language,profile.music)
+    local media=require("3ds.media")
+    assert(media.setSpeech(self.app,profile.language=="English" and "en" or "zh")==true,
+      "recovery voice bank failed")
+    assert(self.app.audio.speech_file_name==media.speechFile(self.app) and not self.app.audio.not_loaded,
+      "recovery voice bank not loaded")
+  end
+  self.recovery_language=self.app.config.language
+  self.recovery_music=self.app.config.play_music
+  self.recovery_voice=self.app.config.speech_language
+  self.results.recovery_language=tostring(self.recovery_language)
+  self.results.recovery_music=tostring(self.recovery_music)
+  self.results.recovery_voice=tostring(self.recovery_voice)
+  local playing,paused
+  if self.native.music_state then playing,paused=self.native.music_state() end
+  if self.recovery_music and self.native.music_state then assert(playing and not paused,"recovery music is not actually playing") end
+  self:recoveryLine("recovery-media: window="..window.." language="..tostring(self.recovery_language)
+    .." music="..tostring(self.recovery_music).." voice="..tostring(self.recovery_voice)
+    .." playing="..tostring(playing).." paused="..tostring(paused).." voice_playback=NOT_PROVEN")
+  if self.app.ui and self.app.ui:anyMustPauseWindowOpen() then error(NEEDS_INPUT) end
+  Activity.start(self.app.world,self.recovery_cohort)
+  self.app.world:setSpeed("Normal")
+  assert(self.app.world:getCurrentSpeed()=="Normal","recovery speed changed")
+  self.deadline=self.native.clock_ms()+25000
+  self:recoveryLine("recovery-activity: event=BEGIN window="..window.." duration_ms=25000 speed=Normal")
+end
+
+function Benchmark:recoveryLine(line)
+  assert(#line<=230,"recovery diagnostic exceeds line bound")
+  if self.native.diagnostic_line then self.native.diagnostic_line(line) else print(line) end
+end
+
+function Benchmark:recoveryRows(rows,partial)
+  for _,r in ipairs(rows) do
+    local prefix="recovery-entity: window="..self.recovery_window.." source_index="..r.source_index
+      .." index="..r.index.." partial="..tostring(partial==true)
+    self:recoveryLine(prefix.." kind="..r.kind.." ticks="..r.ticks.." timers="..r.timers
+      .." callbacks="..r.callbacks.." actions="..r.actions)
+    self:recoveryLine(prefix.." desk_ticks="..r.desk_ticks.." services="..r.services
+      .." failures="..r.failures.." timerless="..r.timerless.." partial_timer="..r.partial_timer.." unscheduled="..r.unscheduled)
+  end
+end
+
+function Benchmark:advanceRecovery()
+  if self.app.ui and self.app.ui:anyMustPauseWindowOpen() then error(NEEDS_INPUT) end
+  assert(self.app.world:getCurrentSpeed()=="Normal","recovery speed changed")
+  assert(self.app.config.language==self.recovery_language and self.app.config.play_music==self.recovery_music
+    and self.app.config.speech_language==self.recovery_voice,"recovery media changed")
+  if self.native.clock_ms()<self.deadline then return end
+  local report=Activity.report()
+  local prefix="recovery_window_"..self.recovery_window.."_"
+  for k,v in pairs(report) do if k~="rows" then self.results[prefix..k]=v end end
+  self:recoveryRows(report.rows,false)
+  self:recoveryLine("recovery-activity: event=END window="..self.recovery_window.." outcome="..report.outcome
+    .." cohort="..report.count.." updated="..report.updated.." action_covered="..report.action_covered
+    .." service_uncovered="..report.service_uncovered)
+  local cohort,reason=Activity.rebindCohort(self.app.world)
+  Activity.stop() -- MUST precede every save/load; no observer references persist.
+  self.results[prefix.."identity_outcome"]=cohort and "PASS" or "NOT_PROVEN"
+  assert(report.outcome~="FAIL","recovered entity execution failed")
+  if self.native.runner_checkpoint then
+    local fields={phase="recovery_observation",outcome="NOT_PROVEN"}
+    for k,v in pairs(self.results) do fields[k]=tostring(v) end
+    self.native.runner_checkpoint(fields)
+  end
+  if self.recovery_window==1 and cohort then
+    self.results.recovery_stage="continuity_roundtrip"
+    self.recovery_cohort=cohort
+    self.app.world:setSpeed("Pause")
+    local fingerprint=require("3ds.benchmark_stress").fingerprint
+    local before=fingerprint(self.app)
+    local file=self.app.savegame_dir.."r66-recovery-continuity.sav"
+    assert(self.app:save(file)==true,"recovery continuity save failed")
+    assert(self.app:load(file)==true,"recovery continuity reload failed")
+    Health.assertActive(self.app)
+    assert(fingerprint(self.app)==before,"recovery continuity roundtrip changed")
+    self.results.recovery_continuity_roundtrip_outcome="PASS"
+    self:beginRecoveryObservation(2)
+  else
+    self.results.recovery_behavior_outcome=(cohort and report.outcome=="PASS" and
+      self.results.recovery_window_1_outcome=="PASS") and "PASS" or "NOT_PROVEN"
+    self.results.recovery_behavior_reason=reason or "bounded natural observation; absent actions or service remain uncovered"
+    self.recovery_cohort=nil
+    self.results.recovery_stage="complete"
+    self:load()
+  end
+end
+
 function Benchmark:advance()
   if self.phase=="pending" then self:load();return end
   assert((self.app._3ds and self.app._3ds.simulation_errors or 0)==self.expected_errors,
@@ -282,11 +392,13 @@ function Benchmark:advance()
     "simulation timer disconnected; performance sample invalid")
   if self.native.clock_ms()-self.last_health_check>=5000 then
     Health.assertActive(self.app);self.last_health_check=self.native.clock_ms()
-    if self.phase=="sample" and self.native.music_state and self.expected_music then
+    if (self.phase=="sample" and self.expected_music or self.phase=="recovery" and self.recovery_music)
+        and self.native.music_state then
       local playing,paused=self.native.music_state()
       assert(playing and not paused,"benchmark music is not actually playing")
     end
   end
+  if self.phase=="recovery" then self:advanceRecovery();return end
   if self.phase=="stress" then
     if self.stress:tick() then self:finish() end
     return
@@ -376,6 +488,19 @@ function Benchmark:tick()
   if self.phase=="done" then return end
   local ok,err=pcall(self.advance,self)
   if not ok then
+    self.results.failure_phase=self.results.failure_phase or
+      (not self.healthy_started and self.results.recovery_stage or self.phase)
+    if self.phase=="recovery" then
+      local needs=tostring(err):match(NEEDS_INPUT.."$")~=nil
+      self.results.recovery_behavior_outcome=needs and "NOT_PROVEN" or "FAIL"
+      self.results.recovery_interrupted_window=self.recovery_window
+      if Activity.active then
+        local partial=Activity.report()
+        self.results.recovery_partial_updated=partial.updated
+        self.results.recovery_partial_service_uncovered=partial.service_uncovered
+        self:recoveryRows(partial.rows,true)
+      end
+    end
     self:mark("FAILED")
     self.failed=true;local restored=self:cleanup()
     self.native.set_notice("BENCHMARK FAILED - SEE LOG",true)

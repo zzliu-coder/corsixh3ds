@@ -77,6 +77,7 @@ local function setup()
  function w:mustPauseWindowRemoved()self.pause_count=self.pause_count-1 end
  function w:checkIfGameWon()self.won_checks=self.won_checks+1 end
  app.ui=ui;app.world=w;w.ui=ui;TheApp=app
+ native.runner_checkpoint=nil
  return app,S.new(app,native,100000,'private/'),h,ui,w
 end
 local function annual(app,a,b,r,page)
@@ -214,6 +215,70 @@ refused(s);assert(h.balance==109 and s.annual_count==1 and not chosen and not fo
 -- Fresh world/UI after normal reload is checked at the current identity.
 local app,s=setup();local nextapp=setup();app.ui=nextapp.ui;app.world=nextapp.world
 app.ui.app=app;TheApp=app;annual(app,1,0,0);s:checkMandatory();assert(s.annual_count==1)
+-- R73 immutable observer snapshots: no event, first event, later totals.
+do
+ local app,s,h=setup();local rows={}
+ assert(s:annualFields().stress_annual_outcome=='NOT_PROVEN')
+ native.runner_checkpoint=function(fields)
+  rows[#rows+1]=fields
+  if fields.annual_event=='ATTEMPT' then assert(h.balance==100)end
+ end
+ annual(app,9,0,0);s:checkMandatory()
+ assert(#rows==2 and rows[1].annual_event=='ATTEMPT' and rows[2].annual_event=='PASS')
+ assert(rows[1].stress_annual_incomplete=='1' and rows[1].stress_annual_passes=='0')
+ assert(rows[2].stress_annual_incomplete=='0' and rows[2].stress_annual_passes=='1')
+ annual(app,1,0,0);s:checkMandatory()
+ assert(#rows==2 and s:annualFields().stress_annual_attempts=='2' and s:annualFields().stress_annual_passes=='2')
+end
+for _,fault in ipairs{'attempt_write','pass_write','button','button_and_write'}do
+ local app,s,h=setup();local rows={};local token={primary=true}
+ native.runner_checkpoint=function(fields)
+  if fault=='attempt_write' or (fault=='pass_write' and fields.annual_event=='PASS')
+    or (fault=='button_and_write' and fields.annual_event=='FAIL') then error('persist failed',0)end
+  rows[#rows+1]=fields
+ end
+ if fault=='button' or fault=='button_and_write' then h.receiveMoney=function()error(token,0)end end
+ annual(app,9,0,0)
+ local ok,err=pcall(s.checkMandatory,s);assert(not ok)
+ local f=s:annualFields()
+ if fault=='button' or fault=='button_and_write' then
+  assert(err==token and f.stress_annual_failures=='1' and f.stress_annual_outcome=='FAIL')
+ else assert(f.stress_annual_failures=='0')end
+ assert(f.stress_annual_observation_errors==(fault=='button' and '0' or '1'))
+ if fault=='attempt_write' then assert(#rows==0 and h.balance==100 and s.annual_failed)
+ elseif fault=='pass_write' then assert(#rows==1 and h.balance==109 and not s.annual_failed and s.annual_count==1)
+ elseif fault=='button' then assert(#rows==2 and rows[2].annual_event=='FAIL')
+ else assert(#rows==1 and rows[1].annual_event=='ATTEMPT')end
+ -- Surviving snapshots never claim an unrecorded PASS after interruption.
+ if #rows==1 then assert(rows[1].stress_annual_incomplete=='1' and rows[1].stress_annual_passes=='0')end
+end
+-- Complete real terminal method transports accumulated fields after cleanup.
+local B=dofile(product..'/lua/3ds/benchmark.lua')
+for _,outcome in ipairs{'PASS','FAIL','NOT_PROVEN'}do
+ for _,observation_failed in ipairs{false,true}do
+  local app,s=setup();s.annual_attempt_count=2;s.annual_count=2
+  s.annual_observation_errors=observation_failed and 1 or 0
+  app._3ds={simulation_errors=0};app.exit=function()end
+  local row;native.runner_finish=function(o,r,f)row={o,r,f}end
+  local b=setmetatable({app=app,native=native,run={},results={},phase='stress',stress=s,
+   stress_progress={world=0,hours=0,entities=0,frames=0,at=0},sample_ticks=0,sample_frames=0,
+   sample_elapsed=0,cleanup_started=true,cleanup_finished=true,cleanup_ok=true},B)
+  b:terminal(outcome,outcome=='NOT_PROVEN' and 'CANCEL' or 'COMPLETE')
+  assert(row[3].stress_annual_attempts=='2' and row[3].stress_annual_passes=='2')
+  assert(row[1]==(observation_failed and 'FAIL' or outcome))
+  b:terminal('PASS','repeat');assert(b.terminal_started)
+  b.terminal_started=false;local writes=0
+  native.runner_finish=function()writes=writes+1;error('result persistence failed',0)end
+  local ok,err=pcall(b.terminal,b,'PASS','COMPLETE')
+  assert(not ok and tostring(err):find('result persistence failed',1,true))
+  b:terminal('PASS','retry');assert(writes==1)
+ end
+end
+-- Historical optional checkpoint capability and nil/false nonthrowing returns.
+for _,callback in ipairs{function()end,function()return false end}do
+ local app,s=setup();native.runner_checkpoint=callback
+ annual(app,1,0,0);s:checkMandatory();assert(s.annual_count==1 and not s.annual_observation_errors)
+end
 print('PASS actual annual constructor/award/close/Button/Window/UI; bounded refusal and sticky failure')
 '''
         test_lua_runtime.LuaRuntimeTests().run_lua(prefix+script)

@@ -37,6 +37,31 @@ function Stress.new(app,native,duration,save_dir)
   return self
 end
 
+function Stress:annualFields()
+  return {stress_annual_attempts=tostring(self.annual_attempt_count or 0),
+    stress_annual_passes=tostring(self.annual_count or 0),
+    stress_annual_failures=tostring(self.annual_failure_count or 0),
+    stress_annual_incomplete=self.annual_failed and "1" or "0",
+    stress_annual_observation_errors=tostring(self.annual_observation_errors or 0),
+    stress_annual_outcome=(self.annual_failure_count or 0)>0 and "FAIL"
+      or (not self.annual_failed and (self.annual_count or 0)>0 and "PASS" or "NOT_PROVEN")}
+end
+
+function Stress:annualCheckpoint(event)
+  -- At most two extra immutable checkpoints: the first attempt and its result.
+  -- Later totals ride the existing save/reload and terminal records.
+  if not self.native.runner_checkpoint or self.annual_attempt_count~=1
+    or (self.annual_checkpoint_attempts or 0)>=2 then return end
+  self.annual_checkpoint_attempts=(self.annual_checkpoint_attempts or 0)+1
+  local fields=self:annualFields();fields.phase="stress_annual";fields.outcome="NOT_PROVEN"
+  fields.annual_event=event
+  local ok,err=pcall(self.native.runner_checkpoint,fields)
+  if not ok then
+    self.annual_observation_errors=(self.annual_observation_errors or 0)+1
+    error(err,0)
+  end
+end
+
 -- Only the original annual settlement confirmation is automatic. Scan before
 -- every due action, including closing our window and either private save.
 function Stress:checkMandatory()
@@ -84,13 +109,24 @@ function Stress:checkMandatory()
     and not self.annual_attempts[annual] and self.annual_count<32
   if not valid then error("TH3DS_NEEDS_INPUT") end
   self.annual_attempts[annual]=true;self.annual_failed=true
+  self.annual_attempt_count=(self.annual_attempt_count or 0)+1
+  self:annualCheckpoint("ATTEMPT")
   print("benchmark-stress: event=ANNUAL-CONFIRM status=ATTEMPT cycle="..self.cycle)
-  self.button_click(button,"left")
-  assert(app.ui==ui and app.world==world and rawget(_G,"TheApp")==app,
-    "annual confirmation replaced world or ui")
-  assert(annual.closed,"annual confirmation did not close")
-  for _,window in pairs(ui.windows or {})do assert(window~=annual,"annual confirmation still attached") end
+  local ok,err=pcall(function()
+    self.button_click(button,"left")
+    assert(app.ui==ui and app.world==world and rawget(_G,"TheApp")==app,
+      "annual confirmation replaced world or ui")
+    assert(annual.closed,"annual confirmation did not close")
+    for _,window in pairs(ui.windows or {})do assert(window~=annual,"annual confirmation still attached") end
+  end)
+  if not ok then
+    self.annual_failure_count=(self.annual_failure_count or 0)+1
+    -- Preserve the raw settlement error; checkpoint failure has its own count.
+    pcall(self.annualCheckpoint,self,"FAIL")
+    error(err,0)
+  end
   self.annual_count=self.annual_count+1;self.annual_failed=false
+  self:annualCheckpoint("PASS")
   print("benchmark-stress: event=ANNUAL-CONFIRM status=PASS count="..self.annual_count.." cycle="..self.cycle)
   for _,window in pairs(ui.windows or {})do
     if window:mustPause() or (window.modal_class and not owned(window)) then
@@ -119,9 +155,15 @@ function Stress:saveReload()
   assert(fingerprint(app)==before,"private reload hospital fingerprint changed")
   self.save_reload_count=(self.save_reload_count or 0)+1
   if self.native.runner_checkpoint then
-    self.native.runner_checkpoint({phase="stress_save_reload",outcome="NOT_PROVEN",
-      cycles=tostring(self.cycle),save_reload_count=tostring(self.save_reload_count),
-      save_reload_outcome="PASS"})
+    local fields=self:annualFields()
+    fields.phase="stress_save_reload";fields.outcome="NOT_PROVEN"
+    fields.cycles=tostring(self.cycle);fields.save_reload_count=tostring(self.save_reload_count)
+    fields.save_reload_outcome="PASS"
+    local ok,err=pcall(self.native.runner_checkpoint,fields)
+    if not ok then
+      self.annual_observation_errors=(self.annual_observation_errors or 0)+1
+      error(err,0)
+    end
   end
   app.world:setSpeed("Normal")
   print("benchmark-stress: event=SAVE-RELOAD status=PASS cycle="..self.cycle.." checks=date,staff,wages,rooms,balance,plots,humanoids,ticks,timers,actions")

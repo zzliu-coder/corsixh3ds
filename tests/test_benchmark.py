@@ -103,10 +103,19 @@ function app:save(path)
 end
 function app:load(path)assert(path==root..'Saves/r62-roundtrip.sav');loads=loads+1;hospital();return true end
 local s=S.new(app,native,180000)
+local snapshots={}
+native.runner_checkpoint=function(fields)snapshots[#snapshots+1]=fields end
 local finished=false
 for i=1,200 do finished=s:tick();if finished then break end;now=now+1000 end
 assert(finished and s.cycle>=8 and saved==loads and saved>=2 and closed==s.cycle)
 assert(app.savegame_dir==root..'Saves/' and app.config.autosave_frequency==0)
+assert(#snapshots==saved and snapshots[1].stress_annual_attempts=='0')
+assert(snapshots[1].stress_annual_outcome=='NOT_PROVEN')
+native.runner_checkpoint=function()error('checkpoint fault',0)end
+s=S.new(app,native)
+local observed,detail=pcall(s.saveReload,s)
+assert(not observed and detail=='checkpoint fault' and s.annual_observation_errors==1)
+native.runner_checkpoint=nil
 local before=saved
 s=S.new(app,native);s:tick();s:close();assert(saved==before)
 app.ui.anyMustPauseWindowOpen=function()return true end

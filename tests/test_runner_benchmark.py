@@ -53,6 +53,9 @@ local native={clock_ms=function()return now end,benchmark_active=function()retur
  runner_frames=function()return math.floor(now/50)end,
  runner_finish=function(outcome,reason,fields)results[#results+1]={outcome=outcome,reason=reason,fields=fields}end}
 local b=B.new(app,native);b:activate();assert(#b.profiles==1);b:tick()
+local Stress=require('3ds.benchmark_stress')
+b.stress=setmetatable({cycle=3,annual_attempt_count=2,annual_count=2},Stress)
+b.stress_progress={world=0,hours=0,entities=0,frames=0,at=0}
 now=1000;b:tick();now=2000;b:tick()
 assert(exits==1 and results[1].outcome=='PASS' and #loads==1 and #saves==1)
 assert(tonumber(results[1].fields.sample_1_world)>0 and tonumber(results[1].fields.frames)==20)
@@ -60,6 +63,8 @@ assert(results[1].fields.sample_1_warmup_work=='world=55;hours=55;entities=55;fr
 assert(results[1].fields.sample_1_scene_begin=='date=unknown;camera_x=nil;camera_y=nil;staff=0;patients=0')
 assert(results[1].fields.exact_state_ab=='NOT_PROVEN')
 assert(results[1].fields.recovery_outcome=='NOT_PROVEN')
+assert(results[1].fields.stress_annual_attempts=='2' and results[1].fields.stress_annual_passes=='2')
+assert(results[1].fields.stress_annual_outcome=='PASS')
 assert(marks[#marks]=='WORKLOAD-END')
 for _,mark in ipairs(marks)do assert(mark~='COMPLETE')end
 root='sdmc:/3ds/ftpd-runner/runs/new-run-02/';app.savegame_dir=root..'save/'

@@ -192,6 +192,12 @@ function Benchmark:terminal(outcome,reason)
   if self.stress then
     fields.stress_cycles=tostring(self.stress.cycle)
     fields.stress_save_reload_count=tostring(self.stress.save_reload_count or 0)
+    if self.stress.annualFields then
+      for key,value in pairs(self.stress:annualFields())do fields[key]=value end
+      if (self.stress.annual_observation_errors or 0)>0 and outcome~="FAIL" then
+        outcome="FAIL";reason="ANNUAL_OBSERVATION_FAILED"
+      end
+    end
     local now=self:progress()
     for _,key in ipairs{"world","hours","entities","frames","at"}do
       fields["stress_"..key]=tostring(now[key]-self.stress_progress[key])

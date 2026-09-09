@@ -216,9 +216,17 @@ class U3GeneratedClockTests(unittest.TestCase):
         loop = function_body((cls.upstream/'CorsixTH/Src/sdl_core.cpp').read_text(), 'void mainloop(lua_State* L)')
         top = function_body((cls.upstream/'CorsixTH/Src/th_gfx_sdl.cpp').read_text(), 'bool render_target::end_frame()')
         runtime = (ROOT/'src/3ds/runtime_3ds.cpp').read_text()
+        header = (ROOT/'src/3ds/runtime_3ds.hpp').read_text()
         bottom = function_body(runtime, '  void after_frame(bool draw_success)')
         present = function_body(runtime, 'bool runtime_present_game(int cursor_x, int cursor_y) noexcept')
         code = HARNESS.replace('// INSERT_TOP', top).replace('// INSERT_BOTTOM', bottom).replace('// INSERT_LOOP', loop).replace('// INSERT_PRESENT', present)
+        # Execute the actual independent phase owner and RAII declaration.
+        # The whole public header also declares hardware/SDL types represented
+        # by this harness, so extract this complete class and its two methods.
+        code = code.replace('// INSERT_PHASE_SCOPE',
+            function_body(runtime, 'FrameTail::Token runtime_phase_begin(') + '\n' +
+            function_body(runtime, 'void runtime_phase_end(') + '\n' +
+            function_body(header, 'class RuntimePhaseScope') + ';')
         code = code.replace('// INSERT_CLOCK_COUNTERS',
             function_body(runtime, 'void runtime_simulation_begin() noexcept') + '\n' +
             function_body(runtime, 'bool runtime_simulation_step() noexcept') + '\n' +
@@ -359,6 +367,7 @@ HARNESS = r'''
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/presentation_clock.hpp"
 #include <array>
+#include <cassert>
 #include <cstring>
 #include <algorithm>
 #include <cstdio>
@@ -413,6 +422,7 @@ bool g_operation_blocked=false;
 PresentationClock g_presentation_clock;
 const auto initial_scene=[](){std::strcpy(g_observations.scene.data(),"level:1");return true;}();
 std::uint64_t now_us();
+// INSERT_PHASE_SCOPE
 struct RuntimeTimingScope {
  std::uint64_t token;
  explicit RuntimeTimingScope(TimingStage stage):token(g_timing.begin_span(stage,clock_us)){}
@@ -507,7 +517,15 @@ constexpr auto dispatch_keydown="keydown"sv,dispatch_keyup="keyup"sv,dispatch_te
 int main(int argc,char** argv){
  delayed=argc>1?std::atoi(argv[1]):-1;failure=argc>2?std::atoi(argv[2]):0;
  extra_timers=argc>3?std::atoi(argv[3]):0;
+ g_observations.frame_tail.begin(clock_us);
  lua_State state;mainloop(&state);const auto s=g_timing.snapshot(clock_us);
+ g_observations.frame_tail.close(clock_us);
+ const auto& tail=g_observations.frame_tail.record();
+ assert(tail.invalid==0 && tail.end_phase==cth3ds::FramePhase::Other);
+ std::uint64_t whole=0;for(const auto value:tail.whole)whole+=value;
+ assert(whole==clock_us);
+ assert(tail.whole[static_cast<unsigned>(cth3ds::FramePhase::Wait)]==static_cast<std::uint64_t>(iterations)*1000);
+ assert(tail.whole[static_cast<unsigned>(cth3ds::FramePhase::GCStep)]==work[6]*(delayed==6?8000:1000));
  std::cout<<"{\"success\":"<<s.successful_presents<<",\"failed\":"<<s.failed_presents
  <<",\"skipped\":"<<s.skipped_presents<<",\"count\":"<<s.intervals.count
  <<",\"sum\":"<<s.intervals.total_us<<",\"exclusive\":[";

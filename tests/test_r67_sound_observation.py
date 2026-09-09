@@ -10,6 +10,7 @@ import unittest
 from support.pinned_upstream import generated_sources
 from test_save_memory import native_inputs
 from test_sound_lifetime import helper
+from test_playable_path import function_body
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,10 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 class R67SoundObservationTests(unittest.TestCase):
     def test_generated_slice_and_fresh_runtime_admission(self):
         runtime = (ROOT / 'src/3ds/runtime_3ds.cpp').read_text()
-        observe = runtime[runtime.index('void runtime_observe_memory(const char* checkpoint,'):
-                          runtime.index('void runtime_note_timer_event()')]
-        reserve = runtime[runtime.index('bool runtime_audio_reserve('):
-                          runtime.index('void runtime_tick(lua_State*')]
+        # Own the exact complete memory methods under test. Adjacent runtime
+        # phase methods belong to a different owner and are not audio helpers.
+        observe = function_body(runtime, 'void runtime_observe_memory(const char* checkpoint,')
+        reserve = function_body(runtime, 'bool runtime_audio_reserve(')
         compiler, _, _ = native_inputs()
         with tempfile.TemporaryDirectory(prefix='cth-r67-sound-') as name:
             directory = Path(name)

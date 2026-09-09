@@ -1,0 +1,207 @@
+{
+  "format": 3,
+  "product": "R70",
+  "source_commit": "213465118cf592d8510021c6ee55ddc3365c8105",
+  "source_tree": "9df464da4a8cf0a9f66ac8dd28200823fe46ebfb",
+  "source_digest": "72905eb7a003982d07c8be92d5de257f7e0993eeda101dd67734f797ab755283",
+  "source_files": 486,
+  "source_unchanged_during_validation": true,
+  "artifact": {
+    "bytes": 2823440,
+    "path": "CorsixTH-3DS.3dsx",
+    "sha256": "a45ee2e696ae95aa975438045173d63b99d3a6e9eb5ebd91d5c0c47caa71976e"
+  },
+  "elf": {
+    "bytes": 25810000,
+    "path": "CorsixTH-3DS.elf",
+    "sha256": "8cb53087f14b999f33cce37a4cdd1fabdba356e05938ff6b961b4d265bce8c06"
+  },
+  "run_id": "20260910-025725-aa727ab12f96",
+  "run_count": 1,
+  "identity": "PASS",
+  "launcher_roundtrip": "PASS",
+  "game_outcome": "PASS",
+  "game_reason": "COMPLETE",
+  "artifact_identity": "a45ee2e696ae95aa975438045173d63b99d3a6e9eb5ebd91d5c0c47caa71976e",
+  "config_sha256": "e0e8cfb63a0e9aa2b3156ac947640560c9d0c0b6afa5fe9e44f42c5011cf0b56",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "return_boot": "e4a17d765a3c13020b9248a137530620",
+  "host": {
+    "component_python_unique_ids": 45,
+    "native_bounded_log_cases": 7,
+    "offline_protocol_cases": 10,
+    "final_ctest_targets": 2,
+    "manifest_discovered_ids": 334,
+    "full_suite": "NOT_RERUN",
+    "baseline_reused": "R69 effective 326 PASS and one allowed skip; original full FAIL plus test-consumer closure retained.",
+    "original_local_failure": "assembly-01 rejected symlink root before generating; assembly-02 used frozen real path",
+    "failed_records_preserved": true
+  },
+  "assembly": {
+    "outcome": "PASS",
+    "generated_files": 738,
+    "syntax_checked_lua": 306,
+    "actual_generated_modules_loaded": 8,
+    "debug_files_verified": 7,
+    "reference_product_files_unchanged": 731,
+    "final_delta": "5 native logging files and 2 identity receipts versus tested Staff/World+resource view",
+    "repository_lua_fallback": false,
+    "shared_view_for_build_and_package": true
+  },
+  "deployment": {
+    "outcome": "PASS",
+    "files": 5,
+    "uploaded_bytes": 3051474,
+    "binary_last": true,
+    "full_asset_download": false,
+    "toolchain_reused": true,
+    "fresh_protection_before": 33,
+    "fresh_protection_after": 29,
+    "original_files_unchanged": 27,
+    "total_file_retr_count": 71,
+    "total_file_retr_bytes": 31196858,
+    "excludes": "FTP control messages and runner artifact/log collection",
+    "third_party_uncoordinated_ftp_exclusion": "NOT_PROVEN"
+  },
+  "sample": {
+    "simulation_outcome": "PASS",
+    "performance_outcome": "NOT_PROVEN",
+    "observed_presented_hz": 15.139,
+    "elapsed_us": 60505749,
+    "completed": {
+      "world": 2748,
+      "hours": 916,
+      "entities": 29563,
+      "frames": 916,
+      "at": 60505
+    },
+    "boundary_ledger_outcome": "PASS",
+    "first_delay_us": 51274,
+    "open_gap_us": 450522,
+    "total_unclosed_boundary_us": 501796,
+    "unchanged_boundary_limit_us": 250000,
+    "phases": {
+      "loop_other": {
+        "whole_us": 57038517,
+        "first_delay_us": 50839,
+        "interval_us": 56987626,
+        "open_gap_us": 52
+      },
+      "gc_observe": {
+        "whole_us": 295371,
+        "first_delay_us": 0,
+        "interval_us": 295351,
+        "open_gap_us": 20
+      },
+      "gc_step": {
+        "whole_us": 122185,
+        "first_delay_us": 0,
+        "interval_us": 122178,
+        "open_gap_us": 7
+      },
+      "observation_flush": {
+        "whole_us": 1906300,
+        "first_delay_us": 0,
+        "interval_us": 1469129,
+        "open_gap_us": 437171
+      },
+      "event_wait": {
+        "whole_us": 46311,
+        "first_delay_us": 0,
+        "interval_us": 46266,
+        "open_gap_us": 45
+      },
+      "runtime": {
+        "whole_us": 428190,
+        "first_delay_us": 37,
+        "interval_us": 426957,
+        "open_gap_us": 1196
+      },
+      "benchmark_call": {
+        "whole_us": 668875,
+        "first_delay_us": 398,
+        "interval_us": 656446,
+        "open_gap_us": 12031
+      }
+    },
+    "last_flush": {
+      "begin": 14057144302,
+      "end": 14057581473,
+      "reason_bits": 2,
+      "action": "full",
+      "completed": true
+    },
+    "clock_gpu_context_acceptance": "NOT_PROVEN",
+    "exact_state_ab": "NOT_PROVEN",
+    "net_performance_gain": "NOT_PROVEN"
+  },
+  "stress": {
+    "outcome": "PASS",
+    "actual_elapsed_ms": 202107,
+    "cycles": 11,
+    "private_save_reload": {
+      "outcome": "PASS",
+      "completed_count": 2,
+      "files_observed": [
+        "save/recovery-before-load.sav",
+        "save/r62-roundtrip.sav",
+        "save/completed.sav"
+      ],
+      "file_presence_alone_proves_reload": false
+    },
+    "errors": 0,
+    "busy_level_and_soak_acceptance": "NOT_PROVEN"
+  },
+  "memory": {
+    "minimum_heap_available_estimate_bytes": 20761544,
+    "minimum_linear_free_bytes": 2199552,
+    "largest_contiguous_block": "NOT_PROVEN",
+    "large_hospital_capacity": "NOT_PROVEN"
+  },
+  "retained_stage_observations": {
+    "ready_ms": 38278,
+    "vspr_resource_read_us": 274673,
+    "vspr_whole_sprite_load_us": 793810,
+    "r69_ready_ms": 45636,
+    "r69_vspr_resource_read_us": 6867706,
+    "scope": "Observed respective runs; resource-read includes decompression where applicable. Startup SD/cache conditions not locked; exact speedup NOT_PROVEN."
+  },
+  "log": {
+    "status": "PRESENT",
+    "path": "artifacts/boot.log",
+    "issues": [
+      "slow-event ring dropped rows"
+    ],
+    "integrity": "NOT_PROVEN",
+    "native_closed_samples": 1,
+    "reported_write_failure": 0,
+    "reported_truncation": 0,
+    "runtime_write_status": "PASS",
+    "slow_startup_rows_dropped": 7,
+    "boot_sha256": "a3deba504cffb256791d130cd14d953fac0e56cdb0769823239a6ef8a8962789"
+  },
+  "root_replay": {
+    "outcome": "PASS",
+    "raw_and_saved_analyses_equal": true,
+    "original_files_unchanged": 27,
+    "remote_connections": 0,
+    "game_submissions": 0
+  },
+  "stage_seconds": {
+    "assembly": 1.559,
+    "host-native-01": 6.251,
+    "arm-01": 25.058,
+    "retain-debug-01": 0.442,
+    "candidate-prepare-01": 1.951,
+    "device-deploy-01": 88.727,
+    "device-run-01": 428.33,
+    "root-readback-01": 0.299
+  },
+  "next": [
+    "Bound periodic full diagnostic production and write stalls with unchanged accounting and error visibility",
+    "Test thermal compute/publish loop order only if numeric equivalence and actual net benefit support adoption",
+    "Continue exact staff callee and floor work reduction review",
+    "Busy hospitals, large levels, level transitions, natural receptionist service, HOME/lid and long-run acceptance"
+  ],
+  "github_push": false
+}

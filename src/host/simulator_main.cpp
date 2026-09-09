@@ -6,7 +6,6 @@
 
 #include "cth3ds/bottom_ui.hpp"
 #include "cth3ds/events.hpp"
-#include "cth3ds/fixed_step.hpp"
 #include "cth3ds/input_mapper.hpp"
 #include "cth3ds/screen_layout.hpp"
 #include "cth3ds/software_canvas.hpp"

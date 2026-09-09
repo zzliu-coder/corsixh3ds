@@ -1,0 +1,13 @@
+{
+  "commit": "17603cb2ba832d57de7d3926b680cf6d5fabe610",
+  "original_sha256": {
+    "include/cth3ds/fixed_step.hpp": "55b0ab56cc36ed906e249d7fbdaf30bc39002d1d81ee73a1812d381480be589d",
+    "src/common/fixed_step.cpp": "1b7351df181143a891740539e338458bd248395a81214cb58690009a93b39c9e",
+    "src/3ds/runtime_3ds.cpp": "b86a1cb72ca47cbfd2b73f245e6b0e503913a32eb5dfe94f37b0bba67df870cd"
+  },
+  "fixture_sha256": {
+    "r73_frame_scheduler_original.hpp": "d1641d0a5ddbab33ea399c6be8e3ab4f7a81e102110ad32b0e918941c3ede249",
+    "r73_panel_runtime_original.inc": "ae21f9a87b54e22a90c8cbc15f06dece6001863127c1d4d9b4289f3e5a7f56b0"
+  },
+  "transform": "Scheduler header and implementation joined; cth3ds namespace renamed r73_original; local include removed. Runtime method bodies copied exactly; tick scheduling tail wrapped as refresh_panel_tick. No original behavior changed."
+}

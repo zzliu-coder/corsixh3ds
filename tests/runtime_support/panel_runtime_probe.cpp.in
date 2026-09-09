@@ -1,0 +1,152 @@
+#include "test_framework.hpp"
+#include "cth3ds/panel_refresh.hpp"
+#include "cth3ds/bottom_ui.hpp"
+#include "cth3ds/software_canvas.hpp"
+#include "fixtures/r73_frame_scheduler_original.hpp"
+#include <cstddef>
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <vector>
+
+using namespace cth3ds;
+enum class BottomScreenMode { Game, Panel };
+constexpr unsigned SDL_PIXELFORMAT_RGBA8888 = 1;
+constexpr unsigned SDL_PIXELFORMAT_RGBA32 = 2;
+struct SDL_PixelFormat { unsigned format{SDL_PIXELFORMAT_RGBA8888}; };
+struct SDL_Surface {
+  SDL_PixelFormat* format{};
+  int w{320}, h{240}, pitch{1280};
+  void* pixels{};
+  bool must_lock{};
+};
+struct SDL_Window { SDL_Surface* surface{}; unsigned updates{}; };
+static bool surface_missing{};
+static int lock_error{}, conversion_error{}, update_error{};
+static std::uint64_t clock_us{};
+std::uint64_t now_us() { return clock_us; }
+void boot_log(const char*, ...) {}
+int SDL_MUSTLOCK(SDL_Surface* surface) { return surface->must_lock ? 1 : 0; }
+int SDL_LockSurface(SDL_Surface*) { return lock_error; }
+void SDL_UnlockSurface(SDL_Surface*) {}
+SDL_Surface* SDL_GetWindowSurface(SDL_Window* window) {
+  return surface_missing ? nullptr : window->surface;
+}
+int SDL_ConvertPixels(int w, int h, unsigned, const void* from, int pitch,
+                      unsigned, void* to, int) {
+  if (!conversion_error) std::memcpy(to, from, static_cast<std::size_t>(h*pitch));
+  EXPECT_EQ(w, 320);
+  return conversion_error;
+}
+int SDL_UpdateWindowSurface(SDL_Window* window) { ++window->updates; return update_error; }
+// INSERT_SWAP
+
+struct PanelHost {
+  std::vector<std::uint32_t> pixels = std::vector<std::uint32_t>(320U*240U);
+  SDL_PixelFormat format{};
+  SDL_Surface surface{};
+  SDL_Window window{};
+  SDL_Window* bottom_window_{&window};
+  SDL_Surface* bottom_surface_{&surface};
+  std::unique_ptr<SoftwareCanvas> bottom_canvas_;
+  BottomUiController bottom_ui_{};
+  BottomScreenMode bottom_mode_{BottomScreenMode::Panel};
+  bool dirty_{true};
+  std::uint64_t notice_until_us_{};
+  PanelHost() {
+    surface.format = &format; surface.pixels = pixels.data(); window.surface = &surface;
+  }
+  void pen(ActionType type) {
+    Action action; action.type = type; action.position = {20, 70};
+    (void)bottom_ui_.process(action);
+  }
+};
+struct Original : PanelHost {
+  using FrameScheduler = r73_original::FrameScheduler;
+  r73_original::FrameScheduler scheduler_{18000,33333,33333,3};
+// INSERT_ORIGINAL
+};
+struct Candidate : PanelHost {
+  PanelRefreshGate panel_refresh_{33333};
+// INSERT_CANDIDATE
+};
+
+int main() {
+  Original old;
+  Candidate current;
+  unsigned checked = 0;
+  auto equal = [&]() {
+    EXPECT_EQ(old.window.updates, current.window.updates);
+    EXPECT_EQ(old.dirty_, current.dirty_);
+    EXPECT_EQ(old.pixels, current.pixels);
+    EXPECT_EQ(old.bottom_ui_.state(), current.bottom_ui_.state());
+    EXPECT_EQ(old.bottom_ui_.is_pressed(), current.bottom_ui_.is_pressed());
+    EXPECT_EQ(old.notice_until_us_, current.notice_until_us_);
+    ++checked;
+  };
+  auto tick = [&](std::uint64_t now) {
+    clock_us = now; old.refresh_panel_tick(now); current.refresh_panel_tick(now); equal();
+  };
+  auto redraw = [&]() { old.request_redraw(); current.request_redraw(); equal(); };
+  auto state = [&](BottomUiState value) { old.set_state(value); current.set_state(value); equal(); };
+  tick(1000); EXPECT_EQ(current.window.updates, 1U); EXPECT_FALSE(current.dirty_);
+  tick(34333); EXPECT_EQ(current.window.updates, 1U); // clean consumes the cadence
+  auto value = current.bottom_ui_.state(); value.cash = 400;
+  state(value); tick(35000); EXPECT_TRUE(current.dirty_);
+  tick(67666); EXPECT_EQ(current.window.updates, 2U); EXPECT_FALSE(current.dirty_);
+  redraw(); redraw(); tick(70000); EXPECT_EQ(current.window.updates, 3U);
+  old.pen(ActionType::PointerDown); current.pen(ActionType::PointerDown);
+  EXPECT_TRUE(current.bottom_ui_.is_pressed());
+  tick(80000); EXPECT_EQ(current.window.updates, 3U);
+  tick(134332); EXPECT_EQ(current.window.updates, 4U); // held pen paints clean Panel
+  old.pen(ActionType::PointerUp); current.pen(ActionType::PointerUp);
+  tick(134333); EXPECT_FALSE(current.bottom_ui_.is_pressed());
+  value.active_tab = BottomTab::Finance; state(value); tick(134334);
+  old.set_notice("CHECK", true); current.set_notice("CHECK", true); tick(134335);
+  old.set_notice("CHECK", true); current.set_notice("CHECK", true); tick(134336);
+  old.set_notice("", false); current.set_notice("", false); tick(134337);
+
+  // Failed renders consume the already-open cadence but retain dirty.
+  old.bottom_window_ = nullptr; current.bottom_window_ = nullptr;
+  redraw(); tick(200000); EXPECT_TRUE(current.dirty_);
+  old.bottom_window_ = &old.window; current.bottom_window_ = &current.window;
+  tick(200001); EXPECT_TRUE(current.dirty_); tick(600000); EXPECT_FALSE(current.dirty_);
+  surface_missing = true; redraw(); tick(600001); EXPECT_TRUE(current.dirty_);
+  surface_missing = false; tick(600002); EXPECT_TRUE(current.dirty_);
+  tick(900000); EXPECT_FALSE(current.dirty_);
+  old.surface.must_lock = true; current.surface.must_lock = true;
+  lock_error = -1; redraw(); tick(900001); EXPECT_TRUE(current.dirty_);
+  lock_error = 0; tick(900002); EXPECT_TRUE(current.dirty_); tick(1200000);
+  old.format.format = 99; current.format.format = 99;
+  conversion_error = -1; redraw(); tick(1200001); EXPECT_TRUE(current.dirty_);
+  conversion_error = 0; tick(1200002); EXPECT_TRUE(current.dirty_); tick(1500000);
+  EXPECT_FALSE(current.dirty_);
+  // Original semantics: conversion success clears dirty even if the SDL update fails.
+  update_error = -1; redraw(); tick(1500001); EXPECT_FALSE(current.dirty_);
+  update_error = 0;
+  old.force_render_bottom(); current.force_render_bottom(); equal();
+  tick(1500002);
+  tick(10); redraw(); tick(11); tick(3600000000ULL); tick(86400000000ULL);
+  old.scheduler_.reset(86400010000ULL); current.panel_refresh_.reset();
+  redraw(); tick(86400010000ULL); EXPECT_FALSE(current.dirty_);
+  old.scheduler_.reset(0); current.panel_refresh_.reset();
+  redraw(); tick(0); tick(1);
+  std::printf("PASS %u actual Panel comparisons: first/clean/dirty/pen/request/tab/notice/force/failure/resume/backwards/long-gap and pixel bytes\n", checked);
+
+  Candidate game;
+  game.bottom_mode_ = BottomScreenMode::Game;
+  EXPECT_TRUE(game.panel_refresh_.due(0));
+  auto untouched = game.panel_refresh_;
+  game.refresh_panel_tick(1000000000);
+  game.request_redraw();
+  game.set_notice("GAME", true);
+  auto game_state = game.bottom_ui_.state(); game_state.active_tab = BottomTab::Staff;
+  game.set_state(game_state); game.force_render_bottom();
+  game.refresh_panel_tick(2000000000);
+  EXPECT_EQ(game.window.updates, 0U); EXPECT_TRUE(game.dirty_);
+  EXPECT_TRUE(game.bottom_canvas_ == nullptr);
+  for (const std::uint64_t time : {1ULL, 33333ULL, 33334ULL, 1000000000ULL}) {
+    EXPECT_EQ(game.panel_refresh_.due(time), untouched.due(time));
+  }
+  std::puts("PASS actual Game tick/redraw/notice/tab/force: no old gate advance/request, no Panel allocation or render");
+}

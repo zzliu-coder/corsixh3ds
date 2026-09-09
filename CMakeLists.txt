@@ -22,7 +22,7 @@ add_library(cth3ds_common STATIC
   src/common/bottom_ui.cpp
   src/common/build_gesture.cpp
   src/common/crc32.cpp
-  src/common/fixed_step.cpp
+  src/common/panel_refresh.cpp
   src/common/framebuffer_scaler.cpp
   src/common/interval_gate.cpp
   src/common/input_mapper.cpp
@@ -107,6 +107,7 @@ if(CTH3DS_BUILD_TESTS)
     tests/test_bounded_log.cpp
     tests/test_build_gesture.cpp
     tests/test_fixed_step.cpp
+    tests/test_panel_refresh.cpp
     tests/test_framebuffer_scaler.cpp
     tests/test_handheld_r48.cpp
     tests/test_interval_gate.cpp

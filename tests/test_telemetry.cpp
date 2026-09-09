@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "cth3ds/telemetry.hpp"
-#include "cth3ds/fixed_step.hpp"
+#include "cth3ds/simulation_clock.hpp"
 #include <limits>
 
 using cth3ds::TimingStage;
@@ -121,12 +121,13 @@ TEST(telemetry_clear_resets_epoch_but_legacy_never_becomes_product_fps) {
   EXPECT_EQ(t.snapshot().legacy_durations.count, 0U);
 }
 TEST(telemetry_restore_span_keeps_wall_pause_while_simulation_clock_resets) {
-  cth3ds::Telemetry t; cth3ds::FrameScheduler scheduler;
-  scheduler.reset(1000); t.present_complete(1000, PresentResult::Success);
+  cth3ds::Telemetry t; cth3ds::SimulationClock clock;
+  clock.begin(1000); t.present_complete(1000, PresentResult::Success);
   auto restore = t.begin_span(TimingStage::Restore, 2000);
   const std::uint64_t resumed = 120002000;
-  scheduler.reset(resumed);
-  EXPECT_EQ(scheduler.advance(resumed).simulation_steps, 0);
+  clock.interrupt();
+  clock.begin(resumed);
+  EXPECT_FALSE(clock.take_step(resumed));
   EXPECT_TRUE(t.end_span(restore, resumed));
   t.present_complete(resumed + 1000, PresentResult::Success);
   EXPECT_EQ(t.snapshot().intervals.maximum_us, 120002000U);

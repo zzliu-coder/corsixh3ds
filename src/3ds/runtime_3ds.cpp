@@ -38,7 +38,7 @@
 #include "cth3ds/bounded_log.hpp"
 #include "cth3ds/crc32.hpp"
 #include "cth3ds/events.hpp"
-#include "cth3ds/fixed_step.hpp"
+#include "cth3ds/panel_refresh.hpp"
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/presentation_clock.hpp"
 #include "cth3ds/cpu_work.hpp"
@@ -863,7 +863,7 @@ class Runtime {
  public:
   Runtime()
       : overlay_canvas_(ScreenLayout::kBottomWidth, kOverlayHeight),
-        scheduler_(18000U, 33333U, 33333U, 3), lifecycle_(60000000U) {}
+        panel_refresh_(33333U), lifecycle_(60000000U) {}
 
   bool initialize(lua_State* state, const char* mode) {
     if (!mode || (std::strcmp(mode,"loose") && std::strcmp(mode,"th3ds"))) return false;
@@ -934,7 +934,7 @@ class Runtime {
     system_refresh_gate_.reset(current, true);
     battery_refresh_gate_.reset(current, true);
     telemetry_log_gate_.reset(current, false);
-    scheduler_.reset(current);
+    panel_refresh_.reset();
     initialized_ = true;
     dirty_ = true;
     refresh_system_status(true);
@@ -1014,7 +1014,7 @@ class Runtime {
     game_window_=nullptr;game_window_id_=0;game_surface_=nullptr;
     resource_start_failed_=false;resource_session_.reset();
     pending_lifecycle_.store(0);exit_requested_.store(false);
-    lifecycle_.reset(0);last_tick_us_=0;scheduler_.reset(0);
+    lifecycle_.reset(0);last_tick_us_=0;panel_refresh_.reset();
     g_adapter_origin.clear();asset_mode_.clear();
     boot_log("runtime: shutdown complete");
     boot_log_close();
@@ -1194,8 +1194,8 @@ class Runtime {
       g_workload_time_us += now_us() - sample_started;
     }
 
-    const FrameScheduler::Decision decision = scheduler_.advance(frame_started);
-    if (bottom_mode_ == BottomScreenMode::Panel && decision.render_bottom &&
+    if (bottom_mode_ == BottomScreenMode::Panel &&
+        panel_refresh_.due(frame_started) &&
         (dirty_ || bottom_ui_.is_pressed())) {
       // In game mode the lower screen is repainted by after_frame() instead,
       // in lockstep with the frame it mirrors.
@@ -1237,7 +1237,7 @@ class Runtime {
     const BottomTab previous_tab = bottom_ui_.state().active_tab;
     bottom_ui_.set_state(std::move(state));
     if (previous_tab != bottom_ui_.state().active_tab) {
-      scheduler_.request_redraw();
+      if (bottom_mode_ == BottomScreenMode::Panel) panel_refresh_.request_redraw();
     }
     dirty_ = true;
   }
@@ -1246,18 +1246,14 @@ class Runtime {
 
   void request_redraw() noexcept {
     dirty_ = true;
-    scheduler_.request_redraw();
+    if (bottom_mode_ == BottomScreenMode::Panel) panel_refresh_.request_redraw();
   }
 
   void force_render_bottom() {
     dirty_ = true;
-    if (bottom_mode_ == BottomScreenMode::Game) {
-      // Game pixels are published only by after_frame, after SDL_RenderFlush.
-      // A UI/lifecycle notification may arrive while draw commands are queued.
-      scheduler_.request_redraw();
-    } else {
-      render_bottom();
-    }
+    // Game pixels are published only by after_frame, after SDL_RenderFlush.
+    // A UI/lifecycle notification may arrive while draw commands are queued.
+    if (bottom_mode_ == BottomScreenMode::Panel) render_bottom();
   }
 
   //! Told to us by render_target's constructor, because SDL2 has no way to
@@ -1583,7 +1579,7 @@ class Runtime {
     copy.notice_is_error = is_error;
     bottom_ui_.set_state(std::move(copy));
     dirty_ = true;
-    scheduler_.request_redraw();
+    if (bottom_mode_ == BottomScreenMode::Panel) panel_refresh_.request_redraw();
   }
 
   PerformanceSnapshot performance() const { return g_observations.timing.snapshot(now_us()); }
@@ -1780,7 +1776,7 @@ class Runtime {
       lifecycle_audio_suspended_ = false;
       for(int c=0;c<32;++c)if(!audio_paused_before_[c])Mix_Resume(c);
       if(!music_paused_before_)Mix_ResumeMusic();
-      scheduler_.reset(now_us());last_tick_us_=now_us();
+      panel_refresh_.reset();last_tick_us_=now_us();
     }
     if(restore_token){runtime_observe_memory("restore","reconciled","simulation",MemoryGate::Operation);runtime_span_end(restore_token,!input_failed_);}
     if (decision.request_autosave && asset_mode_ == "th3ds") {
@@ -1866,7 +1862,7 @@ class Runtime {
     if (changed) {
       bottom_ui_.set_state(std::move(copy));
       dirty_ = true;
-      scheduler_.request_redraw();
+      if (bottom_mode_ == BottomScreenMode::Panel) panel_refresh_.request_redraw();
     }
   }
 
@@ -2139,7 +2135,7 @@ class Runtime {
   SoftwareCanvas overlay_canvas_;
   InputMapper input_mapper_{[] { InputMapperConfig c; c.overview_controls = true; return c; }()};
   InputCollector3ds input_collector_{};
-  FrameScheduler scheduler_;
+  PanelRefreshGate panel_refresh_;
   LifecycleController lifecycle_;
 
   aptHookCookie apt_cookie_{};

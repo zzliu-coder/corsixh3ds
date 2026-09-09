@@ -29,9 +29,15 @@ struct AllocationWatch {
 };
 
 struct MemoryObservationGate {
-  std::uint64_t last{},sampled{},skipped{};
+  // R65: detailed heap snapshots may walk allocator metadata. Keep ordinary
+  // sprite/texture/audio observations at most four times per second. Operation
+  // boundaries, large requests and failures still force an immediate sample;
+  // admission checks and AllocationWatch are independent of this gate.
+  static constexpr std::uint64_t interval_us=250000;
+  std::uint64_t last{},sampled{},skipped{},forced{};
   bool take(std::uint64_t now,bool force) noexcept {
-    if(!force && sampled && now>=last && now-last<50000) {++skipped;return false;}
+    if(!force && sampled && now>=last && now-last<interval_us) {++skipped;return false;}
+    if(force)++forced;
     last=now;++sampled;return true;
   }
 };

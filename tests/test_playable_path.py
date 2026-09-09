@@ -108,31 +108,44 @@ local persist={}
 local MakePermanentObjectsTable=function() return {} end
 local NameOf=function() return 'fixture' end
 strict_declare_global=function() end
-local after_save=0
+local after_save,prepare_save=0,0
 local failure=''
-local map={prepareForSave=function() end,afterSave=function() after_save=after_save+1 end}
+local map={prepareForSave=function() prepare_save=prepare_save+1 end,afterSave=function() after_save=after_save+1 end}
 math.randomdump=function() return 'random-state' end
 TheApp={map=map,world={},ui={}}
 persist.dump=function() if failure=='dump' then error('injected dump') end return 'SERIALIZED' end
+persist.dump_file=function(state,permanent,f)
+ local data=persist.dump(state,permanent)
+ local ok,err=f:write(data);if not ok then return nil,err end
+ return true,#data,1
+end
 ''' + source
 
     def test_generated_dump_write_close_failure_matrix(self):
         self.lua(self.persistence_script()+'''
 local real_open=io.open
-for _,stage in ipairs({'dump','open','write','close'}) do
+for _,stage in ipairs({'dump','open','setvbuf','write','close'}) do
   failure=stage
+  local closes=0
   io.open=function()
     if failure=='open' then return nil,'injected open' end
-    return {write=function() if failure=='write' then return nil,'injected write' end return true end,
-            close=function() if failure=='close' then return nil,'injected close' end return true end}
+    return {setvbuf=function() if failure=='setvbuf' then return nil,'injected setvbuf' end return true end,
+            write=function() if failure=='write' then return nil,'injected write' end return true end,
+            close=function() closes=closes+1;if failure=='close' then return nil,'injected close' end return true end}
   end
   local before=after_save
+  local before_prepare=prepare_save
   local ok,err=pcall(SaveGameFile,'exact.tmp')
   assert(not ok and tostring(err):find(stage),tostring(err))
-  assert(after_save==before+1,'afterSave must run after failed dump')
+  local entered=(stage=='open' or stage=='setvbuf') and 0 or 1
+  assert(prepare_save==before_prepare+entered)
+  assert(after_save==before+entered,'afterSave must match completed prepare')
+  assert(closes==(stage=='open' and 0 or 1),'opened file close attempted once')
 end
-failure='';io.open=function(path) assert(path=='exact.tmp');return {write=function() return true end,close=function() return true end} end
+failure='';io.open=function(path) assert(path=='exact.tmp');return {setvbuf=function()return true end,write=function() return true end,close=function() return true end} end
 assert(SaveGameFile('exact.tmp')==true)
+local before=after_save
+assert(SaveGame()=='SERIALIZED' and after_save==before+1)
 io.open=real_open
 ''')
 
@@ -387,6 +400,7 @@ std::string_view dispatch;
 std::uint64_t work[10]{},flushes=0;
 void spend(int stage,std::uint64_t base=1000) {++work[stage];clock_us+=base+(stage==delayed?7000:0);}
 namespace cth3ds {
+void runner_present(bool){}
 auto& g_timer_events=g_observations.timer_events;
 auto& g_logic_callbacks=g_observations.logic_callbacks;
 SimulationClock g_simulation_clock;

@@ -1878,7 +1878,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R64 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R65 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1972,7 +1972,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R64 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R65 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2793,7 +2793,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R64 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 varint_scratch=stack lua_allocator_watch=1 raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us");
+  boot_log("diagnostics: revision=R65 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
@@ -2920,8 +2920,10 @@ void runtime_operation_boundary() noexcept {
 void runtime_observe_memory(const char* checkpoint, const char* phase, const char* resource,
     MemoryGate gate, std::uint64_t requested, bool requested_known,
     std::uint64_t held, bool held_known, bool failed, bool opaque) noexcept {
-  // Sample high-frequency sprite/texture events. Operation, language,
-  // sound, stage boundaries and every reported failure remain unconditional.
+  // Detailed high-frequency sprite/texture/GC/playback observations are paced.
+  // Operation, language and sound loading boundaries, large requests and every
+  // reported failure remain unconditional. Admission uses fresh snapshots and
+  // Lua allocation peaks/failures are counted by AllocationWatch independently.
   const bool frequent=checkpoint && (std::strcmp(checkpoint,"vspr_decode")==0 ||
       std::strcmp(checkpoint,"textures")==0 || std::strcmp(checkpoint,"release")==0 ||
       std::strcmp(checkpoint,"gc")==0 || std::strcmp(checkpoint,"sound_play")==0 ||
@@ -2963,8 +2965,10 @@ void runtime_note_logic_callback(bool success) noexcept {
 void runtime_flush_observations(bool force) noexcept {
   const auto now=now_us();
   if(!g_observations.due(now,force))return;
-  boot_log("memory-sampling: interval_us=50000 sampled=%llu skipped=%llu failure_and_operation=always peaks=sampled",
-      static_cast<unsigned long long>(g_memory_sampling.sampled),static_cast<unsigned long long>(g_memory_sampling.skipped));
+  boot_log("memory-sampling: interval_us=%llu sampled=%llu skipped=%llu forced=%llu failure_and_operation=always large_request_min=262144 peaks=sampled lua_allocator_peak=every_allocation admission=fresh",
+      static_cast<unsigned long long>(MemoryObservationGate::interval_us),
+      static_cast<unsigned long long>(g_memory_sampling.sampled),static_cast<unsigned long long>(g_memory_sampling.skipped),
+      static_cast<unsigned long long>(g_memory_sampling.forced));
   update_lua_memory(g_observation_state);
   const auto m=heap_snapshot();
   const ObservationInputs inputs{now,m.heap_available_estimate,m.heap_available_low_water,

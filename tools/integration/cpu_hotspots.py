@@ -8,6 +8,7 @@ from .spatial_queries import transforms as spatial_transforms
 from .save_memory import transforms as save_transforms
 from .entity_index import transforms as entity_transforms
 from .save_phases import transforms as phase_transforms
+from .save_stream import transforms as stream_transforms
 from .picture_lifetime import transforms as picture_transforms
 from .staff_hotspots import transforms as staff_transforms
 from .litter_presence import transforms as litter_transforms
@@ -117,6 +118,7 @@ class level_map {
     yield from entity_transforms(root)
     yield from litter_transforms(root)
     yield from phase_transforms(root)
+    yield from stream_transforms(root)
     yield from picture_transforms(root)
     yield from staff_transforms(root)
 

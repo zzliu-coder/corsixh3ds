@@ -27,6 +27,159 @@ BUCKET=r'''
   }
 '''
 
+FILE_METHODS = r'''
+#if LUA_VERSION_NUM >= 502
+  // CORSIXTH_3DS_SAVE_STREAM_R65: the caller owns this standard Lua file.
+  // Its userdata is rooted on the outer dump_file stack until we return.
+  lua_persist_basic_writer(lua_State* state, luaL_Stream* stream, uint8_t* scratch)
+      : L(state), output(stream), buffer(scratch) {}
+
+  bool flush_buffer() {
+    if (had_error) return false;
+    if (!output->closef || !output->f) {
+      set_error("save stream: closed file");
+      return false;
+    }
+    if (!buffered) return true;
+    errno = 0;
+    ++flushes;
+    const size_t count = std::fwrite(buffer, 1, buffered, output->f);
+    const int saved_errno = errno;
+    written += count;
+    if (count != buffered || std::ferror(output->f)) {
+      char message[96];
+      std::snprintf(message, sizeof(message), "save stream write failed (errno=%d)", saved_errno);
+      set_error(message);
+      return false;
+    }
+    buffered = 0;
+    return true;
+  }
+
+  int finish_file() {
+    if (flush_buffer()) {
+      errno = 0;
+      const int status = std::fflush(output->f);
+      const int saved_errno = errno;
+      if (status != 0 || std::ferror(output->f)) {
+        char message[96];
+        std::snprintf(message, sizeof(message), "save stream flush failed (errno=%d)", saved_errno);
+        set_error(message);
+      }
+    }
+    if (had_error) return finish();
+    lua_pushboolean(L, 1);
+    lua_pushinteger(L, static_cast<lua_Integer>(written));
+    lua_pushinteger(L, static_cast<lua_Integer>(flushes));
+    return 3;
+  }
+#endif
+'''
+
+FILE_WRITE = r'''
+#if LUA_VERSION_NUM >= 502
+    if (output) {
+      const uint64_t maximum = static_cast<uint64_t>((~lua_Unsigned{0}) >> 1);
+      if (iCount > maximum - written - buffered) {
+        set_error("save stream: output size overflow");
+        return;
+      }
+      while (iCount && !had_error) {
+        const size_t available = 16384 - buffered;
+        const size_t count = iCount < available ? iCount : available;
+        std::memcpy(buffer + buffered, pBytes, count);
+        buffered += count;
+        pBytes += count;
+        iCount -= count;
+        if (buffered == 16384 && !flush_buffer()) return;
+      }
+      return;
+    }
+#endif
+'''
+
+FILE_ENTRY = r'''
+#if LUA_VERSION_NUM >= 502
+int l_dump_file_toplevel(lua_State* L) {
+  luaL_checktype(L, 2, LUA_TTABLE);
+  auto* stream = static_cast<luaL_Stream*>(luaL_checkudata(L, 3, LUA_FILEHANDLE));
+  luaL_argcheck(L, stream->closef && stream->f, 3, "open file required");
+  lua_settop(L, 3);
+  lua_pushvalue(L, 1);
+  void* storage = lua_newuserdata(L, sizeof(lua_persist_basic_writer) + 16384);
+  auto* scratch = static_cast<uint8_t*>(storage) + sizeof(lua_persist_basic_writer);
+  auto* writer = new (storage) lua_persist_basic_writer(L, stream, scratch);
+  lua_replace(L, 1); // writer, permanents, strong file owner, root object
+  const char* failure = nullptr;
+  try {
+    writer->init();
+    writer->write_stack_object(4);
+    return writer->finish();
+  } catch (const std::bad_alloc&) {
+    failure = "save stream: native allocation failed";
+  } catch (...) {
+    failure = "save stream: native serialization exception";
+  }
+  // No C++ exception is active when Lua may longjmp. GC only destroys the
+  // writer; neither its destructor nor this entry closes or flushes the file.
+  // A throwing native __persist may leave inner Lua call frames active: raise
+  // to the caller's pcall so Lua restores them instead of returning normally.
+  writer->set_error(failure);
+  return luaL_error(L, "%s", writer->get_error());
+}
+#endif
+'''
+
+
+def stream_writer(text):
+    if 'CORSIXTH_3DS_SAVE_STREAM_R65' in text:
+        return text
+    begin = text.index('class lua_persist_basic_writer :')
+    end = text.index('class lua_persist_basic_reader', begin)
+    writer = text[begin:end]
+    writer = replace_exact(writer, '  int finish() {', FILE_METHODS+'\n  int finish() {', 'file writer methods')
+    writer = replace_exact(writer, '    } else {\n      lua_pushlstring(L, data.c_str(), data.length());',
+        '    } else {\n#if LUA_VERSION_NUM >= 502\n      if (output) return finish_file();\n#endif\n'
+        '      lua_pushlstring(L, data.c_str(), data.length());', 'file finish avoids output string')
+    writer = replace_exact(writer, '    data.append(reinterpret_cast<const char*>(pBytes), iCount);',
+        FILE_WRITE+'\n    data.append(reinterpret_cast<const char*>(pBytes), iCount);', 'bounded file sink')
+    writer = replace_exact(writer, '    // Use the written data buffer to store the error message',
+        '''#if LUA_VERSION_NUM >= 502
+    if (output) {
+      // Keep the first diagnostic bounded, including allocation failures.
+      std::strncpy(file_error, sError, sizeof(file_error) - 1);
+      file_error[sizeof(file_error) - 1] = '\\0';
+      return;
+    }
+#endif
+    // Use the written data buffer to store the error message''', 'file error does not allocate')
+    writer = replace_exact(writer, '    if (had_error)\n      return data.c_str();',
+        '''#if LUA_VERSION_NUM >= 502
+    if (had_error && output) return file_error;
+#endif
+    if (had_error)
+      return data.c_str();''', 'file first error')
+    writer = replace_exact(writer, '  bool had_error{false};', '''  bool had_error{false};
+#if LUA_VERSION_NUM >= 502
+  luaL_Stream* output{nullptr};
+  uint8_t* buffer{nullptr}; // trailing userdata bytes, never stack or new[]
+  size_t buffered{0};
+  uint64_t written{0};
+  uint64_t flushes{0};
+  char file_error[256]{};
+#endif''', 'bounded file writer fields')
+    writer = writer.replace('luaL_error(L, get_error());', 'luaL_error(L, "%s", get_error());')
+    text = text[:begin] + writer + text[end:]
+    text = replace_exact(text, 'int l_load_toplevel(lua_State* L) {',
+        FILE_ENTRY+'\nint l_load_toplevel(lua_State* L) {', 'file dump entry')
+    text = replace_exact(text, '  lua_setfield(L, -6, "dump");', '''  lua_setfield(L, -6, "dump");
+#if LUA_VERSION_NUM >= 502
+  lua_pushvalue(L, -3);
+  luaT_pushcclosure(L, l_dump_file_toplevel, 1);
+  lua_setfield(L, -6, "dump_file");
+#endif''', 'file dump registration with same prototype names')
+    return text
+
 def transforms(root):
     path='CorsixTH/Src/persist_lua.cpp'
     text=(root/path).read_text()
@@ -47,7 +200,7 @@ def transforms(root):
                              '        luaL_checkstack(L, 20, "save userdata stack exhausted");','checked fast writer stack')
         text=text[:begin]+writer+text[end:]
         text=replace_exact(text,'#include <cstring>','#include <cstring>\n#include <cstdint>','index integer types')
-    yield path,text
+    yield path,stream_writer(text)
     path='CorsixTH/Src/persist_lua.h'
     text=(root/path).read_text()
     if 'CORSIXTH_3DS_VARINT_STACK_R63' not in text:

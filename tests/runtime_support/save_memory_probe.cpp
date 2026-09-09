@@ -171,7 +171,8 @@ int main(int argc,char** argv) {
   assert(!cth3ds::AllocationWatch::allocate(&watch,p,64,0) && watch.live==0);
   cth3ds::MemoryObservationGate gate;
   assert(gate.take(1,false));assert(!gate.take(2,false));assert(gate.take(3,true));
-  assert(gate.take(50003,false));assert(gate.skipped==1 && gate.sampled==3);
+  assert(gate.take(3+cth3ds::MemoryObservationGate::interval_us,false));
+  assert(gate.skipped==1 && gate.sampled==3 && gate.forced==1);
   cth3ds::MemoryPressure pressure;
   assert(pressure.due(1) && !pressure.due(2));
   assert(!pressure.begin(1,16*1024*1024,true));

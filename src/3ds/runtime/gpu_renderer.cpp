@@ -66,9 +66,15 @@ bool command_pressure() noexcept {
   return size && offset>size*7U/10U;
 }
 
+void diagnostic_vline(bool flush,const char* format,va_list args) noexcept {
+  char line[1024];
+  std::vsnprintf(line,sizeof(line),format,args);runtime_diagnostic_line(line,flush);
+}
 void boot_log(const char* format,...) noexcept {
-  char line[1024];va_list args;va_start(args,format);
-  std::vsnprintf(line,sizeof(line),format,args);va_end(args);runtime_diagnostic_line(line);
+  va_list args;va_start(args,format);diagnostic_vline(true,format,args);va_end(args);
+}
+void buffered_log(const char* format,...) noexcept {
+  va_list args;va_start(args,format);diagnostic_vline(false,format,args);va_end(args);
 }
 
 void outputs(bool enable) noexcept {
@@ -612,17 +618,20 @@ void gpu_submit_floor_end() noexcept {
 }
 void gpu_submit_sample_log() noexcept {
   if(submit.enabled)return;
-  boot_log("gpu-submit-window: begin_us=%llu end_us=%llu",(unsigned long long)submit.begin_us,(unsigned long long)submit.end_us);
-  boot_log("gpu-submit-sample: eligible=%u sampled_calls_only=1 stride=64 bytes=%u overflow=%u clock_rollback=%u tick_hz=%llu floor_ticks=%llu floor_is_upper_bound=1",
+  buffered_log("gpu-submit-window: begin_us=%llu end_us=%llu",(unsigned long long)submit.begin_us,(unsigned long long)submit.end_us);
+  buffered_log("gpu-submit-sample: eligible=%u sampled_calls_only=1 stride=64 bytes=%u overflow=%u clock_rollback=%u tick_hz=%llu floor_ticks=%llu floor_is_upper_bound=1",
     submit.eligible?1U:0U,unsigned(sizeof(submit)),submit.overflow?1U:0U,submit.rollback?1U:0U,
     (unsigned long long)SYSCLOCK_ARM11,(unsigned long long)submit.floor_ticks);
   static const char* names[]={"calls","culled","errors","pieces","whole","multi_excluded","partial_excluded","hits","uploads","page_switches","checkpoint_objects","checkpoint_commands","checkpoint_eviction","sampled","rejected","floor_calls","floors","frames","floor_pieces","floor_switches"};
   for(unsigned i=0;i<GpuSubmitSample::Count;++i)
-    boot_log("gpu-submit-count: name=%s value=%llu",names[i],(unsigned long long)submit.count[i]);
+    buffered_log("gpu-submit-count: name=%s value=%llu",names[i],(unsigned long long)submit.count[i]);
   static const char* kinds[]={"hit","hit_switch","upload","checkpoint"};
-  for(unsigned i=0;i<4;++i)boot_log("gpu-submit-ticks: class=%s bridge=%llu geometry=%llu atlas_queue=%llu c2d=%llu sampled_only=1 samples=%llu",
+  for(unsigned i=0;i<4;++i)buffered_log("gpu-submit-ticks: class=%s bridge=%llu geometry=%llu atlas_queue=%llu c2d=%llu sampled_only=1 samples=%llu",
     kinds[i],(unsigned long long)submit.ticks[i][0],(unsigned long long)submit.ticks[i][1],
     (unsigned long long)submit.ticks[i][2],(unsigned long long)submit.ticks[i][3],(unsigned long long)submit.samples[i]);
+  // Normal, cancelled, invalid-order/time and terminal callers all return
+  // with the complete report visible, including before a Lua error.
+  runtime_diagnostic_flush();
 }
 bool gpu_top(RectI view) noexcept {
   if(!in_frame)return false;
@@ -663,14 +672,15 @@ bool gpu_read_pixels(SDL_Surface* surface) noexcept {
 }
 void gpu_log_statistics() noexcept {
   if(!active)return;
-  boot_log("gpu-source: indexed_images=%llu indexed_bytes=%llu block_peak_bytes=%llu allocation_failures=%llu source_block_limit=65536 atlas=skyline-lru",
+  // RuntimeObservations owns this report's final flush after display statistics.
+  buffered_log("gpu-source: indexed_images=%llu indexed_bytes=%llu block_peak_bytes=%llu allocation_failures=%llu source_block_limit=65536 atlas=skyline-lru",
     (unsigned long long)stats.indexed_images,(unsigned long long)stats.indexed_bytes,
     (unsigned long long)stats.source_block_peak,(unsigned long long)stats.source_failures);
-  boot_log("gpu-hot-paths: clip_requests=%llu clip_skips=%llu full_sprite_draws=%llu frame_upload_peak_bytes=%llu frame_eviction_peak=%llu scope=session",
+  buffered_log("gpu-hot-paths: clip_requests=%llu clip_skips=%llu full_sprite_draws=%llu frame_upload_peak_bytes=%llu frame_eviction_peak=%llu scope=session",
     (unsigned long long)stats.clip_requests,(unsigned long long)stats.clip_skips,
     (unsigned long long)stats.full_sprite_draws,(unsigned long long)stats.frame_upload_peak,
     (unsigned long long)stats.frame_eviction_peak);
-  boot_log("gpu-work: frames=%llu draws=%llu hits=%llu uploads=%llu upload_bytes=%llu evictions=%llu splits=%llu wait_us=%llu completed_gpu_jobs=%llu gpu_queue_us=%llu cmd_peak_permille=%u source_bytes=%llu source_peak=%llu images=%llu atlas_linear_bytes=3145728 canvas_vram_bytes=2097152 screen_vram_bytes=691200 linear_free=%lu vram_free=%lu",
+  buffered_log("gpu-work: frames=%llu draws=%llu hits=%llu uploads=%llu upload_bytes=%llu evictions=%llu splits=%llu wait_us=%llu completed_gpu_jobs=%llu gpu_queue_us=%llu cmd_peak_permille=%u source_bytes=%llu source_peak=%llu images=%llu atlas_linear_bytes=3145728 canvas_vram_bytes=2097152 screen_vram_bytes=691200 linear_free=%lu vram_free=%lu",
     (unsigned long long)stats.frames,(unsigned long long)stats.draws,(unsigned long long)stats.hits,
     (unsigned long long)stats.uploads,(unsigned long long)stats.upload_bytes,(unsigned long long)stats.evictions,
     (unsigned long long)stats.splits,(unsigned long long)stats.wait_us,(unsigned long long)stats.gpu_jobs,

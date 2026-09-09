@@ -19,7 +19,9 @@ class BoundedLog {
   // and its terminal evidence within a bounded three-run / 6 MiB SD budget.
   static constexpr std::size_t kLimit = 2U * 1024U * 1024U;
   static constexpr std::size_t kReserve = 16U * 1024U;
-  static constexpr std::size_t kBufferSize = 4096U;
+  // One ordinary 10-second report is 4.4--5.4 KiB on the R69 run. Keep it
+  // together until its existing flush boundary, in FILE-owned static storage.
+  static constexpr std::size_t kBufferSize = 8192U;
   ~BoundedLog() { close(); }
   bool open(const char* current, const char* previous, const char* oldest) noexcept {
     close();
@@ -69,6 +71,22 @@ class BoundedLog {
     if (static_cast<std::size_t>(result) > length) {
       constexpr char marker[] = " [line-truncated]";
       std::memcpy(line.data() + length - sizeof(marker) + 1U, marker, sizeof(marker) - 1U);
+    }
+    line[length++] = '\n';
+    write(line.data(), length);
+  }
+  // Preformatted producers retain the same 2046-byte payload and truncation
+  // marker as vline("%s", text), without invoking the formatter a second time.
+  void line(const char* text) noexcept {
+    std::array<char, 2048> line;
+    std::size_t length = 0;
+    if (text) {
+      while (length < line.size() - 2U && text[length]) ++length;
+      std::memcpy(line.data(), text, length);
+      if (text[length]) {
+        constexpr char marker[] = " [line-truncated]";
+        std::memcpy(line.data() + length - sizeof(marker) + 1U, marker, sizeof(marker) - 1U);
+      }
     }
     line[length++] = '\n';
     write(line.data(), length);

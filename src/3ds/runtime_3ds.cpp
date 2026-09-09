@@ -2978,11 +2978,18 @@ std::shared_ptr<ResourceBudgetGate> make_runtime_resource_budget_gate() {
 void runtime_set_game_window(SDL_Window* window) noexcept {
   runtime().set_game_window(window);
 }
-void runtime_diagnostic_line(const char* line) noexcept {
-  boot_log("%s",line?line:"");
-  // Startup self-test/fallback must survive a subsequent initialization failure.
-  // Periodic gpu-work statistics share the summary's single flush.
-  if (line && std::strncmp(line,"gpu-work:",9)!=0) boot_log_flush();
+void runtime_diagnostic_line(const char* line, bool flush) noexcept {
+  if (g_log.available()) {
+    const auto started = now_us();
+    g_log.line(line);
+    g_log_time_us += now_us() - started;
+  }
+  // Startup/fallback writes are immediate. Report producers explicitly share
+  // their existing final flush; emergency mode still flushes every write.
+  if (flush) boot_log_flush();
+}
+void runtime_diagnostic_flush() noexcept {
+  boot_log_flush();
 }
 
 void runtime_set_game_canvas(SDL_Surface* surface) noexcept {

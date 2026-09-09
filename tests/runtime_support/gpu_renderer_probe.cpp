@@ -149,7 +149,10 @@ bool C2D_DrawImage(C2D_Image image,const C2D_DrawParams* p,const C2D_ImageTint* 
 }
 bool C2D_DrawRectSolid(float x,float y,float,float w,float h,u32 c){emitted();auto* t=current;auto cut=bounds();commands.emplace_back([=]{raster(t,x,y,w,h,cut,[=](float,float){return corrupt_raster?0xff000000U:c;});});return true;}
 bool C2D_DrawLine(float,float,u32,float,float,u32,float,float){assert(false&&"line model intentionally excluded");return false;}
-namespace cth3ds{void runtime_diagnostic_line(const char* line) noexcept {diagnostic_lines.emplace_back(line);std::puts(line);}}
+namespace cth3ds{
+void runtime_diagnostic_line(const char* line,bool) noexcept {diagnostic_lines.emplace_back(line);std::puts(line);}
+void runtime_diagnostic_flush() noexcept {}
+}
 
 int main(){
   std::setvbuf(stdout,nullptr,_IONBF,0);

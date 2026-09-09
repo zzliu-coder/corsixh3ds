@@ -3,6 +3,7 @@
 #include <cstring>
 #include "cth3ds/cpu_work.hpp"
 #include "cth3ds/text_cache.hpp"
+#include "cth3ds/bounded_log.hpp"
 
 namespace cth3ds {
 void RuntimeObservations::reset(std::uint64_t now) noexcept {
@@ -122,7 +123,12 @@ void RuntimeObservations::report_tail(const char* event,const ObservationOutput&
 }
 void RuntimeObservations::seal_tail(std::uint64_t now,const ObservationOutput& output,const char* event) noexcept {
   if(frame_tail.active())frame_tail.close(now);
-  if(frame_tail.take_report())report_tail(event,output);
+  if(frame_tail.take_report()) {
+    report_tail(event,output);
+    // A partial record must survive RESET or an early shutdown return.
+    // Its end timestamp is already frozen before this synchronous I/O.
+    output.flush();
+  }
 }
 bool RuntimeObservations::due(std::uint64_t now, bool force) const noexcept {
   return !terminal_saved && (force || flush_requested || now-full_us>=60000000U || now-compact_us>=10000000U);
@@ -208,8 +214,8 @@ void RuntimeObservations::flush(const ObservationInputs& inputs, const Observati
       (unsigned long long)clock.steps,(unsigned long long)clock.completed_steps,
       (unsigned long long)clock.failed_steps);
     compact_us = now;
-    output.line("log-buffer: capacity=4096 flushes=%llu failed=%d bytes_accepted=%llu flush_time_in_log_us=1",
-      (unsigned long long)inputs.log_flushes,inputs.log_failed,(unsigned long long)inputs.log_bytes);
+    output.line("log-buffer: capacity=%lu flushes=%llu failed=%d bytes_accepted=%llu flush_time_in_log_us=1",
+      (unsigned long)BoundedLog::kBufferSize,(unsigned long long)inputs.log_flushes,inputs.log_failed,(unsigned long long)inputs.log_bytes);
   }
   if (!full) { output.flush(); return; }
   // A save/load may span the scheduled flush time; retain it until quiescent.

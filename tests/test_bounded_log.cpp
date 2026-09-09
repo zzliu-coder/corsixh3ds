@@ -86,3 +86,33 @@ TEST(bounded_log_buffer_bounds_and_close_drain_tail) {
   EXPECT_EQ(LogFixture::read(f.current),std::string("next"));
   EXPECT_EQ(LogFixture::read(f.previous),std::string(10000,'z'));
 }
+
+namespace {
+void formatted(cth3ds::BoundedLog& log,const char* format,...) {
+  std::va_list args;va_start(args,format);log.vline(format,args);va_end(args);
+}
+}
+TEST(bounded_log_preformatted_matches_formatted_bytes_and_truncation) {
+  LogFixture plain,reference;EXPECT_TRUE(plain.open());EXPECT_TRUE(reference.open());
+  const std::string values[]={"", "100% literal %s", "first\nsecond",
+    std::string("embedded\0ignored",16), std::string(2045,'x'),
+    std::string(2046,'y'),std::string(2047,'z'),std::string(4096,'w')};
+  for(const auto& text:values) {
+    plain.log.line(text.c_str());formatted(reference.log,"%s",text.c_str());
+  }
+  plain.log.line(nullptr);formatted(reference.log,"%s","");
+  EXPECT_EQ(plain.log.bytes(),reference.log.bytes());
+  plain.log.close();reference.log.close();
+  EXPECT_EQ(LogFixture::read(plain.current),LogFixture::read(reference.current));
+}
+TEST(bounded_log_preformatted_preserves_atomic_capacity_and_error_reserve) {
+  LogFixture plain,reference;EXPECT_TRUE(plain.open());EXPECT_TRUE(reference.open());
+  const std::string fill(cth3ds::BoundedLog::kLimit-cth3ds::BoundedLog::kReserve-10,'x');
+  plain.log.write(fill.data(),fill.size());reference.log.write(fill.data(),fill.size());
+  plain.log.line("0123456789");formatted(reference.log,"%s","0123456789");
+  EXPECT_TRUE(plain.log.truncated());EXPECT_EQ(plain.log.bytes(),reference.log.bytes());
+  plain.log.emergency();reference.log.emergency();
+  plain.log.line("FATAL preserved");formatted(reference.log,"%s","FATAL preserved");
+  plain.log.close();reference.log.close();
+  EXPECT_EQ(LogFixture::read(plain.current),LogFixture::read(reference.current));
+}

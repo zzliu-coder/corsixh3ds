@@ -27,7 +27,9 @@ void runtime_tick(lua_State* state);
 //! Register the physical upper window. It has no SDL_Renderer attached.
 void runtime_set_game_window(SDL_Window* window) noexcept;
 //! Shared bounded diagnostic sink; renderer never opens another log file.
-void runtime_diagnostic_line(const char* line) noexcept;
+//! A buffered producer owns the final flush before returning its report.
+void runtime_diagnostic_line(const char* line, bool flush = true) noexcept;
+void runtime_diagnostic_flush() noexcept;
 //! Borrow the native-resolution source owned by render_target. Clear before free.
 void runtime_set_game_canvas(SDL_Surface* surface) noexcept;
 //! Present an already-flushed source, following the current App.ui snapshot.

@@ -1,6 +1,7 @@
 #include "runtime/observation.hpp"
 #include "cth3ds/cpu_work.hpp"
 #include "cth3ds/input_queue.hpp"
+#include "cth3ds/bounded_log.hpp"
 #include <cstdarg>
 #include <cstdio>
 #include <string>
@@ -64,7 +65,7 @@ int main() {
   observations.timing.present_complete(10001,PresentResult::Success);
   clock_us=10000000;runtime_flush_observations(false);
   CHECK(flush_count==1);
-  CHECK(output.find("log-buffer: capacity=4096")!=std::string::npos);
+  CHECK(output.find("log-buffer: capacity="+std::to_string(BoundedLog::kBufferSize))!=std::string::npos);
   CHECK(output.find("perf:")!=std::string::npos);
   CHECK(output.find("name=temperature calls=2 total_us=3000 max_us=1800 units=32768")!=std::string::npos);
   CHECK(output.find("simulation-budget: steps=1 debt_us=18000 dropped_us=0")!=std::string::npos);

@@ -72,7 +72,7 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
     errors.extend(check_dual_screen(root))
     errors.extend(check_render_fast(root))
     errors.extend(check_render_gpu(root))
-    errors.extend(check_cpu_hotspots(root))
+    errors.extend(check_cpu_hotspots(root, overlay))
     errors.extend(check_media(root))
     errors.extend(check_sound_callbacks(root))
     errors.extend(check_sprite_residency(root))

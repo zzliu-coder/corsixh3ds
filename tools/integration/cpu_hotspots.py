@@ -2,6 +2,7 @@
 from pathlib import Path
 from sound_lifetime import replace_exact, SoundPatchError
 from .thermal_cache import transforms as thermal_transforms
+from .final_sources import transforms as final_transforms
 from .world_profile import transforms as world_transforms
 from .latency import transforms as latency_transforms
 from .spatial_queries import transforms as spatial_transforms
@@ -13,7 +14,8 @@ from .picture_lifetime import transforms as picture_transforms
 from .staff_hotspots import transforms as staff_transforms
 from .litter_presence import transforms as litter_transforms
 
-def transforms(root):
+def transforms(root, overlay):
+    yield from final_transforms(root, overlay)
     path='CorsixTH/Src/th_map.cpp'
     text=(root/path).read_text()
     sites=[
@@ -122,15 +124,15 @@ class level_map {
     yield from picture_transforms(root)
     yield from staff_transforms(root)
 
-def patch_cpu_hotspots(root: Path, dry_run=False):
+def patch_cpu_hotspots(root: Path, overlay: Path, dry_run=False):
     changes=[]
-    for name,text in transforms(root):
+    for name,text in transforms(root, overlay):
         path=root/name
         if path.read_text()!=text:
             changes.append(name)
             if not dry_run:path.write_text(text)
     return changes
 
-def check_cpu_hotspots(root):
-    try:return ['CPU hotspot site missing: '+p for p in patch_cpu_hotspots(root,True)]
+def check_cpu_hotspots(root, overlay):
+    try:return ['CPU hotspot site missing: '+p for p in patch_cpu_hotspots(root,overlay,True)]
     except (OSError,SoundPatchError) as e:return [str(e)]

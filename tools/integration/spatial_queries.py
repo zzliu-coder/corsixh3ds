@@ -39,29 +39,6 @@ def transforms(root):
         end = text.index('\nend', begin) + 4
         text = text[:begin] + QUERY + text[end:]
     yield path,text
-    path='CorsixTH/Lua/entities/humanoids/staff.lua'
-    text=(root/path).read_text()
-    if '-- CORSIXTH_3DS_LITTER_VISITOR_R61' not in text:
-        old='''  for _, litter in ipairs(self:findObjectsInSquare(2, "litter")) do
-    if litter:anyLitter() then
-      self:changeAttribute("happiness", -0.0002)
-    else
-      self:changeAttribute("happiness", -0.0004)
-    end
-  end'''
-        new='''  self:findObjectsInSquare(2, "litter", apply_litter_happiness)'''
-        text=replace_exact(text,old,new,'ordered allocation-free litter visitor')
-        text=replace_exact(text,'function Staff:tick()', '''-- CORSIXTH_3DS_LITTER_VISITOR_R61
-local function apply_litter_happiness(staff, litter)
-  if litter:anyLitter() then
-    staff:changeAttribute("happiness", -0.0002)
-  else
-    staff:changeAttribute("happiness", -0.0004)
-  end
-end
-
-function Staff:tick()''','staff visitor definition')
-    yield path,text
 
 QUERY = '''function Humanoid:findObjectsInSquare(size, object_spec, visitor)
   -- CORSIXTH_3DS_QUERY_R62: same x/y/list order and native room membership.

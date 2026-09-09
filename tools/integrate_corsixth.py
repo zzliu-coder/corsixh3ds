@@ -154,7 +154,7 @@ def generate_complete(root: Path, overlay: Path, provenance: str) -> list[Change
     changes.extend(Change(path, "handheld-ui") for path in patch_handheld_ui(root))
     changes.extend(Change(path, "render-fast") for path in patch_render_fast(root))
     changes.extend(Change(path, "render-gpu") for path in patch_render_gpu(root))
-    changes.extend(Change(path, "cpu-hotspots") for path in patch_cpu_hotspots(root))
+    changes.extend(Change(path, "cpu-hotspots") for path in patch_cpu_hotspots(root, overlay))
     changes.extend(Change(path, "media") for path in patch_media(root))
     from integration.runner_adapter import patch_runner_adapter
     changes.extend(patch_runner_adapter(root))

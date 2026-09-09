@@ -23,6 +23,7 @@ def original_sources(root):
     files['CorsixTH/Src/th_pathfind.cpp'] = (ROOT/'tests/fixtures/th_pathfind.cpp.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Src/th_lua_map.cpp'] = (ROOT/'tests/fixtures/th_lua_map.cpp.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/world.lua'] = (ROOT/'tests/fixtures/world.lua.pinned').read_text(encoding='utf-8')
+    files['CorsixTH/Lua/filesystem.lua'] = (ROOT/'tests/fixtures/filesystem.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua'] = (ROOT/'tests/fixtures/save_game.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua'] = (ROOT/'tests/fixtures/load_game.lua.pinned').read_text(encoding='utf-8')
     files['CorsixTH/Lua/utility.lua'] = (ROOT/'tests/fixtures/utility.lua.pinned').read_text(encoding='utf-8')
@@ -46,7 +47,7 @@ def generated_sources(directory):
     generated = directory / 'upstream'
     originals = {str(path.relative_to(original)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in original.rglob('*') if path.is_file()}
-    if originals != SOURCE_HASHES or len(originals) != 43:
+    if originals != SOURCE_HASHES or len(originals) != 44:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
     tracked = subprocess.check_output(

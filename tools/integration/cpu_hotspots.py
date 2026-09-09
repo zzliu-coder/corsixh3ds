@@ -12,6 +12,7 @@ from .save_stream import transforms as stream_transforms
 from .picture_lifetime import transforms as picture_transforms
 from .staff_hotspots import transforms as staff_transforms
 from .litter_presence import transforms as litter_transforms
+from .resource_read import transforms as resource_read_transforms
 
 def transforms(root, overlay):
     yield from final_transforms(root, overlay)
@@ -113,6 +114,7 @@ class level_map {
 
     yield from thermal_transforms(root)
     yield from latency_transforms(root)
+    yield from resource_read_transforms(root)
     yield from spatial_transforms(root)
     yield from save_transforms(root)
     yield from entity_transforms(root)

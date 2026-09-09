@@ -218,7 +218,7 @@ class GeneratedViewTests(unittest.TestCase):
             inode = generated.stat().st_ino
             up, combined = producer.prepare_sources(ROOT, archive, snapshot, generated,
                 root / "up.json", root / "generated.json", "test-real-kernel")
-            self.assertEqual(up["file_count"], 43)
+            self.assertEqual(up["file_count"], 44)
             self.assertEqual(generated.stat().st_ino, inode)
             self.assertEqual(combined["file_count"], len(inventory(generated)))
             verify_view(generated, ROOT)

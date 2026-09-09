@@ -1,0 +1,92 @@
+{
+  "schema": "corsixth-device-milestone-v1",
+  "revision": "R64",
+  "source_commit": "4ca9f462ede2e17770e373aa08c9982f3f736dd6",
+  "source_tree": "bc498b609a296e0cb8e766b84a8eb1d25568cd03",
+  "source_digest": "c5c0d4c3ddb29b801ca8b4411b950f6096d74a9f159958ff652c8b36fe62e8c9",
+  "program": {
+    "bytes": 2795072,
+    "sha256": "db6a657a9f4b41e4a09941ba81d62e4c52b21117b96b2ef4362e9f3f7cf4a95c"
+  },
+  "host": {
+    "targeted_tests": 35,
+    "result": "PASS",
+    "assembled_lua_files": 303,
+    "arm_build": "PASS",
+    "checked_symbol_frames": 637,
+    "whole_stack_bound": "NOT_PROVEN"
+  },
+  "deployment": {
+    "result": "PASS",
+    "changed_files": 8,
+    "changed_bytes": 3077829,
+    "initial_attempt": "FAIL_TIMEOUT",
+    "resumed_journal": "deployment-recovery-journal.json",
+    "failed_attempt_retained": true,
+    "all_assets_fresh_reverified": false
+  },
+  "run": {
+    "id": "20260909-125840-b4c3ee547953",
+    "outcome": "PASS",
+    "reason": "COMPLETE",
+    "errors": 0,
+    "launcher_roundtrip": "PASS",
+    "result_sha256": "3bd31e6673005828a459dae5a935d71cb720f42d622054f9b831b282650221ac"
+  },
+  "sample": {
+    "elapsed_us": 60025475,
+    "frames": 925,
+    "world_completed": 2775,
+    "hours_completed": 925,
+    "entities_completed": 29858,
+    "observation": "PASS",
+    "hz": 15.41,
+    "p95_interval_upper_bound_us": 262143,
+    "max_interval_us": 651478,
+    "exact_state_ab": "NOT_PROVEN",
+    "target_30_fps": "NOT_ACHIEVED",
+    "begin_diagnostic_excluded_us": 247
+  },
+  "stress": {
+    "elapsed_ms": 208131,
+    "window_cycles": 11,
+    "private_save_reload_completed": 2,
+    "outcome": "PASS",
+    "full_22_minute_soak": "NOT_PROVEN"
+  },
+  "memory": {
+    "heap_available_low_estimated_bytes": 22375192,
+    "heap_available_end_estimated_bytes": 30291728,
+    "linear_free_end_bytes": 2199552,
+    "lua_bytes_end": 6224275,
+    "full_transient_peak_coverage": "NOT_PROVEN"
+  },
+  "recovery": {
+    "r62_copy": "NOT_PROVEN",
+    "reason": "staff has no resumable timer: 15",
+    "original_files_fresh_hash_unchanged": 27
+  },
+  "media": {
+    "profile": "expanded-zh-on",
+    "audible_speech": "NOT_PROVEN",
+    "unchanged_matrix_reused": true
+  },
+  "evidence": {
+    "local_iteration": "work/iterations/20260909-r64-hotpath-working-set",
+    "analysis": "run-analysis-v2.json",
+    "original_analysis_preserved": true,
+    "analyzer_tests_passed": 18,
+    "historical_r63_analysis_unchanged": true,
+    "slow_event_drops_present": true
+  },
+  "remaining": [
+    "S2 old-save qualified recovery and future behavior",
+    "E2 bounded save output and device peak/time",
+    "D1 lower observation cost",
+    "B3 temperature publication/thermal hot loop",
+    "D2/D3 simulation/presentation/GPU scheduling",
+    "busy hospitals/higher levels/level changes",
+    "HOME/suspend and full soak",
+    "final release and 30 FPS+ with correct simulation"
+  ]
+}

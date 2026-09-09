@@ -1,0 +1,167 @@
+{
+  "schema": "corsixth-r63-runner-rerun-v1",
+  "updated": "2026-09-09",
+  "source_commit": "8dace8fbb8f1701aaa87fd0d2e9a5bc874693b85",
+  "binary_sha256": "60625d561bcd6a30176b4ff7af3bc4183fefdb225d8cfa54ae6c13c38014f753",
+  "model_assignment": {
+    "implementation": "gpt-6-astra/medium",
+    "tests": "gpt-6-astra/medium",
+    "device_readback": "gpt-6-astra/medium",
+    "integration": "parent"
+  },
+  "source_branch": "codex/r63-state-performance",
+  "main_merged": false,
+  "host_scope": {
+    "targeted_tests_passed": 19,
+    "assembled_lua_files_checked": 303,
+    "arm_build": "PASS",
+    "full_suite_reuse": "2135006 unchanged modules only; not rerun for adapter",
+    "runner_collector_fix_commit": "2428a12",
+    "runner_collector_fix_publication": "local only"
+  },
+  "deployment": {
+    "files": 3,
+    "bytes": 2930147,
+    "readback": "PASS",
+    "large_assets_reconverted": false,
+    "toolchain_redownloaded": false
+  },
+  "runs": [
+    {
+      "run_id": "20260909-111911-4d374adcf4f7",
+      "source_commit": "754b25c",
+      "identity": "PASS",
+      "roundtrip": "PASS",
+      "outcome": "FAIL",
+      "reason": "second progress publication failed; evidence retained",
+      "private_save_reload_count": 1
+    },
+    {
+      "run_id": "20260909-114500-2e955595916a",
+      "source_commit": "8dace8fbb8f1701aaa87fd0d2e9a5bc874693b85",
+      "identity": "PASS",
+      "roundtrip": "PASS",
+      "outcome": "PASS",
+      "sample_elapsed_ms": 20013,
+      "world_completed": 957,
+      "hours_completed": 319,
+      "entity_completed": 7156,
+      "frames": 320,
+      "private_save_reload_count": 1,
+      "checkpoint_count": 2,
+      "performance_acceptance": "NOT_PROVEN: short smoke"
+    },
+    {
+      "run_id": "20260909-115104-ac591da14b92",
+      "source_commit": "8dace8fbb8f1701aaa87fd0d2e9a5bc874693b85",
+      "identity": "PASS",
+      "roundtrip": "PASS",
+      "outcome": "NOT_PROVEN",
+      "reason": "NEEDS_INPUT",
+      "sample": {
+        "index": 1,
+        "completed_metrics": {
+          "world": 2727,
+          "hours": 909,
+          "entities": 29317,
+          "frames": 909,
+          "at": 60058
+        },
+        "simulation_completed": "PASS",
+        "performance_observation": "NOT_PROVEN",
+        "reason": "short sample, ineligible, identity, or interval mismatch",
+        "sample_presented_hz": 15.135,
+        "native_frame_line": 630
+      },
+      "performance_rejection_detail": "native elapsed 60507141us vs result 60058000us differs449141us >250000us boundary tolerance",
+      "stress": {
+        "stress_at": "405040",
+        "stress_cycles": "21",
+        "stress_entities": "155811",
+        "stress_frames": "5008",
+        "stress_hours": "4759",
+        "stress_save_reload_count": "2",
+        "stress_world": "14950"
+      },
+      "private_save_reload_count": 2,
+      "checkpoint_count": 3,
+      "original_saves_config_hotkeys": {
+        "count": 27,
+        "hash_check": "PASS"
+      },
+      "recovery": {
+        "recovery_behavior_outcome": "NOT_PROVEN",
+        "recovery_outcome": "NOT_PROVEN",
+        "recovery_reason": "sdmc:/3ds/corsixth/Lua/3ds/state_health.lua:101: staff has no resumable timer: 15",
+        "recovery_roundtrip_outcome": "NOT_PROVEN"
+      },
+      "full_22_minute_stress": "NOT_PROVEN",
+      "evidence": {
+        "manifest.kv": {
+          "bytes": 284,
+          "sha256": "e90797cf13e6c369a51378875da31e86614b1879b07dfbbf6351af51262fd276"
+        },
+        "result.kv": {
+          "bytes": 1374,
+          "sha256": "a4f688ef88dd3e84239c53c4f8b4543b843bc9b48a38482d73fb3c14c3c62938"
+        },
+        "receipt.kv": {
+          "bytes": 617,
+          "sha256": "5f6e7c1d7af02d2ad790b4c96302d9ee71374817638e8e1d065dc950da727e6e"
+        },
+        "artifacts/boot.log": {
+          "bytes": 412928,
+          "sha256": "7fdac1820e990dc49a3b0c773bbe3d7b7795376914a604ea0376d138ac40add8"
+        },
+        "artifacts/progress-0001.kv": {
+          "bytes": 647,
+          "sha256": "87104ea467e10615a38cfe3950a7b498d4e05cb298c68d21816fdee459f874bc"
+        },
+        "artifacts/progress-0002.kv": {
+          "bytes": 505,
+          "sha256": "8cdc561fce794dbe2cb9d04e792429bca12d077326578a53e142e56d9ad426f4"
+        },
+        "artifacts/progress-0003.kv": {
+          "bytes": 506,
+          "sha256": "e40e2717fb2da08ff5f210245adb498ea077c0f4a237d24a183f8ad7b3b40bf5"
+        }
+      }
+    }
+  ],
+  "observations": {
+    "mandatory_input": "Pause at 2-01-01T00; UIAnnualReport observed near termination and mustPause=true. Instant complete modal list not captured.",
+    "original_recovery": "15 is world.entities index, not staff count; no resumable timer qualification, no forced thaw.",
+    "repeated_window_raw_image_us": {
+      "Pol01V": 1262177,
+      "Rep01V": 1218797,
+      "Res01V": 1210864
+    },
+    "sampled_cpu_us": {
+      "world": 27281692,
+      "world_entities": 16711796,
+      "temperature": 5906418,
+      "memory_observe": 2218632
+    },
+    "nested_scopes_additive": false,
+    "heap_available_low_bytes": 21567336,
+    "gpu_upload_scope": "Whole session cumulative including startup, load, windows and saves; no claim all belongs to text or a single window.",
+    "incomplete_slow_event_history": true
+  },
+  "next_order": [
+    "D1 align sample boundaries before checkpoint IO; preserve strict acceptance",
+    "S2 per-object recovery diagnosis on copies",
+    "B2 real staff-method equivalence and repeated-read reduction",
+    "C1/C2/E3 bounded background reuse and repeated window IO",
+    "B3 thermal/data-layout and D1 low-overhead memory observation",
+    "E2 bounded save output then D2/D3 scheduling/synchronization after measured heavy callback reductions"
+  ],
+  "retained_limits": [
+    "30 FPS NOT_PROVEN",
+    "recovery future behavior NOT_PROVEN",
+    "audible speech NOT_PROVEN",
+    "no zero-cost claim for Chinese/music",
+    "no automatic answer to mandatory game decisions",
+    "no new general input replay claim"
+  ],
+  "privacy": "Only source identity, hashes, measurements and conclusions published. Original saves and game assets remain local."
+}

@@ -1,4 +1,5 @@
 -- Real Lua + real files. Game loading/writing is narrowed to a text-state seam.
+package.path=MODULE_FILE:gsub("3ds/platform.lua$","?.lua;")..package.path
 local Module = assert(loadfile(MODULE_FILE))()
 local function write(path, text)
   local file = assert(io.open(path, "wb")); assert(file:write(text)); assert(file:close())
@@ -39,7 +40,7 @@ local function setup(requested, failure, menu)
   function native.span_end(token)
     assert(native.open_spans[token]); native.open_spans[token]=nil
   end
-  for _, name in ipairs({"observe_memory","flush_observations","begin_critical_io",
+  for _, name in ipairs({"operation_block","span_abandon","observe_memory","flush_observations","begin_critical_io",
                          "end_critical_io","set_notice","checkpoint","request_redraw"}) do
     native[name]=function() end
   end

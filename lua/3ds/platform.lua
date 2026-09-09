@@ -65,10 +65,10 @@ local function safe_value(callback, fallback)
 end
 
 local function traceback_message(message)
-  if debug and type(debug.traceback) == "function" then
-    return debug.traceback(tostring(message), 2)
+  if type(message)=="string" and debug and type(debug.traceback) == "function" then
+    return debug.traceback(message, 2)
   end
-  return tostring(message)
+  return message
 end
 
 local function pack_values(...)
@@ -177,8 +177,6 @@ function Platform.new(app, native, capabilities)
     native = native,
     capabilities = capabilities,
     saved_speed = nil,
-    save_installed = false,
-    load_installed = false,
     last_state = nil,
     world_seen = false,
     last_world = nil,
@@ -190,11 +188,8 @@ function Platform.new(app, native, capabilities)
     pointer_owners = setmetatable({}, {__mode = "v"}),
     focus_owners = setmetatable({}, {__mode = "v"}),
   }, Platform)
-  self:installOperations()
-  self:installErrorTelemetry()
-  local language = app.config and app.config.language or "unknown"
-  native_checkpoint(native, "language_selected", "observed-at-adapter-attach",
-                    tostring(language))
+  self.bindings=self:prepareOperations()
+  self.bindings.errorHandler=self:prepareErrorTelemetry()
   return self
 end
 
@@ -256,21 +251,23 @@ function Platform:editText()
   return self:finishAction()
 end
 
-function Platform:installOperations()
+function Platform:prepareOperations()
   local app=self.app
   local operations=Operations.new(self,app.save,app.load)
   self.operations=operations
-  app.save=function(instance,filename)return operations:save(instance,filename)end
-  app.load=function(instance,filename)return operations:load(instance,filename)end
-  app.quickSave = function(instance)
+  local bindings={}
+  bindings.save=function(instance,filename)return operations:save(instance,filename)end
+  bindings.load=function(instance,filename)return operations:load(instance,filename)end
+  bindings.quickSave = function(instance)
     operations:guard()
     if not instance.world then return false, "no world" end
     return instance:save(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
   end
-  app.quickLoad = function(instance)
+  bindings.quickLoad = function(instance)
     operations:guard()
     return instance:load(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
   end
+  return bindings
 end
 
 function Platform:afterLoadOperation(instance, filename, result)
@@ -316,23 +313,36 @@ function Platform:afterLoadOperation(instance, filename, result)
     return true
 end
 
-function Platform:installErrorTelemetry()
+function Platform:prepareErrorTelemetry()
   local original=self.app.errorHandler
   self.simulation_errors=0
   if type(original)~="function" then return end
-  self.app.errorHandler=function(app,event,detail)
+  self.error_diagnostics=0
+  local function observe(callback,...)
+    if not pcall(callback,...) then self.error_diagnostics=math.min(65535,self.error_diagnostics+1) end
+  end
+  local function describe(value)
+    if type(value)=="string" then return value:sub(1,1024) end
+    return "<"..type(value)..">"
+  end
+  return function(app,...)
+    local event,detail=...
     self.simulation_errors=self.simulation_errors+1
     self.staff_sampler=nil
     -- The engine's existing protected boundary owns the original exception.
     -- Observe a failed entity without wrapping every successful entity update.
-    local activity=package.loaded["3ds.recovery_activity"]
-    if activity and activity.active and app.world and app.world.current_tick_entity then
-      pcall(activity.after,app.world.current_tick_entity,false)
-    end
-    print("engine-error: sequence="..self.simulation_errors.." event="..tostring(event)
-      .." detail="..tostring(detail))
-    native_checkpoint(self.native,"simulation","error",tostring(event))
-    return original(app,event,detail)
+    observe(function()
+      local activity=package.loaded["3ds.recovery_activity"]
+      if activity and activity.active and app.world and app.world.current_tick_entity then
+        activity.after(app.world.current_tick_entity,false)
+      end
+    end)
+    observe(function()
+      print("engine-error: sequence="..self.simulation_errors.." event="..describe(event)
+        .." detail="..describe(detail))
+    end)
+    observe(function()self.native.checkpoint("simulation","error",describe(event))end)
+    return original(app,...)
   end
 end
 
@@ -966,34 +976,92 @@ end
 local module = {}
 
 function module.attach(app, native, capabilities)
-  assert(type(capabilities)=="table" and type(capabilities.resource_events)=="boolean" and capabilities.epoch, "native capabilities missing")
-  if app._3ds then
-    local existing=app._3ds
-    assert(existing.completed and existing.native==native and existing.capabilities.epoch==capabilities.epoch, "adapter identity/epoch mismatch")
+  assert(type(app)=="table" and type(native)=="table", "adapter owner missing")
+  assert(type(capabilities)=="table" and type(capabilities.resource_events)=="boolean"
+    and math.type(capabilities.epoch)=="integer" and capabilities.epoch>0, "native capabilities missing")
+  local existing=rawget(app,"_3ds")
+  if existing~=nil then
+    assert(type(existing)=="table" and existing.completed and existing.app==app
+      and existing.native==native and existing.capabilities.epoch==capabilities.epoch,
+      "adapter identity/epoch mismatch")
     return existing
   end
-  for _,name in ipairs({"span_begin","span_end","observe_memory","operation_boundary","flush_observations","atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
+  assert(app._3ds==nil,"inherited adapter belongs to another owner")
+  local failed=rawget(app,"_3ds_binding_failed")
+  assert(not failed or failed.native~=native or failed.epoch~=capabilities.epoch,
+    "adapter binding unsafe; restart runtime before retry")
+  for _,name in ipairs({"span_begin","span_end","span_abandon","observe_memory","operation_boundary","operation_block","flush_observations","atomic_commit","begin_critical_io","end_critical_io","set_notice","checkpoint","request_redraw"}) do
     assert(type(native[name])=="function", "mandatory native API missing: "..name)
   end
-  if capabilities.resource_events then assert(type(native.resource_event)=="function", "resource_event missing") end
-  local names={"save","load","quickSave","quickLoad"}
+  if capabilities.resource_events then
+    assert(type(native.resource_event)=="function" and type(native.shutdown)=="function", "resource safety API missing")
+  end
+  -- All preparation is private. No App field, native activation or one-shot
+  -- marker is changed by these constructors.
+  local prepared,platform=xpcall(function()
+    local candidate=Platform.new(app,native,{epoch=capabilities.epoch,
+      resource_events=capabilities.resource_events,asset_mode=capabilities.asset_mode})
+    if native.benchmark_enabled and native.benchmark_enabled(false) then
+      for _,name in ipairs({"benchmark_active","benchmark_state","shutdown"}) do
+        assert(type(native[name])=="function", "benchmark safety API missing: "..name)
+      end
+      candidate.benchmark=require("3ds.benchmark").new(app,native)
+    end
+    return candidate
+  end,traceback_message)
+  if not prepared then error(platform,0) end
+  local names={"save","load","quickSave","quickLoad","errorHandler"}
   local original={}
   for _,name in ipairs(names) do original[name]=rawget(app,name) end
-  local ok, platform=xpcall(function()
-    local result=Platform.new(app,native,capabilities)
-    result:showLegacyBottomPanel()
-    result:resourceEvent("menu","main-menu",true)
-    result.completed=true
-    return result
+  local ui=app.ui
+  local raw_ui=rawget(app,"ui")
+  local bottom=ui and ui.bottom_panel
+  local raw_bottom=ui and rawget(ui,"bottom_panel")
+  local visible=bottom and rawget(bottom,"visible")
+  local resource_entered,claimed,claim_pending=false,false,false
+  local ok, primary=xpcall(function()
+    for _,name in ipairs(names) do
+      if platform.bindings[name]~=nil then rawset(app,name,platform.bindings[name]) end
+    end
+    platform:showLegacyBottomPanel()
+    if platform.benchmark then platform.benchmark:activate() end
+    if capabilities.resource_events then
+      resource_entered=true -- The native call may mutate before it reports failure.
+      platform:resourceEvent("menu","main-menu",true)
+    end
+    assert(app.ui==ui and (not ui or ui.bottom_panel==bottom),"binding UI owner changed")
+    if platform.benchmark then
+      claim_pending=true
+      local accepted=native.benchmark_enabled(true)
+      claim_pending=false
+      assert(accepted==true,"benchmark request claim rejected")
+      claimed=true
+    end
+    platform.bindings=nil
+    platform.completed=true
+    rawset(app,"_3ds",platform) -- sole publication, after every necessary effect
   end,traceback_message)
   if not ok then
+    rawset(app,"_3ds",nil)
     for _,name in ipairs(names) do rawset(app,name,original[name]) end
-    error(platform,0)
+    rawset(app,"ui",raw_ui)
+    if ui then rawset(ui,"bottom_panel",raw_bottom) end
+    if bottom then rawset(bottom,"visible",visible) end
+    local restored=true
+    if platform.benchmark then restored=pcall(platform.benchmark.releaseActivation,platform.benchmark) end
+    if not restored or resource_entered or claimed or claim_pending then
+      rawset(app,"_3ds_binding_failed",{native=native,epoch=capabilities.epoch})
+      pcall(native.operation_block)
+      if native.shutdown then pcall(native.shutdown) end
+    end
+    error(primary,0)
   end
-  app._3ds=platform
-  if native.benchmark_enabled and native.benchmark_enabled() then
-    platform.benchmark=require("3ds.benchmark").new(app,native)
-  end
+  rawset(app,"_3ds_binding_failed",nil)
+  pcall(function()
+    local language=app.config and app.config.language
+    native.checkpoint("language_selected", "observed-at-adapter-attach",
+      type(language)=="string" and language or "unknown")
+  end)
   return platform
 end
 

@@ -12,7 +12,7 @@ class LuaOverlayTests(unittest.TestCase):
         cls.text = cls.path.read_text(encoding="utf-8")
 
     def test_platform_exposes_runtime_entrypoints(self) -> None:
-        for name in ("attach", "syncBottomState", "handleAction", "installOperations"):
+        for name in ("attach", "syncBottomState", "handleAction", "prepareOperations"):
             self.assertRegex(self.text, rf"function\s+[\w.:]*{name}\s*\(")
 
     def test_all_native_action_families_are_handled(self) -> None:

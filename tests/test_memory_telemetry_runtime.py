@@ -128,7 +128,7 @@ local fail_load = false
 local function saw(name, phase)
   return checkpoints[name .. ":" .. phase] == true
 end
-local native = {{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,
+local native = {{operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,
   checkpoint = function(name, phase)
     checkpoints[name .. ":" .. phase] = true
   end,

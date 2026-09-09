@@ -56,7 +56,7 @@ local MakePermanentObjectsTable=function()
  return {sentinel=true}
 end
 TheApp={map=map,world={},ui={},savegame_dir=TEST_DIRECTORY..'/'}
-local native={span_begin=function()return 1 end,span_end=function()end,
+local native={operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,
  operation_boundary=function()end,flush_observations=function()end,
  checkpoint=function()end,set_notice=function()end,request_redraw=function()end,
  begin_critical_io=function()end,end_critical_io=function()end,

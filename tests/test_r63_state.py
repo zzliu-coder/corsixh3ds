@@ -239,7 +239,7 @@ local B=require('3ds.benchmark');local Health=require('3ds.state_health')
 class={is=function(e,k)return e.kind==k end};Staff='staff';Patient='patient'
 local now,events=0,{}
 local native={clock_ms=function()return now end,set_notice=function()end,
- benchmark_state=function()end,flush_observations=function()end,
+ benchmark_active=function()return benchmark_active_flag==true end,benchmark_state=function(v)benchmark_active_flag=v end,flush_observations=function()end,
  benchmark_mark=function(event)events[#events+1]=event end}
 local function make()
  local app={savegame_dir='USER/',config={autosave_frequency=2},
@@ -261,7 +261,7 @@ for _,break_state in ipairs{
  function(a)a.world.entities[1].ticks=false end,
  function(a)a.world.entities[2].ticks=false end,
 }do
- now=0;events={};local a=make();local b=B.new(a,native);b:tick()
+ now=0;events={};local a=make();local b=B.new(a,native);b:activate();b:tick()
  assert(b.phase=='warmup');break_state(a);now=5001;b:tick()
  assert(b.phase=='done' and events[#events]=='FAILED' and a.world.speed=='Pause')
  for _,event in ipairs(events)do assert(event~='COMPLETE' and event~='SAMPLE-END')end
@@ -291,7 +291,7 @@ for _,damage in ipairs{false,true}do
   end
   return true
  end
- local b=B.new(a,native);b:tick();assert(writes==1)
+ local b=B.new(a,native);b:activate();b:tick();assert(writes==1)
  if damage then assert(b.phase=='done' and events[#events]=='FAILED')
  else assert(b.phase=='recovery' and b.recovery_window==1 and b.recovery_verified);b:cancel('test')end
  assert(a.savegame_dir=='USER/')
@@ -300,7 +300,7 @@ io.open=open
 -- A live timer plus enabled actors is insufficient: no completed work rejects
 -- a sample, even when frames can still be presented.
 now=0;events={}
-local a=make();local b=B.new(a,native);b:tick()
+local a=make();local b=B.new(a,native);b:activate();b:tick()
 now=30000;b:tick();assert(b.phase=='sample')
 now=90000;b:tick();assert(b.failed and events[#events]=='FAILED')
 print('PASS benchmark rejects engine error, missing timer, disabled people and roundtrip timer damage; private-only writes')

@@ -93,7 +93,7 @@ struct SHA {
       add(&zero, 1);
     uint8_t tail[8];
     for (int i = 0; i < 8; i++)
-      tail[i] = bits >> (56 - i * 8);
+      tail[i] = static_cast<uint8_t>((bits >> (56 - i * 8)) & 0xFFU);
     add(tail, 8);
     char out[65];
     for (int i = 0; i < 8; i++)

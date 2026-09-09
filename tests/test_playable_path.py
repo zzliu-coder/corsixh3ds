@@ -55,7 +55,7 @@ class PlayablePathTests(unittest.TestCase):
         self.lua(f'''
 local module=dofile({str(ROOT/'lua/3ds/platform.lua')!r})
 local events,commits=0,0
-local native={{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() end,request_redraw=function() end,
+local native={{operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() end,request_redraw=function() end,
  begin_critical_io=function() end,end_critical_io=function() end,
  atomic_commit=function() commits=commits+1;return true end,
  resource_event=function() events=events+1;error('loose event') end}}
@@ -81,7 +81,7 @@ UIInformation=function(ui,text) return text end
 local module=dofile({str(ROOT/'lua/3ds/platform.lua')!r})
 local fail_save,fail_commit,load_result=false,false,true
 local exited,loaded,notices,recovery=0,0,0,0
-local native={{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() notices=notices+1 end,
+local native={{operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,checkpoint=function() end,set_notice=function() notices=notices+1 end,
  request_redraw=function() end,begin_critical_io=function() end,end_critical_io=function() end,
  atomic_commit=function() return not fail_commit,'injected rename failure' end}}
 local app={{world={{}},savegame_dir='Saves/',ui={{addWindow=function() end}},

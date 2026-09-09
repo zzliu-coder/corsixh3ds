@@ -20,7 +20,7 @@ FIXTURE = r'''
 local P=assert(loadfile(adapter_path))()
 local function fresh()
  local counts={redraw=0,pause=0,scroll=0,bottom=0,dispatch=0}
- local native={span_begin=function()return 1 end,span_end=function()end,
+ local native={operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,
   observe_memory=function()end,operation_boundary=function()end,
   flush_observations=function()end,checkpoint=function()end,set_notice=function()end,
   begin_critical_io=function()end,end_critical_io=function()end,atomic_commit=function()return true end,

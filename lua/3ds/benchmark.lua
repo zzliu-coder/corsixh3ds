@@ -55,9 +55,29 @@ function Benchmark.new(app,native)
     self.stress_duration=tonumber(run.stress_ms)
     self.warmup_ms=tonumber(run.warmup_ms);self.sample_ms=tonumber(run.sample_ms)
   end
-  native.benchmark_state(true)
-  native.set_notice("AUTO BENCHMARK - B CANCEL",false)
   return self
+end
+
+-- Construction owns configuration only. Activation owns exactly one native
+-- flag; a pre-existing session cannot be borrowed by a different App.
+function Benchmark:activate()
+  if self.activation_owned then return end
+  local previous=self.native.benchmark_active()
+  assert(type(previous)=="boolean" and not previous,"benchmark already active or state unavailable")
+  self.activation_previous=previous
+  self.activation_owned=true -- setter may change the flag and then throw
+  self.native.benchmark_state(true)
+  assert(self.native.benchmark_active()==true,"benchmark activation not applied")
+  if not pcall(self.native.set_notice,"AUTO BENCHMARK - B CANCEL",false) then
+    self.results.activation_diagnostics=math.min(65535,(self.results.activation_diagnostics or 0)+1)
+  end
+end
+
+function Benchmark:releaseActivation()
+  if not self.activation_owned then return end
+  self.native.benchmark_state(self.activation_previous)
+  assert(self.native.benchmark_active()==self.activation_previous,"benchmark activation restore failed")
+  self.activation_owned=false
 end
 
 -- App attaches us before it starts the normal menu song. Snapshot immediately
@@ -148,6 +168,11 @@ end
 
 function Benchmark:terminal(outcome,reason)
   if not self.run then return end
+  if self.terminal_started then return end
+  self:cleanup()
+  if not self.cleanup_finished then return end -- callback reentry waits for the owner
+  self.terminal_started=true
+  if self.cleanup_started and not self.cleanup_ok then outcome="FAIL";reason="CLEANUP_FAILED" end
   local fields={simulation_ticks=tostring(self.sample_ticks),frames=tostring(self.sample_frames),
     elapsed_us=tostring(math.floor(self.sample_elapsed_us or self.sample_elapsed*1000)),recovery_outcome="NOT_PROVEN",
     recovery_roundtrip_outcome=self.recovery_verified and "PASS" or "NOT_PROVEN",
@@ -172,7 +197,7 @@ function Benchmark:terminal(outcome,reason)
   end
   local exited,exit_err=pcall(self.app.exit,self.app)
   if not exited then
-    outcome="FAIL";reason="EXIT_FAILED"
+    outcome="FAIL";if reason~="CLEANUP_FAILED" then reason="EXIT_FAILED" end
     fields.exit_error=failureText(exit_err)
     if self.app.abandon then pcall(self.app.abandon,self.app)end
   end
@@ -181,9 +206,29 @@ function Benchmark:terminal(outcome,reason)
 end
 
 function Benchmark:cleanup()
+  -- Cleanup consumes its ownership once. A window may clear its reference and
+  -- then throw; retrying restore would erase that first necessary failure.
+  if self.cleanup_started then return self.cleanup_ok==true end
+  self.cleanup_started=true;self.cleanup_ok=false
   local ok,result=pcall(self.restore,self)
-  if not ok then self.results.cleanup_error=failureText(result) end
-  return ok and result==true
+  if not ok or result~=true then
+    if not self.results.cleanup_error then
+      self.results.cleanup_error=ok and "mandatory restore rejected" or failureText(result)
+    end
+    -- A failed mandatory restore cannot leave a live unattended session. The
+    -- normal path releases at its original point below, after world cleanup.
+    local platform=rawget(self.app,"_3ds")
+    if platform and platform.app==self.app and platform.native==self.native and platform.operations then
+      platform.operations.blocked="BENCHMARK RESTORE FAILED; UNSAFE TO CONTINUE"
+    end
+    if self.native.operation_block then pcall(self.native.operation_block) end
+    if self.native.shutdown then pcall(self.native.shutdown) end
+    pcall(self.releaseActivation,self)
+  else
+    self.cleanup_ok=true
+  end
+  self.cleanup_finished=true
+  return self.cleanup_ok
 end
 
 function Benchmark:restore()
@@ -191,12 +236,15 @@ function Benchmark:restore()
   local closed=true
   if self.stress then
     local detail;closed,detail=pcall(self.stress.close,self.stress)
-    if not closed then pcall(print,"benchmark window cleanup failed: "..failureText(detail)) end
+    if not closed then
+      self.results.cleanup_error=self.results.cleanup_error or failureText(detail)
+      pcall(print,"benchmark window cleanup failed: "..self.results.cleanup_error)
+    end
   end
   self.app.savegame_dir=self.run and self.root.."save/" or self.original_dir
   self.app.config.autosave_frequency=self.original_autosave_frequency
   if self.app.world then self.app.world:setSpeed(self.failed and "Pause" or "Normal") end
-  self.native.benchmark_state(false)
+  self:releaseActivation()
   if self.media_captured then
     local ok,err=pcall(function()
       self:applyMedia(self.original_language,self.original_music,self.original_track,
@@ -208,19 +256,27 @@ function Benchmark:restore()
       end
     end)
     self.app.saveConfig=self.original_save_config
-    if not ok then pcall(print,"benchmark media restore failed: "..failureText(err));return false end
+    if not ok then
+      self.results.cleanup_error=self.results.cleanup_error or failureText(err)
+      pcall(print,"benchmark media restore failed: "..failureText(err));return false
+    end
   end
   return closed
 end
 
 function Benchmark:cancel(reason)
-  if self.phase=="done" then return end
-  self:mark("ABORT-"..tostring(reason))
+  if self.phase=="done" or self.cleanup_started then return end
+  local marked,err=pcall(self.mark,self,"ABORT-"..failureText(reason))
+  if not marked then self.results.failure_detail=self.results.failure_detail or failureText(err) end
   local restored=self:cleanup()
-  self:terminal(restored and "NOT_PROVEN" or "FAIL",restored and "CANCEL" or "CLEANUP_FAILED")
+  local reported,report_error=pcall(self.terminal,self,restored and marked and "NOT_PROVEN" or "FAIL",
+    not restored and "CLEANUP_FAILED" or (marked and "CANCEL" or "FAILED"))
   self.phase="done"
-  self.native.set_notice(restored and "BENCHMARK STOPPED - LOG RETAINED"
-    or "BENCHMARK RESTORE FAILED - SEE LOG",not restored)
+  if not reported then error(report_error,0) end
+  if not pcall(self.native.set_notice,restored and "BENCHMARK STOPPED - LOG RETAINED"
+    or "BENCHMARK RESTORE FAILED - SEE LOG",not restored) then
+    self.results.failure_diagnostics=math.min(65535,(self.results.failure_diagnostics or 0)+1)
+  end
 end
 
 function Benchmark:load()
@@ -501,6 +557,7 @@ function Benchmark:advance()
 end
 
 function Benchmark:finish()
+  if self.phase=="done" or self.cleanup_started then return end
   if self.run then
     Health.assertActive(self.app)
     if self.stress then
@@ -515,19 +572,20 @@ function Benchmark:finish()
   -- Return a fresh private copy for play; all automated writes have ended.
   loadBenchmark(self,root..(self.expanded and "expanded.sav" or "input.sav"),true)
   Health.assertActive(self.app)
-  self.phase="done";assert(self:restore(),"benchmark media restore failed");self:mark("COMPLETE")
+  assert(self:cleanup(),"benchmark cleanup failed");self:mark("COMPLETE")
+  self.phase="done"
   self.native.set_notice(self.recovery_refused and "BENCH DONE - OLD SAVE NEEDS AUDIT"
     or "BENCHMARK DONE - YOU CAN PLAY",false)
 end
 
 function Benchmark:tick()
-  if self.phase=="done" then return end
+  if self.phase=="done" or self.cleanup_started then return end
   local ok,err=pcall(self.advance,self)
   if not ok then
     -- Keep the original failure's safe summary before attempting observers.
     -- Even a broken mark/report must reach the existing cleanup exactly once.
     local detail=failureText(err)
-    self.results.failure_detail=detail
+    self.results.failure_detail=self.results.failure_detail or detail
     local function observe(callback,...)
       local observed=pcall(callback,...)
       if not observed then self.results.failure_diagnostics=math.min(65535,(self.results.failure_diagnostics or 0)+1)end

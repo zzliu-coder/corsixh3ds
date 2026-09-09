@@ -20,7 +20,7 @@ class R64RuntimeHooks(unittest.TestCase):
 local P=require('3ds.platform')
 local events={}
 local function event(name)events[#events+1]=name end
-local native={span_begin=function()return 1 end,span_end=function()end,
+local native={operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,
  observe_memory=function()end,operation_boundary=function()end,
  flush_observations=function()end,checkpoint=function()end,
  request_redraw=function()end,set_notice=function()end,

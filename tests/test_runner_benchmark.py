@@ -47,12 +47,12 @@ end
 function app:save(name)assert(name:sub(1,#root)==root);saves[#saves+1]=name;return true end
 function app:exit()assert(self.savegame_dir==root..'save/');exits=exits+1 end
 local marks={}
-local native={clock_ms=function()return now end,benchmark_state=function()end,
+local native={clock_ms=function()return now end,benchmark_active=function()return benchmark_active_flag==true end,benchmark_state=function(v)benchmark_active_flag=v end,
  set_notice=function()end,flush_observations=function()end,benchmark_mark=function(event)marks[#marks+1]=event;return now*1000,math.floor(now/50) end,
  runner_context=function()return {root=root,profile='zh-on',stress_ms='0',warmup_ms='1000',sample_ms='1000'}end,
  runner_frames=function()return math.floor(now/50)end,
  runner_finish=function(outcome,reason,fields)results[#results+1]={outcome=outcome,reason=reason,fields=fields}end}
-local b=B.new(app,native);assert(#b.profiles==1);b:tick()
+local b=B.new(app,native);b:activate();assert(#b.profiles==1);b:tick()
 now=1000;b:tick();now=2000;b:tick()
 assert(exits==1 and results[1].outcome=='PASS' and #loads==1 and #saves==1)
 assert(tonumber(results[1].fields.sample_1_world)>0 and tonumber(results[1].fields.frames)==20)
@@ -63,16 +63,16 @@ assert(results[1].fields.recovery_outcome=='NOT_PROVEN')
 assert(marks[#marks]=='WORKLOAD-END')
 for _,mark in ipairs(marks)do assert(mark~='COMPLETE')end
 root='sdmc:/3ds/ftpd-runner/runs/new-run-02/';app.savegame_dir=root..'save/'
-b=B.new(app,native);b:tick();now=3000;b:tick();now=3500;b:cancel('user')
+b=B.new(app,native);b:activate();b:tick();now=3000;b:tick();now=3500;b:cancel('user')
 assert(exits==2 and results[2].outcome=='NOT_PROVEN' and results[2].reason=='CANCEL')
 assert(tonumber(results[2].fields.partial_world)>0)
-b=B.new(app,native);b:tick();app.world:setSpeed('Pause');b:tick()
+b=B.new(app,native);b:activate();b:tick();app.world:setSpeed('Pause');b:tick()
 assert(exits==3 and results[3].outcome=='FAIL' and results[3].reason=='FAILED')
-b=B.new(app,native);b:tick()
+b=B.new(app,native);b:activate();b:tick()
 function app.world:setSpeed()error('cleanup failed')end
 b:cancel('user')
 assert(exits==4 and results[4].outcome=='FAIL' and results[4].reason=='CLEANUP_FAILED')
-b=B.new(app,native);b:tick()
+b=B.new(app,native);b:activate();b:tick()
 function app:exit()error('hotkeys write failed')end
 local abandoned=0
 function app:abandon()abandoned=abandoned+1 end
@@ -81,14 +81,14 @@ assert(abandoned==1 and results[5].outcome=='FAIL' and results[5].reason=='EXIT_
 function app:exit()exits=exits+1 end
 -- A snapshot write failure occurs after SAMPLE-END, and still fails the run.
 native.runner_checkpoint=function()error('injected snapshot write failure')end
-b=B.new(app,native);b:tick();now=now+1000;b:tick();now=now+1000;b:tick()
+b=B.new(app,native);b:activate();b:tick();now=now+1000;b:tick();now=now+1000;b:tick()
 assert(results[6].outcome=='FAIL' and results[6].reason=='FAILED')
 assert(results[6].fields.failure_detail:find('injected snapshot write failure',1,true))
 assert(marks[#marks]=='FAILED' and marks[#marks-1]=='SAMPLE-END')
 native.runner_checkpoint=nil
 -- Runner boundaries require the new native return contract.
 native.benchmark_mark=function(event)marks[#marks+1]=event end
-b=B.new(app,native);b:tick();now=now+1000;b:tick()
+b=B.new(app,native);b:activate();b:tick();now=now+1000;b:tick()
 assert(results[7].outcome=='FAIL' and results[7].reason=='FAILED')
 assert(results[7].fields.failure_detail:find('native benchmark boundary missing or invalid',1,true))
 io.open=original_open

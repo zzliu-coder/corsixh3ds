@@ -18,6 +18,10 @@ function native.span_begin()
   return native.serial
 end
 function native.span_end(id) assert(native.spans[id]); native.spans[id] = nil end
+function native.span_abandon(id)
+  if native.spans[id] then for token in pairs(native.spans)do if token>=id then native.spans[token]=nil end end end
+end
+function native.operation_block() end
 function native.begin_critical_io() native.critical = native.critical + 1 end
 function native.end_critical_io() native.critical = native.critical - 1; assert(native.critical >= 0) end
 for _, name in ipairs({"flush_observations", "set_notice", "checkpoint", "request_redraw"}) do native[name] = Noop end

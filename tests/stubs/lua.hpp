@@ -14,6 +14,14 @@ lua_Alloc lua_getallocf(lua_State*,void**);
 void lua_setallocf(lua_State*,lua_Alloc,void*);
 int lua_checkstack(lua_State*,int);
 const char* luaL_checklstring(lua_State*,int,std::size_t*);
+const char* lua_tolstring(lua_State*,int,std::size_t*);
+const char* lua_typename(lua_State*,int);
+int lua_rawget(lua_State*,int);
+int lua_rawequal(lua_State*,int,int);
+int lua_isinteger(lua_State*,int);
+int lua_next(lua_State*,int);
+#define luaL_typename(L,i) lua_typename(L, lua_type(L,(i)))
+#define lua_pushliteral(L,s) lua_pushstring(L, "" s)
 
 constexpr int LUA_OK = 0;
 constexpr int LUA_TTABLE = 5;
@@ -50,7 +58,7 @@ inline void lua_pushnumber(lua_State*, lua_Number) {}
 inline void lua_pushinteger(lua_State*, lua_Integer) {}
 inline void lua_pushboolean(lua_State*, int) {}
 inline void lua_pushnil(lua_State*) {}
-inline void lua_pushstring(lua_State*, const char*) {}
+inline const char* lua_pushstring(lua_State*, const char*) { return nullptr; }
 inline void lua_pushvalue(lua_State*, int) {}
 inline void lua_pushcclosure(lua_State*, lua_CFunction, int) {}
 #define lua_pushcfunction(L, f) lua_pushcclosure((L), (f), 0)

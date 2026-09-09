@@ -168,10 +168,10 @@ for _,mode in ipairs{'service','waiting','input','save_failure','media','music_f
  end
  local diagnostics={}
  local playing,plays=false,0
- local native={clock_ms=function()return now end,benchmark_state=function()end,
+ local native={clock_ms=function()return now end,benchmark_active=function()return benchmark_active_flag==true end,benchmark_state=function(v)benchmark_active_flag=v end,
   diagnostic_line=function(line)assert(#line<=230);diagnostics[#diagnostics+1]=line end,
   set_notice=function()end,benchmark_mark=function()end,flush_observations=function()end}
- local b=B.new(app,native)
+ local b=B.new(app,native);b:activate()
  if mode=='media' or mode=='music_failure'then
   app.audio={background_playlist={{filename_music='Music/CANDY.wav'}},
    stopBackgroundTrack=function()playing=false end,

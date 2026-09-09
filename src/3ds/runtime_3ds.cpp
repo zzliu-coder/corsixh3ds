@@ -149,6 +149,8 @@ int g_input_cursor_x = 0, g_input_cursor_y = 0;
 SimulationClock g_simulation_clock;
 PresentationClock g_presentation_clock;
 bool g_benchmark_active=false;
+bool g_operation_blocked = false;
+void reset_benchmark_activation() noexcept {g_benchmark_active=false;}
 std::uint64_t g_input_owner_epoch = 0;
 std::uint64_t now_us() noexcept;
 bool g_log_attempted = false;
@@ -856,6 +858,7 @@ class Runtime {
     lua_state_ = state;
     asset_mode_ = mode;
     ++epoch_;
+    reset_benchmark_activation();
     stage("S90", "STARTING RUNTIME");
     if (!ensure_bottom_window()) {
       return false;
@@ -953,6 +956,7 @@ class Runtime {
   std::uint64_t epoch() const {return epoch_;}
 
   void shutdown() noexcept {
+    reset_benchmark_activation();
 #ifdef CORSIXTH_3DS_GPU
     gpu_quiesce();
 #endif
@@ -2008,7 +2012,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R67 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R68 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2183,9 +2187,20 @@ int l_initialize(lua_State* state) {
 int l_mark_ready(lua_State* state) {
   lua_getglobal(state,"TheApp");
   if(!lua_istable(state,-1))return luaL_error(state,"mark_ready requires TheApp");
-  lua_getfield(state,-1,"_3ds");
+  lua_pushliteral(state,"_3ds");lua_rawget(state,-2);
   if(!lua_istable(state,-1))return luaL_error(state,"mark_ready requires completed adapter");
-  lua_getfield(state,-1,"completed");bool attached=lua_toboolean(state,-1)!=0;lua_pop(state,3);
+  lua_pushliteral(state,"app");lua_rawget(state,-2);
+  bool attached=lua_rawequal(state,-1,-3)!=0;lua_pop(state,1);
+  lua_pushliteral(state,"completed");lua_rawget(state,-2);
+  attached=attached && lua_isboolean(state,-1) && lua_toboolean(state,-1);lua_pop(state,1);
+  lua_pushliteral(state,"capabilities");lua_rawget(state,-2);
+  if(lua_istable(state,-1)){
+    lua_pushliteral(state,"epoch");lua_rawget(state,-2);
+    attached=attached && lua_isinteger(state,-1) &&
+      lua_tointeger(state,-1)==static_cast<lua_Integer>(runtime().epoch());lua_pop(state,1);
+  }else attached=false;
+  lua_pop(state,3);
+  attached=attached && !g_operation_blocked;
   if(!attached || !runtime().mark_ready(state))return luaL_error(state,"mark_ready rejected incomplete attachment or memory gate");
   lua_pushboolean(state,1);return 1;
 }
@@ -2370,6 +2385,7 @@ int l_window_identity(lua_State* state) {
   return 0;
 }
 int l_benchmark_state(lua_State* state){g_benchmark_active=lua_toboolean(state,1)!=0;return 0;}
+int l_benchmark_active(lua_State* state){lua_pushboolean(state,g_benchmark_active);return 1;}
 int l_benchmark_enabled(lua_State* state){
   if(runner_active()){lua_pushboolean(state,true);return 1;}
   constexpr const char* marker="sdmc:/3ds/corsixth/benchmark-run.txt";
@@ -2379,10 +2395,12 @@ int l_benchmark_enabled(lua_State* state){
     if(length==4&&!std::memcmp(magic,"R63\n",4)){
       if(auto* input=std::fopen("sdmc:/3ds/corsixth/Benchmark/input.sav","rb")){
         std::fclose(input);
-        enabled=std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r63.txt")==0;
+        enabled=!lua_toboolean(state,1) ||
+          std::rename(marker,"sdmc:/3ds/corsixth/benchmark-used-r63.txt")==0;
       }
     }
-    boot_log("benchmark: one_shot=%d input=Benchmark/input.sav",enabled);
+    boot_log("benchmark: request=%s accepted=%d input=Benchmark/input.sav",
+      lua_toboolean(state,1)?"claim":"peek",enabled);
   }
   lua_pushboolean(state,enabled);return 1;
 }
@@ -2436,7 +2454,7 @@ int l_benchmark_mark(lua_State* state){
   boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
     (unsigned long long)boundary,event,speed,date);
   lua_pushnumber(state,static_cast<lua_Number>(boundary));
-  lua_pushinteger(state,frames);
+  lua_pushinteger(state,static_cast<lua_Integer>(frames));
   return 2;
 }
 int l_runner_context(lua_State* state){
@@ -2445,7 +2463,7 @@ int l_runner_context(lua_State* state){
   for(const auto& item:runner_config()){lua_pushstring(state,item.second.c_str());lua_setfield(state,-2,item.first.c_str());}
   lua_pushstring(state,(runner_directory()+"/").c_str());lua_setfield(state,-2,"root");return 1;
 }
-int l_runner_frames(lua_State* state){lua_pushinteger(state,runner_frames());return 1;}
+int l_runner_frames(lua_State* state){lua_pushinteger(state,static_cast<lua_Integer>(runner_frames()));return 1;}
 // Validate without C++ owners. The second traversal uses only nonallocating
 // Lua accessors on a table whose string keys cannot change during this call.
 void runner_validate_fields(lua_State* state,int index){
@@ -2505,7 +2523,6 @@ int l_runner_finish(lua_State* state){
   if(error[0])return luaL_error(state,"%s",error);
   return 0;
 }
-bool g_operation_blocked = false;
 int l_operation_block(lua_State*) { g_operation_blocked=true; return 0; }
 int l_span_abandon(lua_State* state) {
   const auto token=static_cast<std::uint64_t>(luaL_checkinteger(state,1));
@@ -2812,6 +2829,7 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "runner_error", l_runner_error);
   set_function(state, "runner_finish", l_runner_finish);
   set_function(state, "benchmark_state", l_benchmark_state);
+  set_function(state, "benchmark_active", l_benchmark_active);
   set_function(state, "benchmark_mark", l_benchmark_mark);
   return 1;
 }
@@ -2824,6 +2842,7 @@ void register_lua_module(lua_State* state) {
   g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
   g_operation_blocked=false;
+  reset_benchmark_activation();
   g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
   g_observation_state=state;
@@ -2856,7 +2875,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R67 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
+  boot_log("diagnostics: revision=R68 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));

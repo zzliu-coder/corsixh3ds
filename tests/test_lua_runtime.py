@@ -79,7 +79,7 @@ local begin_count, end_count = 0, 0
 local notices, states, dispatches = {{}}, {{}}, {{}}
 local calls = {{build = 0, town = 0}}
 
-local native = {{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,
+local native = {{operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,
   is_platform = function() return true end,
   checkpoint = function() end,
   begin_critical_io = function() begin_count = begin_count + 1 end,
@@ -163,7 +163,7 @@ for _ = 1, 100 do platform:handleAction({{type = "cursor_step", dx = 1, dy = 1}}
 assert(app.ui.cursor_x == 639 and app.ui.cursor_y == 479)
 assert(#dispatches > 0)
 
-local failing_native = {{span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,
+local failing_native = {{operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,
   begin_critical_io = native.begin_critical_io,
   end_critical_io = native.end_critical_io,
   atomic_commit = native.atomic_commit,
@@ -457,7 +457,7 @@ local function fresh()
   app.eventHandlers={motion=App.onMouseMove,buttondown=App.onMouseDown,buttonup=App.onMouseUp,
     keydown=function(_,key) keys[#keys+1]=key end,keyup=function() end}
   Window.onMouseMove=function() return false end
-  local native={span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,resource_event=function() return true end,
+  local native={operation_block=function()end,span_abandon=function()end,span_begin=function()return 1 end,span_end=function()end,operation_boundary=function() end,observe_memory=function()end,flush_observations=function()end,resource_event=function() return true end,
     set_state=function() end,request_redraw=function() end,recover_atomic=function() return true end}
   native.atomic_commit=function() return true end; native.begin_critical_io=function() end; native.end_critical_io=function() end; native.set_notice=function() end; native.checkpoint=function() end
   app.load=function() return true end

@@ -12,7 +12,7 @@ class SamplingTests(unittest.TestCase):
     def test_submillisecond_start_reaches_full_native_duration(self):
         test_lua_runtime.LuaRuntimeTests().run_lua(
             "package.path=" + repr(str(ROOT / 'lua/?.lua') + ';') + "..package.path\n" + r'''
-package.loaded['3ds.state_health']={assertActive=function()end}
+package.loaded['3ds.state_health']={assertActive=function()return {staff=0,patients=0} end}
 local B=require('3ds.benchmark')
 local now_us,frames=1000137,0
 local started,ended
@@ -32,6 +32,7 @@ local b=setmetatable({app=app,native=native,phase='warmup',index=1,deadline=0,
  sample_ticks=0,sample_frames=0,sample_elapsed=0},B)
 native.set_notice=function()end
 b.finish=function(self)self.phase='done' end
+b.warmup_progress=b:progress() -- Direct warmup seam supplies the state normally captured by load().
 b:advance()
 assert(started==1000137 and b.deadline==61001)
 now_us=61000000;frames=1200
@@ -47,7 +48,7 @@ assert(b.sample_elapsed_us==60000863 and ended-started>=60000000)
     def test_shared_boundaries_exclude_500ms_output_and_checkpoint(self):
         test_lua_runtime.LuaRuntimeTests().run_lua(
             "package.path=" + repr(str(ROOT / 'lua/?.lua') + ';') + "..package.path\n" + r'''
-package.loaded['3ds.state_health']={assertActive=function()end}
+package.loaded['3ds.state_health']={assertActive=function()return {staff=0,patients=0} end}
 local B=require('3ds.benchmark')
 for _,runner in ipairs{false,true} do
  local now,frames=0,0
@@ -77,6 +78,7 @@ for _,runner in ipairs{false,true} do
    run=runner and {} or nil,stress_duration=0,sample_ms=60000,
    results={},sample_ticks=0,sample_frames=0,sample_elapsed=0},B)
  b.finish=function(self)self.phase='done' end
+ b.warmup_progress=b:progress()
  b:advance()
  assert(opened==1000 and b.sample_progress.at==opened)
  now=opened+60000;frames=1200

@@ -1,0 +1,58 @@
+{
+  "revision": "R65",
+  "source_commit": "610cfe9f568d5b1eaf9f162c76dbe59c46bc279c",
+  "source_tree": "49ea484b711699904c7d2fcd9daaa8afb0e22628",
+  "source_digest": "0b9f044bdebc776ac29dc94f327e30b68a73fc932ea440981213524b9e32360c",
+  "program_bytes": 2796208,
+  "program_sha256": "20dc1fdb0ba878cf7dc6638dd5a5dd0ed572e9e5c3721467aae22262b1f5e1db",
+  "host_tests": {"outcome": "PASS", "tests": 55, "modules": 19},
+  "assembly": {"outcome": "PASS", "lua_files": 303},
+  "arm_build": "PASS",
+  "deployment": {"outcome": "PASS", "files": 6, "bytes": 2973295, "binary_last": true},
+  "run_id": "20260909-134826-bc791b0f8be5",
+  "config_sha256": "3bf139d33ac3d9488ea904b8e51f9893fe661484feb20268dda5e6e09843c515",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "result_sha256": "1b848a86a68e60e04775669248a188b647450eaf54a1a7d788956f8feda7dd88",
+  "game_outcome": "PASS",
+  "reason": "COMPLETE",
+  "launcher_roundtrip": "PASS",
+  "profile": "expanded-zh-on",
+  "sample": {
+    "observation": "PASS", "elapsed_us": 60021092,
+    "frames": 936, "presented_hz": 15.595,
+    "world_completed": 2808, "hours_completed": 936, "entities_completed": 30383,
+    "errors": 0, "p95_interval_upper_us": 131071, "max_interval_us": 674638,
+    "exact_state_ab": "NOT_PROVEN", "fps_30_target": "NOT_PROVEN"
+  },
+  "recovery": {
+    "qualification_and_immediate_roundtrip": "PASS",
+    "repaired_staff": 17, "staff": 17, "patients": 6,
+    "future_behavior": "NOT_PROVEN"
+  },
+  "stress": {"elapsed_ms": 208835, "window_cycles": 11, "private_save_reloads": 2, "outcome": "PASS"},
+  "memory": {
+    "sample_observation_calls": 775, "sample_observation_cpu_us": 1155990,
+    "ordinary_interval_us": 250000, "heap_available_low_estimate_bytes": 22498616,
+    "heap_available_end_estimate_bytes": 30442176, "linear_free_end_bytes": 2199552,
+    "largest_contiguous_free_block": "NOT_PROVEN"
+  },
+  "save": {
+    "native_observed_operations": 7,
+    "before_through_commit_min_us": 2517682, "before_through_commit_max_us": 2984898,
+    "writer_min_us": 1547082, "writer_max_us": 1573174,
+    "stream_bytes_and_flush_count": "NOT_PROVEN",
+    "scope": "native operation-memory boundaries; output buffer host bound 16KiB; full-save memory is not 16KiB"
+  },
+  "protection": {"fresh_equal": "PASS", "save_files": 25, "config_and_hotkeys": 2, "protected_files": 27},
+  "audible_speech": "NOT_PROVEN",
+  "full_22_minute_soak": "NOT_PROVEN",
+  "later_levels_and_lifecycle": "NOT_PROVEN",
+  "log": {"write_failure": false, "truncated": false, "slow_event_rows_dropped": true, "full_history": "NOT_PROVEN"},
+  "notes": [
+    "Host, deployment, device simulation, recovery roundtrip and future behavior are separate gates.",
+    "R64 comparison is descriptive; warmup-completed work and random state were not held exactly equal.",
+    "CPU scopes are nested; totals must not be added together.",
+    "P95 is a histogram bucket upper bound, not an exact percentile.",
+    "No additional run was started; original saves and media were preserved."
+  ]
+}

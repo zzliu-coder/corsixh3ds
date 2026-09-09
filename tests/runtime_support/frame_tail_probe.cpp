@@ -1,4 +1,5 @@
 #include "runtime/observation.hpp"
+#include "cth3ds/bounded_log.hpp"
 #include "runtime_3ds.hpp"
 #include <cassert>
 #include <cstdarg>
@@ -39,6 +40,7 @@ struct Heap {std::uint64_t heap_available_estimate=32000000,heap_available_low_w
 Heap heap_snapshot(){return {};}
 std::uint64_t g_log_time_us{},g_workload_time_us{};
 struct Log {std::uint64_t flushes(){return 0;}std::uint64_t bytes(){return 0;}
+  BoundedLog::Costs costs(){return {};}
   bool failed(){return false;}bool truncated(){return false;}}g_log;
 void seal_observation_tail(const char*) noexcept;
 struct Runtime {

@@ -300,6 +300,7 @@ void boot_log_open() {
     return;
   }
   g_log_attempted = true;
+  g_log.set_clock(now_us);
   g_boot_started_ms = osGetTime();
   if(runner_active()){
     const auto dir=runner_directory()+"/artifacts/";
@@ -1932,7 +1933,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R70 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R71 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -2026,7 +2027,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R70 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R71 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2893,7 +2894,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R70 boundary_schema=1 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
+  boot_log("diagnostics: revision=R71 boundary_schema=1 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
@@ -3090,6 +3091,14 @@ void runtime_flush_observations(bool force) noexcept {
   if(g_observations.terminal && g_observations.frame_tail.active()) {
     g_observations.frame_tail.flush_action(FrameTail::FlushAction::Terminal);
     g_observations.frame_tail.close(now);
+  }
+  if(reason & (1U|2U|8U|16U)) {
+  const auto cost=g_log.costs();
+  boot_log("log-cost: format_calls=%llu format_us=%llu format_max_us=%llu fast=%llu fallback=%llu write_calls=%llu write_us=%llu write_max_us=%llu flush_calls=%llu flush_us=%llu flush_max_us=%llu valid=%d scope=logger_software_calls cumulative=1 preformatted_producer_excluded=1 stdio_write_includes_implicit_flush=1",
+    (unsigned long long)cost.format.calls,(unsigned long long)cost.format.total_us,(unsigned long long)cost.format.max_us,
+    (unsigned long long)cost.fast,(unsigned long long)cost.fallback,
+    (unsigned long long)cost.write.calls,(unsigned long long)cost.write.total_us,(unsigned long long)cost.write.max_us,
+    (unsigned long long)cost.flush.calls,(unsigned long long)cost.flush.total_us,(unsigned long long)cost.flush.max_us,cost.valid);
   }
   boot_log("memory-sampling: interval_us=%llu sampled=%llu skipped=%llu forced=%llu failure_and_operation=always large_request_min=262144 peaks=sampled lua_allocator_peak=every_allocation admission=fresh",
       static_cast<unsigned long long>(MemoryObservationGate::interval_us),

@@ -37,6 +37,11 @@ std::FILE* logging_open(const char*,const char*) {
 #endif
 }
 #ifndef LOGGING_IO_NO_MAIN
+static std::uint64_t cost_clock=0;
+static std::uint64_t tick() noexcept {return cost_clock++;}
+static void format_line(cth3ds::BoundedLog& log,const char* pattern,...) {
+  std::va_list args;va_start(args,pattern);log.vline(pattern,args);va_end(args);
+}
 static bool open(cth3ds::BoundedLog& log) {
   return log.open("/no-r70-fixture/current","/no-r70-fixture/previous","/no-r70-fixture/oldest");
 }
@@ -90,6 +95,36 @@ int main(int argc,char** argv) {
   logging_io::reset();assert(open(log));logging_io::close_failure=true;
   log.close();assert(log.failed()&&logging_io::closes==1);
   logging_io::reset();assert(open(log));assert(!log.failed()&&log.bytes()==0&&log.flushes()==0);
+  log.close();
+  logging_io::reset();assert(open(log));log.set_clock(tick);
+  format_line(log,"%llu %d %.*s",42ULL,-17,3,"abcdef");
+  format_line(log,"float=%.0f",3.0);
+  format_line(log,"%.*s",-1,"negative");
+  assert(log.costs().format.calls==3 && log.costs().format.total_us==3);
+  assert(log.costs().fast==1 && log.costs().fallback==2);
+  assert(log.costs().write.calls==3 && log.costs().write.total_us==3);
+  logging_io::on_write=[](){cost_clock+=1000;};
+  assert(log.flush());assert(log.costs().flush.total_us==1001 && log.costs().flush.max_us==1001);
+  assert(logging_io::delivered=="42 -17 abc\nfloat=3\nnegative\n");
+  log.emergency();const auto flushes=log.costs().flush.calls;
+  format_line(log,"fatal=%u",19U);assert(log.costs().flush.calls==flushes+1);
+  logging_io::fail_after=logging_io::writes;format_line(log,"failed=%d",-3);
+  assert(log.failed());const auto writes=log.costs().write.calls;
+  log.write("ignored",7);assert(log.costs().write.calls==writes);
+  log.close();logging_io::reset();assert(open(log));
+  assert(log.costs().format.calls==0 && log.costs().write.calls==0 && log.costs().flush.calls==0);
+  char reference[256];
+  std::snprintf(reference,sizeof(reference),"%08u %zu %.0f %lld %% %s\n",19U,std::size_t{23},7.0,-42LL,"尾部");
+  format_line(log,"%08u %zu %.0f %lld %% %s",19U,std::size_t{23},7.0,-42LL,"尾部");
+  assert(log.costs().fallback==1 && log.costs().fast==0);
+  assert(log.flush() && logging_io::delivered==reference);
+  log.set_clock(+[]() noexcept -> std::uint64_t {return --cost_clock;});
+  format_line(log,"reverse=%u",1U);assert(!log.costs().valid);
+  log.close();logging_io::reset();assert(open(log));log.set_clock(tick);
+  auto& costs=const_cast<cth3ds::BoundedLog::Costs&>(log.costs());
+  costs.format.calls=std::numeric_limits<std::uint64_t>::max();
+  format_line(log,"overflow=%u",1U);
+  assert(!costs.valid && costs.format.calls==std::numeric_limits<std::uint64_t>::max());
   log.close();
   std::cout<<"PASS real stdio buffer, short-write, flush/close failure, emergency and reopen\n";
 }

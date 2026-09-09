@@ -158,8 +158,8 @@
     ]
   },
   "schema": "cth3ds.host-python-suite-manifest/v1",
-  "selected_count": 334,
-  "selected_sorted_ids_sha256": "065fb22d942c58d98037d006c6871e54b5bca6e785fa0ebfd6272ffacf6569a6",
+  "selected_count": 335,
+  "selected_sorted_ids_sha256": "b5698324440c8566fbe815e064ee8f0c9943459e068d2db3c2fc56a20bcc4c4a",
   "test_ids": [
     "test_benchmark.BenchmarkTests.test_completed_and_cancelled_runs_restore_user_directory",
     "test_benchmark.BenchmarkTests.test_expanded_profile_handoff_and_failed_cleanup_restore_private_route",
@@ -237,6 +237,7 @@
     "test_log_batching.LogBatchingTests.test_actual_gpu_native_sample_flush_errors_partial_reset_and_scope",
     "test_log_batching.LogBatchingTests.test_complete_bounded_log_real_stdio_failure_and_terminal",
     "test_log_batching.LogBatchingTests.test_retained_r69_compact_bytes_and_real_stdio_write_counts",
+    "test_log_format.LogFormatTests.test_actual_literal_grammar_extremes_and_fallback",
     "test_lua_overlay.LuaOverlayTests.test_all_native_action_families_are_handled",
     "test_lua_overlay.LuaOverlayTests.test_atomic_save_uses_temporary_file_then_commit",
     "test_lua_overlay.LuaOverlayTests.test_file_has_no_unresolved_template_tokens",

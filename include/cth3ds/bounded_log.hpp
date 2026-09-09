@@ -7,6 +7,9 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
+#include <limits>
+#include "cth3ds/log_format.hpp"
 
 namespace cth3ds {
 
@@ -15,6 +18,11 @@ namespace cth3ds {
 // and disables this writer. No directory traversal or unbounded retry.
 class BoundedLog {
  public:
+  using Clock = std::uint64_t (*)() noexcept;
+  struct Cost { std::uint64_t calls{}, total_us{}, max_us{}; };
+  struct Costs { Cost format, write, flush; std::uint64_t fast{}, fallback{}; bool valid{true}; };
+  void set_clock(Clock clock) noexcept { clock_=clock; }
+  const Costs& costs() const noexcept { return costs_; }
   // R61 reached 0.95 MiB after 22 minutes. Keep the expanded-hospital run
   // and its terminal evidence within a bounded three-run / 6 MiB SD budget.
   static constexpr std::size_t kLimit = 2U * 1024U * 1024U;
@@ -34,6 +42,7 @@ class BoundedLog {
     }
     bytes_.store(0); truncated_.store(false); failed_.store(false);
     emergency_.store(false); flushes_.store(0);
+    costs_={};
     return true;
   }
   // Keep fatal evidence visible immediately, including the preceding context.
@@ -41,7 +50,10 @@ class BoundedLog {
   bool flush() noexcept {
     if (!available()) return false;
     flushes_.fetch_add(1);
-    if (std::fflush(file_) != 0) failed_.store(true);
+    const auto started=tick();
+    const int result=std::fflush(file_);
+    record(costs_.flush,started);
+    if (result != 0) failed_.store(true);
     return !failed_.load();
   }
   void write(const char* data, std::size_t length) noexcept {
@@ -64,8 +76,16 @@ class BoundedLog {
     write_bytes(data, length);
   }
   void vline(const char* format, std::va_list arguments) noexcept {
-    std::array<char, 2048> line{};
-    const int result = std::vsnprintf(line.data(), line.size() - 1U, format, arguments);
+    std::array<char, 2048> line;
+    const auto started=tick();
+    std::size_t fast_length=0;
+    std::va_list copy; va_copy(copy,arguments);
+    const bool fast=log_detail::format(line.data(),line.size()-2U,fast_length,format,copy);
+    va_end(copy);
+    const int result = fast ? static_cast<int>(fast_length) :
+      std::vsnprintf(line.data(), line.size() - 1U, format, arguments);
+    record(costs_.format,started);
+    add(fast?costs_.fast:costs_.fallback,1);
     if (result < 0) return;
     std::size_t length = std::min(static_cast<std::size_t>(result), line.size() - 2U);
     if (static_cast<std::size_t>(result) > length) {
@@ -111,9 +131,26 @@ class BoundedLog {
     return std::rename(from, to) == 0 || errno == ENOENT;
   }
   void write_bytes(const char* data, std::size_t size) noexcept {
-    if (std::fwrite(data, 1U, size, file_) != size) failed_.store(true);
+    const auto started=tick();
+    const auto written=std::fwrite(data, 1U, size, file_);
+    record(costs_.write,started);
+    if (written != size) failed_.store(true);
     if (emergency_.load()) flush();
   }
+  std::uint64_t tick() const noexcept { return clock_?clock_():0; }
+  void add(std::uint64_t& value,std::uint64_t delta) noexcept {
+    if(delta>std::numeric_limits<std::uint64_t>::max()-value) {
+      costs_.valid=false; value=std::numeric_limits<std::uint64_t>::max();
+    } else value+=delta;
+  }
+  void record(Cost& cost,std::uint64_t started) noexcept {
+    const auto ended=tick();
+    if(ended<started) costs_.valid=false;
+    const auto elapsed=ended>=started?ended-started:0;
+    add(cost.calls,1); add(cost.total_us,elapsed); cost.max_us=std::max(cost.max_us,elapsed);
+  }
+  Clock clock_{};
+  Costs costs_{};
   std::FILE* file_{nullptr};
   // Owned for the entire FILE lifetime; no dynamic allocation or writer thread.
   std::array<char, kBufferSize> buffer_{};

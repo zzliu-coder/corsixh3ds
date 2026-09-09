@@ -1918,7 +1918,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R67 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R68 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }

@@ -1,8 +1,10 @@
 """Compile the actual native mark method; slow BEGIN logging precedes sampling."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import unittest
+from test_save_memory import native_inputs
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -16,17 +18,19 @@ class MarkBoundaryTests(unittest.TestCase):
 #include <cstring>
 #include <stdexcept>
 #include <cstdint>
+extern "C" {
+#include <lua.h>
+}
 #include "cth3ds/simulation_clock.hpp"
 cth3ds::SimulationClock g_simulation_clock;
-using lua_Number=double;
 struct lua_State{const char* event;double boundary=0;long long frames=0;};
 uint64_t clock_us=1000000, logged_us=0, marked_us=0, log_cost=500000;
 uint64_t now_us(){return clock_us;}
 const char* luaL_checkstring(lua_State* s,int n){return n==1?s->event:"fixture";}
 int luaL_error(lua_State*,const char*){throw std::runtime_error("rejected");}
 void lua_pushnumber(lua_State* s,double n){s->boundary=n;}
-void lua_pushinteger(lua_State* s,long long n){s->frames=n;}
-long long runner_frames(){return 42;}
+void lua_pushinteger(lua_State* s,lua_Integer n){s->frames=n;}
+uint64_t runner_frames(){return 42;}
 void boot_log(const char*,unsigned long long stamp,...){logged_us=stamp;clock_us+=log_cost;}
 void boot_log_flush(){}
 struct Output{decltype(&boot_log) line;decltype(&boot_log_flush) flush;void* unused;};
@@ -67,15 +71,21 @@ int main(){
  clock_us=80000000;l_benchmark_mark(&begin);clock_us+=1000000;
  lua_State abort{"ABORT-user"};l_benchmark_mark(&abort);
  assert(!g_observations.open&&!gpu_open&&!gpu_eligible);
- clock_us=70000000;l_benchmark_mark(&begin);clock_us=begin.boundary-1;
+ clock_us=70000000;l_benchmark_mark(&begin);clock_us=static_cast<uint64_t>(begin.boundary)-1;
  rejected=false;try{l_benchmark_mark(&end);}catch(const std::exception&){rejected=true;}assert(rejected);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
             source=Path(tmp)/'mark.cpp';source.write_text(harness)
             binary=Path(tmp)/'mark'
+            compiler,includes,_=native_inputs()
             for defines in ([],['-DCORSIXTH_3DS_GPU']):
-                subprocess.run(['c++','-std=c++17','-I',str(ROOT/'include'),*defines,str(source),'-o',str(binary)],check=True,capture_output=True)
-                subprocess.run([str(binary)],check=True,capture_output=True)
+                result=subprocess.run([*compiler,'-std=c++17','-Wall','-Wextra','-Wpedantic',
+                    '-Wconversion','-Wsign-conversion','-Wshadow','-Werror','-fsanitize=address,undefined',
+                    '-I',str(ROOT/'include'),*includes,*defines,str(source),'-o',str(binary)],capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                result=subprocess.run([str(binary)],capture_output=True,text=True,
+                    env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__=='__main__':unittest.main()

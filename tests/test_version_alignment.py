@@ -16,15 +16,15 @@ class VersionAlignmentTests(unittest.TestCase):
         self.assertRegex(cmake, rf"project\(corsixth_3ds_port VERSION {re.escape(version)}\b")
         self.assertIn(f'OVERLAY_VERSION = "{version}"', integrator)
         self.assertIn(f'lua_pushstring(state, "{version}");', runtime)
-        # The displayed candidate and one-shot benchmark must identify this
-        # revision too; a matching semantic version alone cannot distinguish
-        # consecutive hardware candidates.
-        revision = "R63"
+        # Product displays identify the current build. The existing one-shot
+        # request protocol remains R63 so installed runner/marker files work.
+        revision = "R68"
         for token in (f'"{revision} " + state.build_tag',
-                      f'"CORSIXTH {revision} "', f'revision={revision}',
-                      f'memcmp(magic,"{revision}\\n",4)',
-                      f'sdmc:/3ds/corsixth/benchmark-used-{revision.lower()}.txt'):
+                      f'"CORSIXTH {revision} "', f'diagnostics: revision={revision}'):
             self.assertTrue(token in runtime, f'candidate identity is missing: {token}')
+        self.assertNotIn('"R67 " + state.build_tag',runtime,'old status-strip identity must be detected')
+        self.assertIn('memcmp(magic,"R63\\n",4)',runtime)
+        self.assertIn('sdmc:/3ds/corsixth/benchmark-used-r63.txt',runtime)
         self.assertNotIn('benchmark-used-r62.txt', runtime,
                          'previous candidate marker must remain untouched')
         self.assertNotIn('"CORSIXTH R53 "', runtime)

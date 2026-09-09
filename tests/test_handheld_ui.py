@@ -11,15 +11,20 @@ class HandheldUiTests(unittest.TestCase):
     def setUpClass(cls):
         test_lua_runtime.LuaRuntimeTests.setUpClass()
     def run_lua(self, body):
-        # Obtain the actual class closed over by attach, without adding a
-        # production-only testing API or replacing its methods.
+        # Construct through the real owner/capability boundary. Native services
+        # are controlled seams; Operations and every Platform method are real.
         setup = """
-local Platform
-for i=1,30 do
- local name,value=debug.getupvalue(module.attach,i)
- if name=='Platform' then Platform=value;break end
+local function attach(app,native)
+ app.config={};app.save=function()return true end;app.load=function()return true end
+ for _,name in ipairs({'span_begin','span_end','span_abandon','observe_memory','operation_boundary',
+   'flush_observations','atomic_commit','begin_critical_io','end_critical_io','request_redraw',
+   'operation_block','checkpoint','set_notice'})do
+  if not native[name] then native[name]=function()return true end end
+ end
+ local p=module.attach(app,native,{epoch=68,resource_events=false})
+ assert(p==app._3ds and p.completed and p.operations.platform==p)
+ return p
 end
-assert(Platform)
 """
         if body.startswith("local Platform=dofile("):
             first,rest=body.split('\n',1)
@@ -28,12 +33,13 @@ assert(Platform)
 
     def test_keyboard_cancel_validation_and_replaced_owner(self):
         self.run_lua("local Platform=dofile("+repr(str(ROOT/'lua/3ds/platform.lua'))+")\n"+r'''
-local confirmations, notices=0,0
+local confirmations, notices, redraws=0,0,0
 local box={text='Previous',active=true,visible=true,enabled=true,char_limit=12,
  setText=function(self,t)self.text=t end,setActive=function(self,a)self.active=a end,
  confirm=function(self)self.active=false;confirmations=confirmations+1 end}
 local ui={textboxes={box}}
-local p=setmetatable({app={ui=ui},native={set_notice=function()notices=notices+1 end}},Platform)
+local p=attach({ui=ui},{set_notice=function()notices=notices+1 end,
+ request_redraw=function()redraws=redraws+1 end})
 p.native.text_keyboard=function(initial,limit) assert(initial=='Previous' and limit==12);return false end
 assert(p:editText());assert(box.text=='Previous' and box.active and confirmations==0)
 p.native.text_keyboard=function()return true,'New Slot' end
@@ -46,6 +52,7 @@ end
 p.native.text_keyboard=function()p.app.ui={textboxes={}};return true,'wrong owner' end
 assert(p:editText());assert(box.text=='New Slot' and confirmations==1)
 assert(notices==6)
+assert(redraws==1,'only the successful confirmation redraws')
 ''')
 
     def test_actual_upstream_slots_overwrite_and_save_path(self):
@@ -93,8 +100,8 @@ w.new_savegame_textbox.text='../invalid';w:confirmName();assert(error_count==1 a
 local speed='Normal';local calls=0
 local world={getCurrentSpeed=function()return speed end,setSpeed=function(self,v)
  assert(v=='Pause' or v=='Normal');speed=v;calls=calls+1 end}
-local p=setmetatable({app={world=world,ui={}},native={request_redraw=function()end}},Platform)
-p.inputContext=function()return 'world' end
+local p=attach({world=world,ui={}},{request_redraw=function()end})
+assert(p:inputContext()=='world')
 assert(p:handleAction{type='lifecycle_suspend'});assert(speed=='Pause' and calls==1)
 assert(p:handleAction{type='lifecycle_suspend'});assert(calls==1)
 assert(p:handleAction{type='lifecycle_resume'});assert(speed=='Normal' and calls==2)

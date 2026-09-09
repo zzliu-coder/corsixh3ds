@@ -68,6 +68,10 @@ scenario("stream-native-faults-preserve-final-and-backup", function()
     assert(opened_after == 0 and closed_after == closed + 1)
     assert(cleaned == before_cleanup + 1 and app.map.transient == "restored")
     assert(commits == before_commit and read(target) == old and read(target .. ".bak") == older)
+    if fault[2] then
+      assert(not app._3ds.operations.last.ready and not pcall(app.save,app,target))
+      app=fresh() -- close failure leaves the prior adapter deliberately locked.
+    end
     app.world.payload = nil; app.world.money = 999
     assert(app:save(target)); app.world.money = -1
     assert(app:load(target) and app.world.money == 999)

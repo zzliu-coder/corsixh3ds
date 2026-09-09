@@ -12,7 +12,7 @@ class LuaOverlayTests(unittest.TestCase):
         cls.text = cls.path.read_text(encoding="utf-8")
 
     def test_platform_exposes_runtime_entrypoints(self) -> None:
-        for name in ("attach", "syncBottomState", "handleAction", "installAtomicSaves"):
+        for name in ("attach", "syncBottomState", "handleAction", "installOperations"):
             self.assertRegex(self.text, rf"function\s+[\w.:]*{name}\s*\(")
 
     def test_all_native_action_families_are_handled(self) -> None:
@@ -29,9 +29,10 @@ class LuaOverlayTests(unittest.TestCase):
         self.assertFalse(required - handled, f"missing actions: {sorted(required - handled)}")
 
     def test_atomic_save_uses_temporary_file_then_commit(self) -> None:
-        self.assertIn('filename .. ".tmp"', self.text)
-        self.assertIn("native.atomic_commit", self.text)
-        self.assertLess(self.text.index('filename .. ".tmp"'), self.text.index("native.atomic_commit"))
+        operations = (self.path.parent/'operations.lua').read_text()
+        self.assertIn('filename..".tmp"', operations)
+        self.assertIn("native.atomic_commit", operations)
+        self.assertLess(operations.index('filename..".tmp"'), operations.index("native.atomic_commit"))
 
     def test_game_toolbar_is_never_hidden(self) -> None:
         # The lower screen mirrors the real frame, so CorsixTH's own toolbar is

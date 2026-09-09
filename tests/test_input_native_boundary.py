@@ -251,7 +251,7 @@ class InputNativeBoundaryTests(unittest.TestCase):
         old="UpdateCursorPosition=function(_,x,y) events[#events+1]={'motion',x,y};return true end"
         self.assertEqual(script.count(old),1)
         script=script.replace(old,"UpdateCursorPosition=function(c,x,y) local ok=probe.cursor_position(c,x,y);events[#events+1]={'motion',x,y};return ok end")
-        script="local menu_methods="+repr(str(ROOT/'tests/fixtures/menu_input.lua'))+"\n"+script+EXTRA
+        script="package.path="+repr(str(ROOT/'lua/?.lua')+';')+"..package.path\nlocal menu_methods="+repr(str(ROOT/'tests/fixtures/menu_input.lua'))+"\n"+script+EXTRA
         runtime=(ROOT/'src/3ds/runtime_3ds.cpp').read_text()
         push=re.search(r'(?ms)^void push_action\(.*?^\}',runtime).group()
         focus=re.search(r'(?ms)^int l_focus_view\(.*?^\}',runtime).group()

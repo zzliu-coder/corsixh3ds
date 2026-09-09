@@ -3,6 +3,7 @@
 local directory = assert(os.getenv("CTH3DS_PERSIST_TESTDIR"))
 local source = assert(os.getenv("CTH3DS_PERSIST_SOURCE"))
 local platform = assert(os.getenv("CTH3DS_PLATFORM_SOURCE"))
+package.path=platform:gsub("3ds/platform.lua$","?.lua;")..package.path
 function Noop() end
 function strict_declare_global() end
 function pause_gc_and_use_weak_keys(fn, value) fn(value) end

@@ -3,6 +3,7 @@
 
 local Platform = {}
 Platform.__index = Platform
+local Operations = require("3ds.operations")
 -- The five ordinary entries in CorsixTH 0.70.1's Options / Game speed menu.
 -- World:setSpeed owns their timing; this list contains no platform rates.
 local game_speeds = {"Slowest", "Slower", "Normal", "Max speed", "And then some more"}
@@ -189,8 +190,7 @@ function Platform.new(app, native, capabilities)
     pointer_owners = setmetatable({}, {__mode = "v"}),
     focus_owners = setmetatable({}, {__mode = "v"}),
   }, Platform)
-  self:installAtomicSaves()
-  self:installLoadTelemetry()
+  self:installOperations()
   self:installErrorTelemetry()
   local language = app.config and app.config.language or "unknown"
   native_checkpoint(native, "language_selected", "observed-at-adapter-attach",
@@ -205,15 +205,26 @@ end
 
 function Platform:showError(message)
   message = tostring(message)
-  if self.native.diagnostic_line then self.native.diagnostic_line(message) end
+  local function attempt(site,callback,...)
+    if not callback then return false end
+    if self.operations and self.operations.current then
+      return self.operations:diagnostic(self.operations.current,site,callback,...)
+    end
+    return pcall(callback,...)
+  end
+  attempt("diagnostic_line",self.native.diagnostic_line,message)
   local summary=message:match("^[^\n]+") or message
   if message:match("^SAVE FAILED:") and message:find("not enough memory",1,true) then
     summary="SAVE FAILED: Not enough memory. Previous save kept."
   elseif #summary>150 then summary=summary:sub(1,147).."..." end
-  native_notice(self.native, summary, true)
+  local noticed=attempt("notice",self.native.set_notice,summary,true)
   local ui = self.app.ui
-  if ui and UIInformation then ui:addWindow(UIInformation(ui, {summary})) end
-  print("CorsixTH 3DS: " .. message)
+  local shown=false
+  if ui and UIInformation then
+    shown=attempt("error_ui",function()ui:addWindow(UIInformation(ui,{summary}))end)
+  end
+  attempt("print",print,"CorsixTH 3DS: " .. message)
+  return noticed or shown
 end
 
 -- Optional naming; save slots remain usable when the system applet is absent.
@@ -245,78 +256,25 @@ function Platform:editText()
   return self:finishAction()
 end
 
-function Platform:installAtomicSaves()
-  local app, native = self.app, self.native
-  local original_save = assert(app.save, "App.save missing")
-  app.save = function(instance, filename)
-    assert(type(filename) == "string" and filename ~= "", "invalid save path")
-    local temporary = filename .. ".tmp"
-    native_checkpoint(native, "save_load", "save-begin", filename)
-    local critical, transaction = false, false
-    local ok, err = xpcall(function()
-      self:resourceEvent("save-begin", filename, true); transaction = true
-      native.begin_critical_io(); critical = true
-      -- Drop optional source residency before serializer admission/GC. Visible
-      -- windows keep their pictures; the engine/GPU own deferred destruction.
-      local gfx = instance.gfx
-      if gfx and type(gfx.trimRawWarm) == "function" then gfx:trimRawWarm() end
-      if native.prepare_save then native.prepare_save() end
-      assert(original_save(instance, temporary) == true, "save writer did not confirm success")
-      local committed, detail = native.atomic_commit(temporary, filename, true)
-      assert(committed == true, "save commit: " .. tostring(detail))
-    end, traceback_message)
-    if critical then native.end_critical_io() end
-    if transaction then self:resourceEvent("save-end", filename, ok) end
-    if not ok then
-      self:showError("SAVE FAILED: " .. tostring(err))
-      native_checkpoint(native, "save_load", "save-failed", filename)
-      error(err, 0)
-    end
-    native_notice(native, "SAVE OK", false)
-    native_checkpoint(native, "save_load", "save-complete", filename)
-    return true
-  end
+function Platform:installOperations()
+  local app=self.app
+  local operations=Operations.new(self,app.save,app.load)
+  self.operations=operations
+  app.save=function(instance,filename)return operations:save(instance,filename)end
+  app.load=function(instance,filename)return operations:load(instance,filename)end
   app.quickSave = function(instance)
+    operations:guard()
     if not instance.world then return false, "no world" end
     return instance:save(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
   end
+  app.quickLoad = function(instance)
+    operations:guard()
+    return instance:load(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
+  end
 end
 
-function Platform:installLoadTelemetry()
-  local app, native = self.app, self.native
-  local original_load = assert(app.load, "App.load missing")
-  app.load = function(instance, filename)
-    -- CORSIXTH_3DS_LOAD_RECOVERY_V1: preserve the file being requested.
-    -- FAT names are case-insensitive. Compare the basename conservatively so
-    -- directory aliases cannot overwrite the requested recovery or its backup.
-    local requested = tostring(filename):gsub("\\", "/"):match("([^/]+)$") or ""
-    requested = requested:lower()
-    local recovery_name = "recovery-before-load.sav"
-    if requested == recovery_name or requested == recovery_name .. ".bak" or
-       requested == recovery_name .. ".tmp" then
-      recovery_name = "recovery-before-load-alt.sav"
-    end
-    local recovery = instance.savegame_dir .. recovery_name
-    instance._3ds_preload_recovery = nil
-    if instance.world then
-      local saved, result = pcall(instance.save, instance, recovery)
-      if not saved or result ~= true then return false, "preload recovery save failed: " .. tostring(result) end
-      instance._3ds_preload_recovery = recovery
-    end
-    native_checkpoint(native, "save_load", "load-begin", filename)
-    local transaction = false
-    local ok, accepted, detail = xpcall(function()
-      self:resourceEvent("load-begin", filename, true); transaction = true
-      return original_load(instance, filename)
-    end, traceback_message)
-    local success = ok and accepted == true
-    if transaction then self:resourceEvent("load-end", filename, success) end
-    if not success then
-      local message = tostring(ok and (detail or "load rejected") or accepted)
-      self:showError("LOAD FAILED: " .. message)
-      native_checkpoint(native, "save_load", "load-failed", filename)
-      return false, message
-    end
+function Platform:afterLoadOperation(instance, filename, result)
+    local native=self.native
     -- The installer creates this separate, hash-verified Slot1 copy. Ordinary
     -- saves are never migrated automatically, and original bytes stay intact.
     if filename=="sdmc:/3ds/corsixth/Saves/R62-Recovered.sav" or
@@ -325,39 +283,37 @@ function Platform:installLoadTelemetry()
         filename==self.native.runner_context().root.."r62-recovery.sav") then
       self.save_prefix="R63-Recovered-"
       self.recovery_cohort=nil
-      local repaired,count=pcall(function()
+      local repaired,count=xpcall(function()
         local cohort=require("3ds.recovery_activity").capture(instance.world)
         local count=require("3ds.state_health").repairR62(instance.world)
         self.recovery_cohort=cohort -- scalar identities only; original bytes untouched
         return count
+      end,function(value)
+        if type(value)=="string" and debug and type(debug.traceback)=="function" then
+          return debug.traceback(value,2)
+        end
+        return value
       end)
       if not repaired then
         self.recovery_cohort=nil
-        if instance.world then instance.world:setSpeed("Pause") end
+        if instance.world then
+          self.operations:mandatory(result,"recovery_pause",instance.world.setSpeed,instance.world,"Pause")
+        end
         -- Audit observes the refused copy only. It cannot relax recovery or
         -- replace its original error, even if diagnostic output itself fails.
-        local audit_ok,audit_error=pcall(require("3ds.state_health").auditR62,
-          instance.world,self.native.diagnostic_line or print)
-        if not audit_ok then
-          print("r64-recovery-audit: failed="..tostring(audit_error):sub(1,160))
-        end
-        self:showError("RECOVERY REFUSED: "..tostring(count))
+        self.operations:diagnostic(result,"recovery_audit",function()
+          require("3ds.state_health").auditR62(instance.world,self.native.diagnostic_line or print)
+        end)
         return false,count
       end
-      native_checkpoint(native,"save_load","r62-recovered",filename,count)
+      self.operations:diagnostic(result,"recovery_checkpoint",native.checkpoint,"save_load","r62-recovered",filename,count,0)
       self.recovery_count=count
     else
       self.recovery_cohort=nil
       local basename=filename:match("([^/]+)$") or ""
       self.save_prefix=basename:match("^R63%-Recovered%-") and "R63-Recovered-" or nil
     end
-    native_checkpoint(native, "save_load", "load-complete", filename)
-    native_notice(native, "LOAD COMPLETE", false)
     return true
-  end
-  app.quickLoad = function(instance)
-    return instance:load(instance.savegame_dir .. (self.save_prefix or "") .. "quicksave.qs")
-  end
 end
 
 function Platform:installErrorTelemetry()
@@ -381,6 +337,7 @@ function Platform:installErrorTelemetry()
 end
 
 function Platform:saveAndExit()
+  self.operations:guard()
   if self.app.world then
     local ok, result = pcall(self.app.save, self.app,
       self.app.savegame_dir .. (self.save_prefix or "") .. "save-and-exit.sav")
@@ -392,6 +349,7 @@ end
 
 -- Shared bridge contract for the subsequent InputMapper integration.
 function Platform:inputState()
+  self.operations:guard()
   local ui = assert(self.app.ui, "input UI unavailable")
   assert(finite(ui.cursor_x) and finite(ui.cursor_y),
          "input UI cursor unavailable")
@@ -423,6 +381,7 @@ end
 -- Keep existing geometry and pen coordinates. A new dialog may move the
 -- viewing rectangle, never the authoritative mouse position.
 function Platform:prepareInput()
+  self.operations:guard()
   self:syncScene()
   local state = self:inputState()
   local ui, owners = self.app.ui, self.focus_owners
@@ -564,7 +523,9 @@ function Platform:syncScene()
   self.scene_owner.world=world;self.scene_synced=true
 end
 function Platform:benchmarkTick()
+  self.operations:guard()
   if self.benchmark then self.benchmark:tick() end
+  self.operations:guard()
   return true
 end
 function Platform:benchmarkCancel()
@@ -835,6 +796,7 @@ function Platform:finishAction(outcome)
 end
 
 function Platform:handleAction(action)
+  self.operations:guard()
   assert(type(action) == "table" and type(action.type) == "string", "invalid action envelope")
   local kind = action.type
   local ui = self.app.ui
@@ -931,8 +893,11 @@ function Platform:handleAction(action)
     return self:invokeBottom("editRoom")
   elseif kind == "quick_save" then
     if not world then return true, "noop:no-world" end
-    local accepted, detail = self.app:quickSave()
-    if accepted ~= true then return false, detail end -- AR2 owns save failure policy.
+    local previous=self.operations.last
+    local called,accepted=pcall(self.app.quickSave,self.app)
+    if not called and (self.operations.last==previous or not self.operations.last.rejected) then error(accepted,0) end
+    self.operations:guard()
+    if not called or accepted~=true then return true,"noop:save-refused" end
   elseif kind == "open_save_slots" then
     if world then
       ui:addWindow(UISaveGame(ui))
@@ -955,8 +920,11 @@ function Platform:handleAction(action)
     return self:editText()
   elseif kind == "quick_load" then
     if not world then return true, "noop:no-world" end
-    local accepted, detail = self.app:quickLoad()
-    if accepted ~= true then return false, detail end -- AR2 owns load failure policy.
+    local previous=self.operations.last
+    local accepted,detail = self.app:quickLoad()
+    if accepted~=true and self.operations.last~=previous and self.operations.last.raised then error(detail,0) end
+    self.operations:guard()
+    if accepted ~= true then return true,"noop:load-refused" end
   elseif kind == "build_room_rectangle" then
     return self:placeRoomRectangle(action)
   elseif kind == "place_item" then
@@ -995,44 +963,6 @@ function Platform:handleAction(action)
   return self:finishAction()
 end
 
--- CORSIXTH_3DS_BEGIN: U3-checked-operation-spans
-function Platform:installOperationSpans()
-  if self.operation_spans_installed then return end
-  local app, native = self.app, self.native
-  -- Wrap after U1 installs checked save/load including commit and recovery.
-  for _, spec in ipairs({{"save", "save", "save"}, {"load", "load", "reload"}}) do
-    local method, stage, site = spec[1], spec[2], spec[3]
-    local original = assert(app[method], "missing checked operation " .. method)
-    app[method] = function(...)
-      local token = native.span_begin(stage)
-      native.operation_boundary()
-      native.observe_memory(site, "before", method, "Operation")
-      local function baseline(phase)
-        local gc_token=native.span_begin("gc")
-        collectgarbage("collect")
-        native.span_end(gc_token,true)
-        if phase=="gc-after" then native.operation_boundary() end
-        native.observe_memory(site,phase,method,"Operation")
-      end
-      -- Save's permanence builder owns the mandatory two collections for
-      -- finalized weak keys. Keep load pre-GC and operation post-GC here.
-      if method=="load" then baseline("gc-before") end
-      local result = pack_values(pcall(original, ...))
-      local success = result[1] and result[2] == true
-      native.operation_boundary()
-      native.observe_memory(site, success and "committed" or "failed", method, "Operation")
-      baseline("gc-after")
-      native.span_end(token, success)
-      if method=="load" then self:syncScene() end
-      native.flush_observations()
-      if not result[1] then error(result[2], 0) end
-      return (table.unpack or unpack)(result, 2, result.n)
-    end
-  end
-  self.operation_spans_installed = true
-end
--- CORSIXTH_3DS_END: U3-checked-operation-spans
-
 local module = {}
 
 function module.attach(app, native, capabilities)
@@ -1053,7 +983,6 @@ function module.attach(app, native, capabilities)
     local result=Platform.new(app,native,capabilities)
     result:showLegacyBottomPanel()
     result:resourceEvent("menu","main-menu",true)
-    result:installOperationSpans()
     result.completed=true
     return result
   end,traceback_message)

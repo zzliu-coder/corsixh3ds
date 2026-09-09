@@ -1,4 +1,6 @@
 {
+  "CorsixTH/Lua/utility.lua": "f6081fbd4661fd1928cb787cb69a0193a819422d6aaaf5b4e1d1d770e91c4b29",
+  "CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua": "0b5d0cf5b37ac146f3c8d8f2f13148559be7351d5ff3cb48cbdd6f06db7b237a",
   "CorsixTH/Lua/dialogs/bottom_panel.lua": "17c2404c91dd41419bb5a62cb5749807ae97ecc46dc85aaee33c0e8f62ed6ce2",
   "CorsixTH/Lua/entity_map.lua": "e5d74d74091b643721e05a4ade20f10db466995b691c80888c4a3cb2b5a2dc6e",
   "CorsixTH/Lua/entities/humanoids/staff.lua": "9beb46ca9bd1749f21746989d113df549f50019845287df95214015e44cc0264",

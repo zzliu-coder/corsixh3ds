@@ -8,6 +8,17 @@ local speeds={"Normal","And then some more"}
 local Health=require("3ds.state_health")
 local Activity=require("3ds.recovery_activity")
 local NEEDS_INPUT="TH3DS_NEEDS_INPUT"
+local function failureText(value)
+  if type(value)=="string" then return value:gsub("[\r\n]"," "):sub(1,1024) end
+  return "non-string Lua error ("..type(value)..")"
+end
+local function loadBenchmark(self,path,required)
+  local accepted,detail=self.app:load(path)
+  local operations=self.app._3ds and self.app._3ds.operations
+  if operations then operations:guard() end
+  if required and accepted~=true then error(detail,0) end
+  return accepted,detail
+end
 
 function Benchmark.new(app,native)
   local run=native.runner_context and native.runner_context()
@@ -162,7 +173,7 @@ function Benchmark:terminal(outcome,reason)
   local exited,exit_err=pcall(self.app.exit,self.app)
   if not exited then
     outcome="FAIL";reason="EXIT_FAILED"
-    fields.exit_error=tostring(exit_err):gsub("[\r\n]"," "):sub(1,1024)
+    fields.exit_error=failureText(exit_err)
     if self.app.abandon then pcall(self.app.abandon,self.app)end
   end
   local written,err=pcall(self.native.runner_finish,outcome,reason,fields)
@@ -171,7 +182,7 @@ end
 
 function Benchmark:cleanup()
   local ok,result=pcall(self.restore,self)
-  if not ok then self.results.cleanup_error=tostring(result):gsub("[\r\n]"," "):sub(1,1024) end
+  if not ok then self.results.cleanup_error=failureText(result) end
   return ok and result==true
 end
 
@@ -180,7 +191,7 @@ function Benchmark:restore()
   local closed=true
   if self.stress then
     local detail;closed,detail=pcall(self.stress.close,self.stress)
-    if not closed then print("benchmark window cleanup failed: "..tostring(detail)) end
+    if not closed then pcall(print,"benchmark window cleanup failed: "..failureText(detail)) end
   end
   self.app.savegame_dir=self.run and self.root.."save/" or self.original_dir
   self.app.config.autosave_frequency=self.original_autosave_frequency
@@ -197,7 +208,7 @@ function Benchmark:restore()
       end
     end)
     self.app.saveConfig=self.original_save_config
-    if not ok then print("benchmark media restore failed: "..tostring(err));return false end
+    if not ok then pcall(print,"benchmark media restore failed: "..failureText(err));return false end
   end
   return closed
 end
@@ -222,13 +233,13 @@ function Benchmark:load()
     self.results.recovery_stage="qualification"
     -- The installer supplies a byte-identical copy of the affected Slot1.
     -- Platform only repairs that explicit name; these writes stay private.
-    local recovered,reason=self.app:load(root.."r62-recovery.sav")
+    local recovered,reason=loadBenchmark(self,root.."r62-recovery.sav",false)
     self.recovery_copy=false -- one independent qualification attempt
     if recovered~=true then
       self.recovery_refused=true
       self.results.recovery_qualification_outcome="REFUSED"
-      self.results.recovery_reason=tostring(reason):gsub("[\r\n]"," "):sub(1,1024)
-      print("benchmark-recovery: status=REFUSED original_slot1=untouched reason="..tostring(reason))
+      self.results.recovery_reason=failureText(reason)
+      pcall(print,"benchmark-recovery: status=REFUSED original_slot1=untouched reason="..failureText(reason))
     else
     local health=Health.assertActive(self.app)
     self.results.recovery_qualification_outcome="PASS"
@@ -239,7 +250,7 @@ function Benchmark:load()
     local before=fingerprint(self.app)
     local output=self.app.savegame_dir.."r63-recovery-roundtrip.sav"
     assert(self.app:save(output)==true,"R62 recovery copy save failed")
-    assert(self.app:load(output)==true,"R62 recovery copy reload failed")
+    loadBenchmark(self,output,true)
     Health.assertActive(self.app)
     assert(fingerprint(self.app)==before,"R62 recovery copy roundtrip state changed")
     self.recovery_verified=true
@@ -253,8 +264,7 @@ function Benchmark:load()
     end
   end
   local profile=self.profiles[self.index]
-  local ok,detail=self.app:load(root..(profile.file or "input.sav"))
-  assert(ok==true,"benchmark copy load failed: "..tostring(detail))
+  loadBenchmark(self,root..(profile.file or "input.sav"),true)
   assert(self.app.world,"benchmark copy has no world")
   local health=Health.assertActive(self.app)
   self.healthy_started=true
@@ -370,7 +380,7 @@ function Benchmark:advanceRecovery()
     local before=fingerprint(self.app)
     local file=self.app.savegame_dir.."r66-recovery-continuity.sav"
     assert(self.app:save(file)==true,"recovery continuity save failed")
-    assert(self.app:load(file)==true,"recovery continuity reload failed")
+    loadBenchmark(self,file,true)
     Health.assertActive(self.app)
     assert(fingerprint(self.app)==before,"recovery continuity roundtrip changed")
     self.results.recovery_continuity_roundtrip_outcome="PASS"
@@ -503,8 +513,7 @@ function Benchmark:finish()
     self:terminal("PASS","COMPLETE");self.phase="done";return
   end
   -- Return a fresh private copy for play; all automated writes have ended.
-  local ok,detail=self.app:load(root..(self.expanded and "expanded.sav" or "input.sav"))
-  assert(ok==true,"benchmark final reload failed: "..tostring(detail))
+  loadBenchmark(self,root..(self.expanded and "expanded.sav" or "input.sav"),true)
   Health.assertActive(self.app)
   self.phase="done";assert(self:restore(),"benchmark media restore failed");self:mark("COMPLETE")
   self.native.set_notice(self.recovery_refused and "BENCH DONE - OLD SAVE NEEDS AUDIT"
@@ -515,27 +524,37 @@ function Benchmark:tick()
   if self.phase=="done" then return end
   local ok,err=pcall(self.advance,self)
   if not ok then
+    -- Keep the original failure's safe summary before attempting observers.
+    -- Even a broken mark/report must reach the existing cleanup exactly once.
+    local detail=failureText(err)
+    self.results.failure_detail=detail
+    local function observe(callback,...)
+      local observed=pcall(callback,...)
+      if not observed then self.results.failure_diagnostics=math.min(65535,(self.results.failure_diagnostics or 0)+1)end
+      return observed
+    end
     self.results.failure_phase=self.results.failure_phase or
       (not self.healthy_started and self.results.recovery_stage or self.phase)
     if self.phase=="recovery" then
-      local needs=tostring(err):match(NEEDS_INPUT.."$")~=nil
+      local needs=type(err)=="string" and err:match(NEEDS_INPUT.."$")~=nil
       self.results.recovery_behavior_outcome=needs and "NOT_PROVEN" or "FAIL"
       self.results.recovery_interrupted_window=self.recovery_window
       if Activity.active then
+        observe(function()
         local partial=Activity.report()
         self.results.recovery_partial_updated=partial.updated
         self.results.recovery_partial_service_uncovered=partial.service_uncovered
         self:recoveryRows(partial.rows,true)
+        end)
       end
     end
-    self:mark("FAILED")
+    observe(self.mark,self,"FAILED")
     self.failed=true;local restored=self:cleanup()
-    self.native.set_notice("BENCHMARK FAILED - SEE LOG",true)
-    print("benchmark failure: "..tostring(err))
-    if self.native.runner_error then self.native.runner_error(tostring(err))end
-    self.results.failure_detail=tostring(err):gsub("[\r\n]"," "):sub(1,1024)
-    local needs_input=tostring(err):match(NEEDS_INPUT.."$")~=nil
-    self:terminal(needs_input and restored and "NOT_PROVEN" or "FAIL",
+    observe(self.native.set_notice,"BENCHMARK FAILED - SEE LOG",true)
+    observe(print,"benchmark failure: "..detail)
+    if self.native.runner_error then observe(self.native.runner_error,detail)end
+    local needs_input=type(err)=="string" and err:match(NEEDS_INPUT.."$")~=nil
+    observe(self.terminal,self,needs_input and restored and "NOT_PROVEN" or "FAIL",
       not restored and "CLEANUP_FAILED" or (needs_input and "NEEDS_INPUT" or "FAILED"))
     self.phase="done"
   elseif self.phase~="done" and self.deadline then

@@ -63,6 +63,9 @@ class Telemetry {
   // One normal-thread LIFO stack, maximum 16 spans. Token 0 means rejected.
   [[nodiscard]] std::uint64_t begin_span(TimingStage stage, std::uint64_t now_us) noexcept;
   bool end_span(std::uint64_t token, std::uint64_t now_us, bool success = true) noexcept;
+  // Abandon one owned subtree after a failed observation. Keep parent spans
+  // and mark the window invalid; discarded spans are never completed samples.
+  bool abandon_span(std::uint64_t token) noexcept;
   [[nodiscard]] PerformanceSnapshot snapshot() const noexcept;
   [[nodiscard]] PerformanceSnapshot snapshot(std::uint64_t now_us) const noexcept;
   // Flush at a quiescent loop/operation boundary after >=60s, using actual

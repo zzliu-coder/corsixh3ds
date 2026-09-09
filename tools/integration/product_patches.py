@@ -26,7 +26,25 @@ from .sound_init import (
 )
 
 
+def validate_product_upgrade(root: Path) -> None:
+    # This boundary upgrade needs fresh pinned sources. Refuse an older already
+    # assembled tree before mutating any file; repeated current assembly is safe.
+    r68_markers={
+        'CorsixTH/Lua/app.lua':'CORSIXTH_3DS_LOAD_CALLER_R68',
+        'CorsixTH/Lua/persistance.lua':'CORSIXTH_3DS_LOAD_OWNER_R68',
+        'CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua':'CORSIXTH_3DS_SAVE_UI_R68',
+        'CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua':'CORSIXTH_3DS_LOAD_UI_R68',
+    }
+    for relative,required in r68_markers.items():
+        path=root/relative
+        if path.exists():
+            previous=read_text(path)
+            if 'CORSIXTH_3DS_PRODUCT_U1' in previous and required not in previous:
+                raise IntegrationError('R68 requires fresh pinned assembly: '+relative+' missing '+required)
+
+
 def patch_product_sources(root: Path, dry_run: bool) -> list[Change]:
+    validate_product_upgrade(root)
     if dry_run:
         with tempfile.TemporaryDirectory(prefix="cth3ds-product-preview-") as temp:
             preview=Path(temp)/"upstream"
@@ -477,10 +495,31 @@ int l_soundarc_count(lua_State* L) {'''),
          r'''  if not IS_3DS and self.world then self:worldExited() end
   return LoadGameFile(filepath)'''),
         (r'''      local status, err = pcall(self.load, self, self.savegame_dir .. self.command_line.load)
-      if not status then''',
-         r'''      local status, accepted, err = pcall(self.load, self, self.savegame_dir .. self.command_line.load)
+      if not status then
+        err = _S.errors.load_prefix .. err
+        print(err)
+        self.ui:addWindow(UIInformation(self.ui, { err }))
+      end''',
+         r'''      -- CORSIXTH_3DS_LOAD_CALLER_R68
+      local previous=self._3ds and self._3ds.operations.last
+      local status, accepted, err = pcall(self.load, self, self.savegame_dir .. self.command_line.load)
       if not status or accepted ~= true then
-        err = tostring(err or accepted)'''),
+        if not status then err=accepted end
+        if IS_3DS then
+          local result=self._3ds and self._3ds.operations.last
+          if not (result~=previous and result and result.reported) then
+            local message=type(err)=="string" and err or ("non-string Lua error ("..type(err)..")")
+            message=(message:match("^[^\n]+") or message):sub(1,150)
+            pcall(print,message)
+            local shown=pcall(function()self.ui:addWindow(UIInformation(self.ui,{message}))end)
+            if result~=previous and result then result.reported=shown end
+          end
+        else
+          err = _S.errors.load_prefix .. tostring(err)
+          print(err)
+          self.ui:addWindow(UIInformation(self.ui, { err }))
+        end
+      end'''),
         (r'''function App:reset()
 ''',
          r'''function App:reset()
@@ -523,7 +562,28 @@ end'''),
   return true'''),
         (r'''function LoadGame(data)
 ''',
-         r'''local function decodeGame(data)
+         r'''-- CORSIXTH_3DS_LOAD_OWNER_R68: preserve raw decode/publication errors.
+local function loadDescription(value)
+  if type(value)=="string" then return value:sub(1,240) end
+  return "non-string Lua error ("..type(value)..")"
+end
+local function loadErrorValue(value)
+  if type(value)=="string" and debug and debug.traceback then return debug.traceback(value,2) end
+  return value
+end
+local function loadDiagnostic(message)
+  local owner=TheApp._3ds and TheApp._3ds.operations
+  local operation=owner and owner.current
+  local callback=TH3DS and TH3DS.diagnostic_line or print
+  if operation then return owner:diagnostic(operation,"load_report",callback,message) end
+  return pcall(callback,message)
+end
+local function loadCleanup(value)
+  local owner=TheApp._3ds and TheApp._3ds.operations
+  if owner and owner.current then owner:cleanupFailure(owner.current,"publication_menu",value)
+  elseif TH3DS and TH3DS.operation_block then pcall(TH3DS.operation_block) end
+end
+local function decodeGame(data)
 '''),
         (r'''  if not TheApp:checkCompatibility(state.world.savegame_version, state.world.gfx_set) then return end
   state.ui:resync(TheApp.ui)''',
@@ -543,20 +603,27 @@ end''',
 end
 
 local function checkedPublish(state)
-  local ok,result=pcall(publishGame,state)
+  local ok,result=xpcall(publishGame,loadErrorValue,state)
   if ok and result==true then return true end
-  local detail="load publication/afterLoad failed: "..tostring(result).."; prior progress: recovery-before-load.sav"
-  local menu_ok=pcall(TheApp.loadMainMenu,TheApp)
-  if not menu_ok then
-    if IS_3DS then TH3DS.shutdown() end
-    error("fatal recovery: "..detail)
+  -- loadMainMenu normally returns nil. Validate the published safe state.
+  local menu_ok,menu_error=xpcall(TheApp.loadMainMenu,loadErrorValue,TheApp)
+  local safe_menu=menu_ok and TheApp.world==nil and TheApp.map==nil and type(TheApp.ui)=="table"
+  if not safe_menu then
+    if menu_ok then menu_error="main menu did not clear world/map and publish UI" end
+    loadCleanup(menu_error)
   end
-  return false,detail
+  local owner=TheApp._3ds and TheApp._3ds.operations
+  if owner and owner.current then
+    owner.current.publication_failed=true;owner.current.recovered_menu=safe_menu
+  end
+  local detail="load publication/afterLoad failed: "..loadDescription(result).."; prior progress: recovery-before-load.sav"
+  loadDiagnostic(detail)
+  return false,result
 end
 
 function LoadGame(data)
-  local ok,state,err=pcall(decodeGame,data)
-  if not ok then return false,tostring(state) end
+  local ok,state,err=xpcall(decodeGame,loadErrorValue,data)
+  if not ok then return false,state end
   if not state then return false,err end
   return checkedPublish(state)
 end'''),
@@ -564,23 +631,69 @@ end'''),
   local data = f:read("*a")
   f:close()
   LoadGame(data)''',
-         r'''  local failures={}
+         r'''  local first_error,has_error=nil,false
   -- Validate committed final then backup. Never promote an uncommitted tmp.
   local paths=IS_3DS and {filename,filename..".bak"} or {filename}
   for _,path in ipairs(paths) do
     local f,err=io.open(path,"rb")
     if f then
-      local read_ok,data=pcall(f.read,f,"*a")
-      local close_ok,closed=pcall(f.close,f)
+      local read_ok,data,read_error=pcall(f.read,f,"*a")
+      local close_ok,closed,close_error=pcall(f.close,f)
       if read_ok and data and close_ok and closed then
-        local decoded,state,reason=pcall(decodeGame,data)
+        local decoded,state,reason=xpcall(decodeGame,loadErrorValue,data)
         if decoded and state then return checkedPublish(state) end
-        err=decoded and reason or state
-      else err="save read/close failed" end
+        if decoded then err=reason else err=state end
+      elseif not read_ok then err=data
+      elseif not close_ok then err=closed
+      elseif not data then err=read_error
+      else err=close_error end
     end
-    failures[#failures+1]=path..": "..tostring(err)
+    if not has_error then first_error=err;has_error=true end
+    loadDiagnostic(path..": "..loadDescription(err))
   end
-  return false,table.concat(failures,"; ")'''),
+  return false,first_error'''),
+    ])
+    patch('CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua', [
+        ('''  local status, err = pcall(app.save, app, filename)
+  if not status then''',
+         '''  -- CORSIXTH_3DS_SAVE_UI_R68
+  local previous = IS_3DS and app._3ds and app._3ds.operations.last
+  local status, err = pcall(app.save, app, filename)
+  if not status and IS_3DS and app._3ds then
+    -- R68: the operation owns the original error and committed-file fact.
+    -- Suppress duplicates only when this request actually displayed a notice.
+    local result = app._3ds.operations.last
+    if result ~= previous and result and result.reported then return end
+    local message = type(err)=="string" and err or ("non-string Lua error ("..type(err)..")")
+    message = (message:match("^[^\\n]+") or message):sub(1,150)
+    local shown = pcall(function() ui:addWindow(UIInformation(ui,{message})) end)
+    if result ~= previous and result then result.reported = shown end
+    return
+  end
+  if not status then'''),
+    ])
+    patch('CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua', [
+        ('''  local status, err = pcall(app.load, app, name)
+  if not status then''',
+         '''  -- CORSIXTH_3DS_LOAD_UI_R68
+  if app._3ds and app._3ds.operations then
+    local operations=app._3ds.operations
+    local previous=operations.last
+    local called,accepted,detail=pcall(app.load,app,name)
+    if called and accepted==true then return end
+    if not called then detail=accepted end
+    local result=operations.last
+    if result~=previous and result and result.reported then return end
+    local message=type(detail)=="string" and detail or ("non-string Lua error ("..type(detail)..")")
+    message=(message:match("^[^\\n]+") or message):sub(1,150)
+    -- The reader already recovered the menu or locked unsafe publication.
+    -- Display must not attempt another menu transition or replace its error.
+    local shown=pcall(function()app.ui:addWindow(UIInformation(app.ui,{message}))end)
+    if result~=previous and result then result.reported=shown end
+    return
+  end
+  local status, err = pcall(app.load, app, name)
+  if not status then'''),
     ])
     patch('CorsixTH/Lua/game_ui.lua', [
         ('  local msg = mapeditor and _S.confirmation.quit_mapeditor or _S.confirmation.quit',

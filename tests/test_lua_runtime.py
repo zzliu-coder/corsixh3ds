@@ -34,6 +34,7 @@ class LuaRuntimeTests(unittest.TestCase):
         cls.lua.lua_close.argtypes = [ctypes.c_void_p]
 
     def run_lua(self, script: str) -> None:
+        script = "package.path=" + repr(str(Path(__file__).resolve().parents[1]/"lua/?.lua")+";") + "..package.path\n" + script
         state = self.lua.luaL_newstate()
         self.assertTrue(state)
         try:

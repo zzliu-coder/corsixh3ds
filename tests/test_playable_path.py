@@ -8,6 +8,7 @@ No game payload, save or generated production source is part of this fixture.
 """
 import hashlib
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -101,7 +102,8 @@ assert(a:saveAndExit()==true and exited==1 and notices>0)
         source=(self.generated/'CorsixTH/Lua/persistance.lua').read_text()
         # Engine object graph seam only: execute the generated production
         # serialization/publication functions with injected persist and map.
-        source=source[source.index('strict_declare_global "SaveGame"'):]
+        observer=re.search(r'(?ms)^local function observePersistence\(.*?^end',source).group()
+        source=observer+'\n'+source[source.index('strict_declare_global "SaveGame"'):]
         return '''
 local IS_3DS=true
 local persist={}
@@ -164,7 +166,7 @@ TheApp.checkCompatibility=function() return valid end
 TheApp.worldExited=function() end
 TheApp.audio={playSoundEffects=function() end};TheApp.config={}
 TheApp.afterLoad=function() if failure=='afterLoad' then error('injected afterLoad') end end
-TheApp.loadMainMenu=function(self) menu=menu+1;self.world=nil;self.ui={} end
+TheApp.loadMainMenu=function(self) menu=menu+1;self.world=nil;self.map=nil;self.ui={} end
 persist.load=function(data) if data=='BAD' then error('truncated') end selected=selected+1;return state() end
 local files={slot='BAD',['slot.bak']='GOOD',['slot.tmp']='UNCOMMITTED'}
 io.open=function(path) local data=files[path];if not data then return nil,'missing' end
@@ -307,8 +309,6 @@ class U3GeneratedClockTests(unittest.TestCase):
             for token in tokens: self.assertIn(token, text)
 
     def test_actual_lua_save_wrapper_closes_failed_and_successful_spans(self):
-        text = (ROOT/'lua/3ds/platform.lua').read_text()
-        block = text.split('-- CORSIXTH_3DS_BEGIN: U3-checked-operation-spans',1)[1].split('-- CORSIXTH_3DS_END:',1)[0]
         script = '''
 local current, ended, kinds = 0, {}, {}
 local commit_called=false
@@ -317,30 +317,35 @@ collectgarbage=function(mode)
   if mode==nil or mode=="collect" then cycles=cycles+1 end
   return real_gc(mode or "collect")
 end
-local pack_values=table.pack
-Platform={}
 TH3DS = {
   span_begin=function(stage) current=current+1; kinds[current]=stage; return current end,
   span_end=function(token, success) if kinds[token]~="gc" then if success then assert(commit_called) end; ended[#ended+1]=success end end,
   operation_boundary=function() end,observe_memory=function() end,
   flush_observations=function() end,
+  checkpoint=function()end,set_notice=function()end,begin_critical_io=function()end,
+  end_critical_io=function()end,atomic_commit=function()return true end,
 }
 App = {_loadLevel=function() end,loadMainMenu=function() end,
        save=function(_, mode) assert(cycles==0,"outer save collected before permanence owner");
+         mode=mode:gsub('%.tmp$','')
          collectgarbage();collectgarbage(); -- model upstream's retained two weak-key cycles
          if mode=='throw' then error('write failure') end; commit_called=true; if mode=='commit-fail' then error('commit failed') end; return mode=='ok' end,
        load=function() return false,'incompatible' end}
-'''+block+'''
-Platform.installOperationSpans({app=App,native=TH3DS,syncScene=function() end})
+local owner={app=App,native=TH3DS,syncScene=function()end,resourceEvent=function()end,
+ afterLoadOperation=function()return true end,showError=function()return true end}
+local operations=require('3ds.operations').new(owner,App.save,App.load)
+App.save=function(instance,path)return operations:save(instance,path)end
+App.load=function(instance,path)return operations:load(instance,path)end
 assert(App:save('ok') == true and ended[#ended] == true)
 assert(cycles==3);cycles=0
-assert(App:save('no') == false and ended[#ended] == false)
+assert(not pcall(App.save,App,'no') and ended[#ended] == false)
 assert(cycles==3);cycles=0
 assert(not pcall(App.save, App, 'throw') and ended[#ended] == false)
 assert(cycles==3);cycles=0
 assert(not pcall(App.save, App, 'commit-fail') and ended[#ended] == false)
 assert(cycles==3);cycles=0
-local ok, err=App:load(); assert(ok==false and err=='incompatible' and ended[#ended]==false)
+App.savegame_dir='Saves/'
+local ok, err=App:load('old'); assert(ok==false and err=='incompatible' and ended[#ended]==false)
 assert(cycles==2)
 '''
         from test_lua_runtime import LuaRuntimeTests
@@ -404,6 +409,7 @@ void runner_present(bool){}
 auto& g_timer_events=g_observations.timer_events;
 auto& g_logic_callbacks=g_observations.logic_callbacks;
 SimulationClock g_simulation_clock;
+bool g_operation_blocked=false;
 PresentationClock g_presentation_clock;
 const auto initial_scene=[](){std::strcpy(g_observations.scene.data(),"level:1");return true;}();
 std::uint64_t now_us();

@@ -4,6 +4,7 @@ The serializer seam here verifies ownership/cleanup, not native format or memory
 Native dump_file bytes, short writes and allocation failures need the C++ probe.
 """
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from support.pinned_upstream import generated_sources
@@ -22,7 +23,8 @@ class SaveStreamLuaTests(unittest.TestCase):
 
     def test_generated_stream_transaction_failure_matrix_and_retry(self):
         source = (self.generated / 'CorsixTH/Lua/persistance.lua').read_text()
-        source = source[source.index('strict_declare_global "SaveGame"'):]
+        observer=re.search(r'(?ms)^local function observePersistence\(.*?^end',source).group()
+        source = observer+'\n'+source[source.index('strict_declare_global "SaveGame"'):]
         prefix = r'''
 local IS_3DS=true
 local persist={}
@@ -113,7 +115,17 @@ end
 TheApp.save=function(_,path)return SaveGameFile(path)end
 TheApp.load=function()return true end
 local platform=dofile(PLATFORM_PATH)
-platform.attach(TheApp,native,{epoch=1,asset_mode='loose',resource_events=false})
+local function attach()
+ TheApp._3ds=nil
+ TheApp.save=function(_,path)return SaveGameFile(path)end
+ TheApp.load=function()return true end
+ platform.attach(TheApp,native,{epoch=1,asset_mode='loose',resource_events=false})
+end
+attach()
+local diagnostic_stages={['prepare-before']=true,['prepare-after']=true,
+ ['writer-before']=true,['writer-after']=true,['dump-after']=true,
+ ['afterSave-before']=true,['afterSave-after']=true,['close-before']=true,['close-after']=true}
+local successful_reports=0
 for _,stage in ipairs{'open','setvbuf','setvbuf_throw','prepare-before','prepare','prepare-after',
  'permanent','writer-before','serialize','serialize_result','write','writer-after',
  'dump-after','afterSave-before','afterSave','afterSave-after','close-before',
@@ -121,14 +133,28 @@ for _,stage in ipairs{'open','setvbuf','setvbuf_throw','prepare-before','prepare
  failure=stage;prepared=0;cleaned=0;closed=0;dumped=0;commits=0;live='LIVE'
  write(final,'OLD');write(final..'.bak','OLDER')
  local ok,err=pcall(TheApp.save,TheApp,final)
- assert(not ok,stage..' unexpectedly passed')
- assert(commits==0 and read(final)=='OLD' and read(final..'.bak')=='OLDER',stage)
+ if diagnostic_stages[stage] then
+  assert(ok and commits==1 and read(final)==payload and read(final..'.bak')=='OLD',stage)
+  assert(TheApp._3ds.operations.last.diagnostic_count>=1 and TheApp._3ds.operations.last.ready,stage)
+  successful_reports=successful_reports+1
+ else
+  assert(not ok,stage..' unexpectedly passed')
+  assert(commits==0 and read(final)=='OLD' and read(final..'.bak')=='OLDER',stage)
+ end
  assert(closed==(stage=='open' and 0 or 1),stage..' close count')
  assert(cleaned==prepared and live=='LIVE',stage..' cleanup pairing')
  if stage=='open' or stage:find('setvbuf') then assert(prepared==0 and dumped==0) end
- -- A new successful transaction proves reuse after every controlled failure.
- failure='';prepared=0;cleaned=0;closed=0;dumped=0
+ -- Uncertain mandatory cleanup forbids reuse; explicitly restart the fixture.
+ if stage=='afterSave' or stage=='close' or stage=='close_throw' then
+  assert(not TheApp._3ds.operations.last.ready and not pcall(TheApp.save,TheApp,final))
+  attach()
+ end
+ assert(TheApp._3ds.operations.current==nil and TheApp._3ds.operations.last==nil or
+        TheApp._3ds.operations.current==nil and TheApp._3ds.operations.last.parent==nil)
+ failure='';prepared=0;cleaned=0;closed=0;dumped=0;commits=0
+ write(final,'OLD');write(final..'.bak','OLDER')
  assert(TheApp:save(final)==true and commits==1)
+ successful_reports=successful_reports+1
  assert(read(final)==payload and read(final..'.bak')=='OLD')
  assert(prepared==1 and cleaned==1 and closed==1 and live=='LIVE')
 end
@@ -143,7 +169,7 @@ for _,message in ipairs(messages)do
   assert(message:find('writer_includes_io=1',1,true) and message:find('commit_included=0',1,true))
  end
 end
-assert(stream_reports==23,'one successful report per retry; failed saves never report success')
+assert(stream_reports==successful_reports,'closed-file reports match successful writes including diagnostic-only faults')
 io.open=real_open;print=real_print
 '''
         script = ('local TEST_DIRECTORY=' + repr(self.temp.name) + '\n' +

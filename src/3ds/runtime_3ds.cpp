@@ -822,11 +822,20 @@ bool call_platform_method(lua_State* state, const char* method,
 }
 
 // Select code before App mutation. Attachment has one Lua owner after menu.
+int load_embedded_operations(lua_State* state) {
+  if(luaL_loadbuffer(state,kEmbeddedOperationsLua,std::strlen(kEmbeddedOperationsLua),"@builtin/3ds/operations.lua")!=LUA_OK)return lua_error(state);
+  lua_call(state,0,1);
+  return 1;
+}
 int ensure_adapter(lua_State* state) {
   boot_log_checkpoint("adapter_attach", "begin");
   lua_getglobal(state,"require");lua_pushstring(state,kAdapterModule);
   if(lua_pcall(state,1,1,0)!=LUA_OK) {
     lua_pop(state,1);
+    lua_getglobal(state,"package");
+    lua_getfield(state,-1,"preload");
+    lua_pushcfunction(state,load_embedded_operations);lua_setfield(state,-2,"3ds.operations");lua_pop(state,1);
+    lua_getfield(state,-1,"loaded");lua_pushnil(state);lua_setfield(state,-2,"3ds.operations");lua_pop(state,2);
     if(luaL_loadbuffer(state,kEmbeddedPlatformLua,std::strlen(kEmbeddedPlatformLua),"@builtin/3ds/platform.lua")!=LUA_OK)return lua_error(state);
     lua_call(state,0,1);
   }
@@ -2496,6 +2505,13 @@ int l_runner_finish(lua_State* state){
   if(error[0])return luaL_error(state,"%s",error);
   return 0;
 }
+bool g_operation_blocked = false;
+int l_operation_block(lua_State*) { g_operation_blocked=true; return 0; }
+int l_span_abandon(lua_State* state) {
+  const auto token=static_cast<std::uint64_t>(luaL_checkinteger(state,1));
+  lua_pushboolean(state,g_observations.timing.abandon_span(token));
+  return 1;
+}
 int l_span_begin(lua_State* state) {
   const char* name = luaL_checkstring(state, 1);
   for (std::size_t i = 0; i < kTimingStageNames.size(); ++i) {
@@ -2760,6 +2776,8 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "checkpoint", l_checkpoint);
   set_function(state,"span_begin",l_span_begin);
   set_function(state,"span_end",l_span_end);
+  set_function(state,"span_abandon",l_span_abandon);
+  set_function(state,"operation_block",l_operation_block);
   set_function(state,"observe_memory",l_observe_memory);
   set_function(state,"diagnostic_line",l_diagnostic_line);
   set_function(state,"prepare_save",l_prepare_save);
@@ -2805,6 +2823,7 @@ void register_lua_module(lua_State* state) {
   g_observations.reset(now_us());
   g_log_time_us=g_workload_time_us=0;
   g_simulation_clock.reset();
+  g_operation_blocked=false;
   g_presentation_clock.reset();
   cpu_work = {}; cpu_work.clock_us = now_us;
   g_observation_state=state;
@@ -2999,7 +3018,7 @@ void runtime_observe_memory(const char* checkpoint, const char* phase, const cha
 }
 void runtime_note_timer_event() noexcept { ++g_observations.timer_events; }
 void runtime_simulation_begin() noexcept { g_simulation_clock.begin(now_us()); }
-bool runtime_simulation_step() noexcept { return g_simulation_clock.take_step(now_us()); }
+bool runtime_simulation_step() noexcept { return !g_operation_blocked && g_simulation_clock.take_step(now_us()); }
 bool runtime_frame_due(bool changed) noexcept {
   return g_presentation_clock.take(now_us(),changed,
     std::strncmp(g_observations.scene.data(),"level:",6)==0);

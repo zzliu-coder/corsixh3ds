@@ -162,7 +162,7 @@ class ActionContractTests(unittest.TestCase):
         test_lua_runtime.LuaRuntimeTests.setUpClass()
 
     def script(self, body):
-        return 'local adapter_path=' + json.dumps(str(ROOT / 'lua/3ds/platform.lua')) + '\n' + FIXTURE + body
+        return 'package.path=' + json.dumps(str(ROOT/'lua/?.lua')+';') + '..package.path\nlocal adapter_path=' + json.dumps(str(ROOT / 'lua/3ds/platform.lua')) + '\n' + FIXTURE + body
 
     def lua(self, body):
         test_lua_runtime.LuaRuntimeTests().run_lua(self.script(body))

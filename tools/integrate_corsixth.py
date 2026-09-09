@@ -82,6 +82,7 @@ from integration.source_patches import (
 )
 from integration.product_patches import (
     patch_product_sources,
+    validate_product_upgrade,
 )
 from integration.sound_init import (
     SOUND_INIT_LEGACY,
@@ -132,6 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     overlay = args.overlay_root.expanduser().resolve()
     try:
         provenance = validate_upstream(root, args.allow_unverified)
+        validate_product_upgrade(root)
         if args.check:
             errors = check_integrated(root, overlay)
             payload = {

@@ -30,4 +30,23 @@ def transforms(root):
                 + line
                 + f'\n  if TH3DS then TH3DS.observe_memory("save","{stage}-after","state-file","Operation") end',
                 'save '+stage+' timing')
+    if 'CORSIXTH_3DS_PERSIST_OBSERVER_R68' not in text:
+        anchor='local IS_3DS = native_ok and TH3DS.is_platform()\n'
+        text=replace_exact(text,anchor,anchor+'''-- CORSIXTH_3DS_PERSIST_OBSERVER_R68: declared before permanent-table helpers.
+local function observePersistence(site,phase,resource)
+  if not TH3DS or not TH3DS.observe_memory then return end
+  local owner=TheApp and TheApp._3ds and TheApp._3ds.operations
+  local operation=owner and owner.current
+  if operation then return owner:diagnostic(operation,phase,TH3DS.observe_memory,site,phase,resource,"Operation") end
+  return pcall(TH3DS.observe_memory,site,phase,resource,"Operation")
+end
+''','shared persistence observation owner')
+        for phase in ('weak-gc-before','weak-gc-after'):
+            text=replace_exact(text,
+                f'if TH3DS then TH3DS.observe_memory("save","{phase}","permanent","Operation") end',
+                f'observePersistence("save","{phase}","permanent")','weak GC observation '+phase)
+        for phase in ('parse-before','parse-after','afterLoad-before','afterLoad-after'):
+            text=replace_exact(text,
+                f'if TH3DS then TH3DS.observe_memory("reload", "{phase}", "persist", "Operation") end',
+                f'observePersistence("reload","{phase}","persist")','load observation '+phase)
     yield path, text

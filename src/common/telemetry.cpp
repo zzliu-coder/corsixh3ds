@@ -95,6 +95,17 @@ bool Telemetry::end_span(std::uint64_t token, std::uint64_t now, bool success) n
   result.inclusive_us += duration; result.maximum_us = std::max(result.maximum_us, duration);
   return true;
 }
+bool Telemetry::abandon_span(std::uint64_t token) noexcept {
+  ++invalid_;
+  if (!token) return false;
+  for (std::size_t i = depth_; i > 0; --i) {
+    if (stack_[i-1U].token == token) {
+      depth_ = i-1U;
+      return true;
+    }
+  }
+  return false;
+}
 PerformanceSnapshot Telemetry::snapshot() const noexcept { return snapshot(last_us_); }
 PerformanceSnapshot Telemetry::snapshot(std::uint64_t now) const noexcept {
   PerformanceSnapshot s;

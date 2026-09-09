@@ -22,6 +22,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "lua" / "3ds" / "platform.lua"
 HEADER = ROOT / "src" / "3ds" / "embedded_platform_lua.hpp"
+OPERATIONS = ROOT / "lua" / "3ds" / "operations.lua"
 
 DELIMITER = "cth3ds_lua"
 
@@ -34,6 +35,7 @@ namespace cth3ds {{
 // Byte-for-byte copy of the adapter this binary was built with. Used when the
 // SD card does not provide a loadable Lua/3ds/platform.lua.
 inline constexpr char kEmbeddedPlatformLua[] = R"{delimiter}({body}){delimiter}";
+inline constexpr char kEmbeddedOperationsLua[] = R"cth3ds_ops({operations})cth3ds_ops";
 
 }}  // namespace cth3ds
 """
@@ -42,7 +44,10 @@ inline constexpr char kEmbeddedPlatformLua[] = R"{delimiter}({body}){delimiter}"
 def render(source_text: str) -> str:
     if f"){DELIMITER}\"" in source_text:
         raise SystemExit("adapter source contains the raw-string delimiter")
-    return TEMPLATE.format(delimiter=DELIMITER, body=source_text)
+    operations = OPERATIONS.read_text(encoding="utf-8")
+    if ')cth3ds_ops"' in operations:
+        raise SystemExit("operations source contains the raw-string delimiter")
+    return TEMPLATE.format(delimiter=DELIMITER, body=source_text, operations=operations)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

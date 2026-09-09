@@ -83,13 +83,14 @@ class MemoryTelemetryRuntimeTests(unittest.TestCase):
             '"menu", "ready"',
             '"first_level", "ready"',
             '"transition", "world-changed"',
-            '"save_load", "save-begin"',
-            '"save_load", "load-begin"',
         ):
             self.assertIn(token, self.platform)
+        operations=(ROOT/'lua/3ds/operations.lua').read_text()
+        for phase in ('save-begin','load-begin'):
+            self.assertIn('self:checkpoint(result,"'+phase+'")',operations)
         self.assertIn('set_function(state, "resource_event", l_resource_event)', self.runtime)
         for event in ("menu", "level", "save-begin", "save-end", "load-begin", "load-end"):
-            self.assertIn(f'"{event}"', self.platform)
+            self.assertIn(f'"{event}"', self.platform+operations)
 
     def test_probe_is_bounded_and_described_as_lower_bound(self) -> None:
         self.assertIn("probe_largest_contiguous", self.runtime)

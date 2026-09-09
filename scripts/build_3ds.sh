@@ -40,7 +40,7 @@ fi
 
 UPSTREAM_DIR="${CTH3DS_EXTERNAL_DIR}/CorsixTH"
 python3 "${CTH3DS_ROOT}/tools/integrate_corsixth.py" "${UPSTREAM_DIR}" \
-  --overlay-root "${CTH3DS_ROOT}" --check
+  --overlay-root "${CTH3DS_ROOT}" --build-profile "${CTH3DS_BUILD_PROFILE}" --check
 [[ -f "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" ]] || \
   die '3DS dependencies are missing; run scripts/bootstrap_3ds_deps.sh'
 
@@ -57,6 +57,7 @@ cmake -S "${UPSTREAM_DIR}" -B "${BUILD}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
   -DCMAKE_PREFIX_PATH="${CTH3DS_DEPS_PREFIX};${DEVKITPRO}/portlibs/3ds" \
   -DCMAKE_FIND_ROOT_PATH="${CTH3DS_DEPS_PREFIX};${DEVKITPRO}/portlibs/3ds;${DEVKITPRO}/libctru" \
   -DCORSIXTH_3DS=ON \
+  -DCTH3DS_BUILD_PROFILE="${CTH3DS_BUILD_PROFILE}" \
   -DCORSIXTH_3DS_DEPS_PREFIX="${CTH3DS_DEPS_PREFIX}" \
   -DBUILD_CORSIXTH=ON \
   -DBUILD_ANIMVIEW=OFF \
@@ -129,95 +130,10 @@ ARCHIVE="$(find "${BUILD}" -name 'libCorsixTH_lib.a' -type f -print -quit)"
   die 'CorsixTH_lib archive was not produced'
 ci_diag_step final-elf-runtime-proof "${BUILD}/heap-budget.json" \
   "${BUILD}/runtime-core-link-proof.json"
-python3 - "${ELF}" "${ARCHIVE}" "${ARM_NM}" "${ARM_OBJDUMP}" \
-  "${BUILD}/runtime-core-link-proof.json" "${BUILD}" <<'PY'
-from __future__ import annotations
-import json, pathlib, re, subprocess, sys
-
-elf, archive, nm, objdump, report, build = sys.argv[1:]
-required = {
-    "runtime_session_start": "RuntimeSession::start(",
-    "runtime_session_shutdown": "RuntimeSession::shutdown(",
-    "runtime_session_menu": "RuntimeSession::enter_menu(",
-    "runtime_session_level": "RuntimeSession::enter_level(",
-    "runtime_session_save_begin": "RuntimeSession::begin_save_load(",
-    "runtime_session_save_finish": "RuntimeSession::finish_save_load(",
-    "runtime_session_suspend": "RuntimeSession::suspend(",
-    "runtime_session_resume": "RuntimeSession::resume(",
-    "bundle_mount": "BundleMount::open_bundle(",
-    "resource_acquire": "ResourceManager::acquire(",
-    # MinSizeRel is allowed to inline cancel(); the destructor is the retained
-    # RAII rollback path and calls cancel whenever a token was not committed.
-    "transition_rollback": "TransitionToken::~TransitionToken(",
-}
-
-def symbols(path: str) -> str:
-    return subprocess.check_output(
-        [nm, "-C", "--defined-only", path], text=True, errors="replace"
-    )
-
-archive_symbols = symbols(archive)
-elf_symbols = symbols(elf)
-archive_present = {key: needle in archive_symbols for key, needle in required.items()}
-elf_present = {key: needle in elf_symbols for key, needle in required.items()}
-
-disassembly = subprocess.check_output(
-    [objdump, "-d", "-C", elf], text=True, errors="replace"
-)
-functions: dict[str, set[str]] = {}
-current: str | None = None
-for line in disassembly.splitlines():
-    header = re.match(r"^[0-9a-fA-F]+ <(.+)>:$", line)
-    if header:
-        current = header.group(1)
-        functions.setdefault(current, set())
-        continue
-    if current is None:
-        continue
-    # GCC tail-calls the production wrapper with `b`; direct calls use `bl` or
-    # `blx`. Ignore intra-function branches carrying a +offset suffix.
-    call = re.search(r"\b(?:b|bl|blx)\b[^<]*<(.+)>", line)
-    if call:
-        target = call.group(1)
-        if not re.search(r"\+0x[0-9a-fA-F]+$", target):
-            functions[current].add(target)
-
-roots = [name for name in functions if "cth3ds::runtime_initialize(" in name]
-goals = {name for name in functions if "RuntimeSession::start(" in name}
-queue = [(root, [root]) for root in roots]
-visited = set(roots)
-edge_path: list[str] = []
-while queue:
-    node, path = queue.pop(0)
-    if node in goals:
-        edge_path = path
-        break
-    for target in sorted(functions.get(node, ())):
-        if target not in visited:
-            visited.add(target)
-            queue.append((target, path + [target]))
-
-link_files = list(pathlib.Path(build).rglob("link.txt"))
-whole_archive = any("--whole-archive" in path.read_text(errors="replace")
-                    for path in link_files)
-result = {
-    "archive": archive,
-    "archive_symbols": archive_present,
-    "elf": elf,
-    "elf_symbols": elf_present,
-    "production_entry": roots,
-    "entry_scope": "mode-gated native initialization; RuntimeSession is th3ds experiment only",
-    "player_ready_guard": any("mainloop(" in name and any("runtime_assert_ready(" in edge for edge in edges) for name, edges in functions.items()),
-    "runtime_session_call_path": edge_path,
-    "whole_archive_used": whole_archive,
-    "pass": all(archive_present.values()) and all(elf_present.values())
-            and bool(edge_path) and not whole_archive
-            and any("mainloop(" in name and any("runtime_assert_ready(" in edge for edge in edges) for name, edges in functions.items()),
-}
-pathlib.Path(report).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-if not result["pass"]:
-    raise SystemExit("Runtime Core archive-to-final-ELF call-edge proof failed")
-PY
+python3 "${CTH3DS_ROOT}/tools/check_resource_link.py" \
+  --elf "${ELF}" --archive "${ARCHIVE}" --build "${BUILD}" \
+  --nm "${ARM_NM}" --objdump "${ARM_OBJDUMP}" \
+  --profile "${CTH3DS_BUILD_PROFILE}" --output "${BUILD}/runtime-core-link-proof.json"
 sha256_file "${OUTPUT}" > "${OUTPUT}.sha256"
 python3 - "${CTH3DS_ROOT}" "${CTH3DS_BUILD_MANIFEST}" \
   "${OUTPUT}" "${ELF}" "${BUILD}/heap-budget.json" \
@@ -229,6 +145,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -250,6 +167,7 @@ for path in paths:
     })
 manifest = {
     "format": 1,
+    "build_profile": os.environ["CTH3DS_BUILD_PROFILE"],
     "source_commit": subprocess.check_output(
         ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
     ).strip(),
@@ -262,7 +180,7 @@ output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 PY
 cp "${UPSTREAM_DIR}/.cth3ds-view.json" "${BUILD_EVIDENCE_DIR}/generated-source.json"
 python3 "${CTH3DS_ROOT}/tools/source_view.py" bind --view "${UPSTREAM_DIR}" \
-  --overlay "${CTH3DS_ROOT}" --binary "${OUTPUT}" \
+  --overlay "${CTH3DS_ROOT}" --build-profile "${CTH3DS_BUILD_PROFILE}" --binary "${OUTPUT}" \
   --manifest "${CTH3DS_BUILD_MANIFEST}"
 ci_diag_step complete "${BUILD_EVIDENCE_DIR}/configure.log" \
   "${BUILD_EVIDENCE_DIR}/build.log" "${BUILD}/heap-budget.json" \

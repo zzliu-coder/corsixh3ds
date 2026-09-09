@@ -27,6 +27,8 @@ class FinalElfRuntimeCoreTests(unittest.TestCase):
 
     def test_cross_build_gate_requires_real_call_edge_without_whole_archive(self) -> None:
         script = (ROOT / "scripts/build_3ds.sh").read_text(encoding="utf-8")
+        self.assertIn("tools/check_resource_link.py", script)
+        script = (ROOT / "tools/check_resource_link.py").read_text(encoding="utf-8")
         for required in (
             "runtime_session_start",
             "runtime_session_shutdown",
@@ -48,9 +50,15 @@ class FinalElfRuntimeCoreTests(unittest.TestCase):
         proof = json.loads(Path(path).read_text(encoding="utf-8"))
         self.assertTrue(proof["pass"], proof)
         self.assertFalse(proof["whole_archive_used"], proof)
-        self.assertTrue(proof["runtime_session_call_path"], proof)
-        self.assertTrue(all(proof["archive_symbols"].values()), proof)
-        self.assertTrue(all(proof["elf_symbols"].values()), proof)
+        self.assertIn(proof["build_profile"], ("loose", "resource-experiment"))
+        if proof["build_profile"] == "resource-experiment":
+            self.assertTrue(proof["runtime_session_call_path"], proof)
+            self.assertTrue(all(proof["archive_symbols"].values()), proof)
+            self.assertTrue(all(proof["elf_symbols"].values()), proof)
+        else:
+            self.assertFalse(proof["runtime_session_call_path"], proof)
+            self.assertFalse(any(row["archive"] or row["elf"]
+                                 for row in proof["experiment_families"].values()), proof)
 
 
 if __name__ == "__main__":

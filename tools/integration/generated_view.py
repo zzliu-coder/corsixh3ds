@@ -17,6 +17,7 @@ import tempfile
 
 from .common import IntegrationError, sha256_file
 from .overlay import iter_overlay_files, refresh_embedded_adapter
+from .build_profile import validate_profile
 
 
 def _regular_copy(source: Path, target: Path) -> None:
@@ -95,7 +96,8 @@ def input_paths(root: Path) -> list[Path]:
     generation imports both. Ordinary final Staff/World sources are captured
     with the overlay and included in its input identity.
     """
-    paths = {p for p, _ in iter_overlay_files(root)}
+    paths = {p for p, _ in iter_overlay_files(root, all_sources=True)}
+    paths.add(root / 'src/common/sources.cmake')
     paths.update(root.glob("tools/*.py"))
     paths.update(root.glob("tools/integration/*.py"))
     overrides = root / "upstream_overrides"
@@ -143,18 +145,18 @@ def digest(value: dict) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def seal_view(root: Path, overlay: Path, provenance: str) -> dict:
+def seal_view(root: Path, overlay: Path, provenance: str, profile: str = 'loose') -> dict:
     rows = inventory(root, omit_receipt=True)
     inputs = input_inventory(overlay)
     receipt = {"format": 1, "kind": "complete-generated-source",
-               "origin": provenance, "files": rows,
+               "origin": provenance, "build_profile": validate_profile(profile), "files": rows,
                "view_sha256": digest(rows), "inputs": inputs,
-               "input_sha256": digest(inputs)}
+               "input_sha256": digest({"build_profile": profile, "files": inputs})}
     (root / RECEIPT).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     return receipt
 
 
-def verify_view(root: Path, overlay: Path | None = None) -> dict:
+def verify_view(root: Path, overlay: Path | None = None, profile: str | None = None) -> dict:
     path = root / RECEIPT
     if path.is_symlink() or not path.is_file():
         raise IntegrationError(f"complete generated-source receipt missing: {path}")
@@ -162,11 +164,14 @@ def verify_view(root: Path, overlay: Path | None = None) -> dict:
     if (not isinstance(receipt, dict) or receipt.get("format") != 1 or
             receipt.get("kind") != "complete-generated-source"):
         raise IntegrationError("unsupported complete generated-source receipt")
+    actual_profile = validate_profile(receipt.get("build_profile"))
+    if profile is not None and validate_profile(profile) != actual_profile:
+        raise IntegrationError("complete generated source belongs to another build profile")
     rows = inventory(root, omit_receipt=True)
     if receipt.get("files") != rows or receipt.get("view_sha256") != digest(rows):
         raise IntegrationError("complete generated-source inventory changed")
     inputs = receipt.get("inputs")
-    if not isinstance(inputs, dict) or receipt.get("input_sha256") != digest(inputs):
+    if not isinstance(inputs, dict) or receipt.get("input_sha256") != digest({"build_profile": actual_profile, "files": inputs}):
         raise IntegrationError("generation input receipt is malformed")
     if overlay is not None and inputs != input_inventory(overlay):
         raise IntegrationError("generation inputs changed; regenerate clean pinned source")

@@ -1,0 +1,28 @@
+# Shared explicit classification for host targets and generated ARM views.
+set(CTH3DS_PLAYER_SOURCES
+  action_codec.cpp
+  atomic_save.cpp
+  audio_mixer.cpp
+  bottom_ui.cpp
+  build_gesture.cpp
+  crc32.cpp
+  panel_refresh.cpp
+  framebuffer_scaler.cpp
+  input_mapper.cpp
+  interval_gate.cpp
+  lifecycle.cpp
+  screen_layout.cpp
+  software_canvas.cpp
+  telemetry.cpp
+  texture_cache.cpp
+)
+set(CTH3DS_RESOURCE_EXPERIMENT_SOURCES
+  allocation_ledger.cpp
+  resource_manager.cpp
+  runtime_session.cpp
+  sha256.cpp
+  th3ds.cpp
+)
+set(CTH3DS_RESOURCE_TOOL_SOURCES
+  resource_pack.cpp
+)

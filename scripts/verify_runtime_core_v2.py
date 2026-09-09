@@ -71,6 +71,8 @@ CLOSURE_INPUTS = {
     "host-python-runner": "scripts/run_host_python_suite.py",
     "host-python-manifest": "tests/host-python-suite.json",
     "generated-view": "tools/integration/generated_view.py",
+    "build-profile": "tools/integration/build_profile.py",
+    "common-source-owners": "src/common/sources.cmake",
     "source-view-owner": "tools/source_view.py",
     "integrator": "tools/integrate_corsixth.py",
 }
@@ -487,14 +489,14 @@ def integrate(repo: Path, source: Path, integrated: Path) -> None:
     tool = repo / "tools/integrate_corsixth.py"
     result = subprocess.run(
         [sys.executable, str(tool), str(source), "--overlay-root", str(repo),
-         "--private-output", str(integrated), "--json"],
+         "--private-output", str(integrated), "--build-profile", "resource-experiment", "--json"],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if result.returncode:
         raise RuntimeError("integration tool failed: " +
                            result.stderr.decode(errors="replace"))
     result = subprocess.run(
         [sys.executable, str(tool), str(integrated), "--overlay-root", str(repo),
-         "--check", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+         "--check", "--build-profile", "resource-experiment", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode:
         raise RuntimeError("integration check failed: " +
                            result.stderr.decode(errors="replace"))
@@ -718,7 +720,7 @@ def command_records(context: Any, repo: Path, roots: dict[str, Path], tools: dic
     internal_host_result = Path("/tmp") / ("cth3ds-host-unittest-" + run_id + ".json")
     argv = {
         "configure-host": [tools["cmake"], "-S", str(repo), "-B", str(host),
-            "-DCTH3DS_BUILD_TESTS=ON", "-DCTH3DS_BUILD_SIMULATOR=ON",
+            "-DCTH3DS_BUILD_PROFILE=resource-experiment", "-DCTH3DS_BUILD_TESTS=ON", "-DCTH3DS_BUILD_SIMULATOR=ON",
             "-DCTH3DS_BUILD_3DS_SYNTAX_CHECK=ON",
             "-DCTH3DS_WARNINGS_AS_ERRORS=ON", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
@@ -761,7 +763,7 @@ def command_records(context: Any, repo: Path, roots: dict[str, Path], tools: dic
             str(deps) + ";/opt/devkitpro/portlibs/3ds",
             "-DCMAKE_FIND_ROOT_PATH=" + str(deps) +
             ";/opt/devkitpro/portlibs/3ds;/opt/devkitpro/libctru",
-            "-DCORSIXTH_3DS=ON", "-DCORSIXTH_3DS_DEPS_PREFIX=" + str(deps),
+            "-DCTH3DS_BUILD_PROFILE=resource-experiment", "-DCORSIXTH_3DS=ON", "-DCORSIXTH_3DS_DEPS_PREFIX=" + str(deps),
             "-DBUILD_CORSIXTH=ON", "-DBUILD_ANIMVIEW=OFF", "-DBUILD_TOOLS=OFF",
             "-DENABLE_UNIT_TESTS=OFF", "-DENABLE_SANITIZERS=OFF",
             "-DWITH_TRACY=OFF", "-DWITH_MOVIES=OFF", "-DWITH_UPDATE_CHECK=OFF",
@@ -932,7 +934,7 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     module = importlib.util.module_from_spec(spec)
     sys.modules["c3_policy_integrator"] = module
     spec.loader.exec_module(module)
-    for source, target in module.iter_overlay_files(repo):
+    for source, target in module.iter_overlay_files(repo, "resource-experiment"):
         relative = source.relative_to(repo).as_posix()
         row = git(repo, "ls-files", "-s", "--", relative).decode().strip().split()
         if len(row) < 4:

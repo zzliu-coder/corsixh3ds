@@ -1329,6 +1329,8 @@ def consume(context: Any, args: argparse.Namespace) -> int:
         fail("UPSTREAM_ARCHIVE_HASH_MISMATCH", "upstream archive differs")
 
     xcache = artifact_data["xbuild-cmake-cache"].decode(errors="replace")
+    if "CTH3DS_BUILD_PROFILE:STRING=resource-experiment" not in xcache:
+        fail("XBUILD_COMPILE_LINK_UNPROVEN", "experimental build profile missing")
     xcommands = strict_json(artifact_data["xbuild-compile-commands"])
     xgraph = artifact_data["xbuild-build-graph"].decode(errors="replace")
     symbols = artifact_data["xbuild-key-symbols"].decode(errors="replace")
@@ -1339,6 +1341,9 @@ def consume(context: Any, args: argparse.Namespace) -> int:
        not isinstance(xcommands, list) or not xcommands or \
        "CorsixTH-3DS.elf" not in xgraph:
         fail("XBUILD_COMPILE_LINK_UNPROVEN", "xbuild graph incomplete")
+    runtime_commands = [row for row in xcommands if row.get("file", "").endswith("/runtime_3ds.cpp")]
+    if len(runtime_commands) != 1 or "CTH3DS_RESOURCE_EXPERIMENT=1" not in str(runtime_commands[0]):
+        fail("XBUILD_COMPILE_LINK_UNPROVEN", "native runtime experiment define missing")
     for needle in ("__ctru_linear_heap_size", "RuntimeSession::start(",
                    "AllocationLedger::allocate(", "linear_allocate(",
                    "regular_allocate(", "linearMemAlign", "memalign"):

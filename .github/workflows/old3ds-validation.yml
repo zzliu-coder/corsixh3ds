@@ -469,6 +469,7 @@ jobs:
       - name: Build CorsixTH for Nintendo 3DS
         env:
           CTH3DS_JOBS: "2"
+          CTH3DS_BUILD_PROFILE: loose
         run: ./scripts/build_3ds.sh
       - name: Upload cross-build diagnostics and outputs
         if: always()

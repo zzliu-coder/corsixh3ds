@@ -16,9 +16,10 @@ import time
 
 from integration.common import IntegrationError
 from integration.generated_view import RECEIPT, verify_view
+from integration.build_profile import PROFILES, validate_profile
 
 OWNER_ENV = ("CTH3DS_SOURCE_OWNER_FD", "CTH3DS_SOURCE_OWNER_LOCK",
-             "CTH3DS_SOURCE_OWNER_RECEIPT")
+             "CTH3DS_SOURCE_OWNER_RECEIPT", "CTH3DS_SOURCE_OWNER_PROFILE")
 CANCEL_DOMAIN = "CTH3DS_CANCEL_DOMAIN"
 
 
@@ -129,8 +130,11 @@ def own(lock: Path, command: list[str]) -> int:
     lock.parent.mkdir(parents=True, exist_ok=True)
     if lock.is_symlink():
         raise IntegrationError("source-owner lock cannot be a link")
+    profile = validate_profile(os.environ.get('CTH3DS_BUILD_PROFILE', 'loose'))
     inherited = os.environ.get("CTH3DS_SOURCE_OWNER_FD")
     if inherited:
+        if os.environ.get('CTH3DS_SOURCE_OWNER_PROFILE') != profile:
+            raise IntegrationError('inherited source owner belongs to another build profile')
         try:
             fd = int(inherited)
             info, expected = os.fstat(fd), lock.stat()
@@ -143,12 +147,14 @@ def own(lock: Path, command: list[str]) -> int:
     with lock.open("a+b") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
         env = dict(os.environ, CTH3DS_SOURCE_OWNER_FD=str(stream.fileno()),
-                   CTH3DS_SOURCE_OWNER_LOCK=str(lock))
+                   CTH3DS_SOURCE_OWNER_LOCK=str(lock), CTH3DS_SOURCE_OWNER_PROFILE=profile)
         return supervise(command, env, (stream.fileno(),))
 
 
 def require_owner(lock: Path) -> None:
     cancellation_domain()
+    if os.environ.get('CTH3DS_SOURCE_OWNER_PROFILE') != validate_profile(os.environ.get('CTH3DS_BUILD_PROFILE', 'loose')):
+        raise IntegrationError('source owner build profile mismatch')
     # Invocations use one inherited open file description through shell/Python.
     # Holding the lock spans source selection, clean/configure/build and package.
     fd = int(os.environ.get("CTH3DS_SOURCE_OWNER_FD", "-1"))
@@ -161,9 +167,11 @@ def require_owner(lock: Path) -> None:
         raise IntegrationError("source operation requires its unique owner") from error
 
 
-def select(view: Path, alias: Path, overlay: Path, lock: Path) -> None:
+def select(view: Path, alias: Path, overlay: Path, lock: Path, profile: str = 'loose') -> None:
     require_owner(lock)
-    verify_view(view.resolve(), overlay.resolve())
+    if profile != os.environ.get("CTH3DS_SOURCE_OWNER_PROFILE"):
+        raise IntegrationError("source selection profile differs from owner")
+    verify_view(view.resolve(), overlay.resolve(), profile)
     if alias.exists() and not alias.is_symlink():
         raise IntegrationError("source alias contains a real directory; preserve it and choose a new external directory")
     if alias.resolve() == view.resolve():
@@ -186,15 +194,15 @@ def binary_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def binding(view: Path, overlay: Path, binary: Path) -> dict:
-    receipt = verify_view(view.resolve(), overlay.resolve())
-    return {"format": 1, "view_sha256": receipt["view_sha256"],
+def binding(view: Path, overlay: Path, binary: Path, profile: str = 'loose') -> dict:
+    receipt = verify_view(view.resolve(), overlay.resolve(), profile)
+    return {"format": 1, "build_profile": receipt["build_profile"], "view_sha256": receipt["view_sha256"],
             "input_sha256": receipt["input_sha256"],
             "source_realpath": str(view.resolve()), "binary_sha256": binary_hash(binary)}
 
 
-def verify_build(view: Path, overlay: Path, binary: Path, manifest: Path) -> dict:
-    current = binding(view, overlay, binary)
+def verify_build(view: Path, overlay: Path, binary: Path, manifest: Path, profile: str = 'loose') -> dict:
+    current = binding(view, overlay, binary, profile)
     stored = json.loads(manifest.read_text())
     if stored.get("generated_source") != current:
         raise IntegrationError("binary and complete generated source do not match successful build")
@@ -208,7 +216,7 @@ def verify_build(view: Path, overlay: Path, binary: Path, manifest: Path) -> dic
 
 def verify_staged_build(expected: dict, view: Path, overlay: Path, binary: Path,
                         manifest: Path, staged_binary: Path) -> dict:
-    current = verify_build(view, overlay, binary, manifest)
+    current = verify_build(view, overlay, binary, manifest, validate_profile(expected.get('build_profile')))
     if current != expected or binary_hash(staged_binary) != expected['binary_sha256']:
         raise IntegrationError('build changed while preparing candidate or staged binary differs')
     return current
@@ -230,8 +238,10 @@ def main(argv=None) -> int:
     pick = commands.add_parser("select")
     pick.add_argument("--alias", type=Path, required=True)
     pick.add_argument("--lock", type=Path, required=True)
+    pick.add_argument("--build-profile", choices=PROFILES, default=os.environ.get("CTH3DS_BUILD_PROFILE", "loose"))
     for name in ("verify", "bind", "verify-build"):
         entry = commands.add_parser(name)
+        entry.add_argument("--build-profile", choices=PROFILES, default=os.environ.get("CTH3DS_BUILD_PROFILE", "loose"))
         entry.add_argument("--view", type=Path, required=True)
         entry.add_argument("--overlay", type=Path, required=True)
         if name != "verify":
@@ -254,14 +264,14 @@ def main(argv=None) -> int:
             require_owner(args.lock)
             return 0
         if args.command == "select":
-            select(args.view, args.alias, args.overlay, args.lock)
+            select(args.view, args.alias, args.overlay, args.lock, args.build_profile)
         elif args.command == "verify":
-            verify_view(args.view.resolve(), args.overlay.resolve())
+            verify_view(args.view.resolve(), args.overlay.resolve(), args.build_profile)
         elif args.command == "verify-build":
-            verify_build(args.view, args.overlay, args.binary, args.manifest)
+            verify_build(args.view, args.overlay, args.binary, args.manifest, args.build_profile)
         else:
             result = json.loads(args.manifest.read_text())
-            result["generated_source"] = binding(args.view, args.overlay, args.binary)
+            result["generated_source"] = binding(args.view, args.overlay, args.binary, args.build_profile)
             args.manifest.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return 0
     except (IntegrationError, OSError, ValueError) as error:

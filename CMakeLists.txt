@@ -14,46 +14,49 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-add_library(cth3ds_common STATIC
-  src/common/action_codec.cpp
-  src/common/allocation_ledger.cpp
-  src/common/audio_mixer.cpp
-  src/common/atomic_save.cpp
-  src/common/bottom_ui.cpp
-  src/common/build_gesture.cpp
-  src/common/crc32.cpp
-  src/common/panel_refresh.cpp
-  src/common/framebuffer_scaler.cpp
-  src/common/interval_gate.cpp
-  src/common/input_mapper.cpp
-  src/common/lifecycle.cpp
-  src/common/resource_pack.cpp
-  src/common/resource_manager.cpp
-  src/common/runtime_session.cpp
-  src/common/screen_layout.cpp
-  src/common/sha256.cpp
-  src/common/software_canvas.cpp
-  src/common/telemetry.cpp
-  src/common/th3ds.cpp
-  src/common/texture_cache.cpp
-)
+set(CTH3DS_BUILD_PROFILE "loose" CACHE STRING "Native resource implementation: loose or resource-experiment")
+set_property(CACHE CTH3DS_BUILD_PROFILE PROPERTY STRINGS loose resource-experiment)
+if(NOT CTH3DS_BUILD_PROFILE STREQUAL "loose" AND NOT CTH3DS_BUILD_PROFILE STREQUAL "resource-experiment")
+  message(FATAL_ERROR "Unsupported CTH3DS_BUILD_PROFILE: ${CTH3DS_BUILD_PROFILE}")
+endif()
+set(CTH3DS_RESOURCE_EXPERIMENT 0)
+if(CTH3DS_BUILD_PROFILE STREQUAL "resource-experiment")
+  set(CTH3DS_RESOURCE_EXPERIMENT 1)
+endif()
+include(src/common/sources.cmake)
+set(CTH3DS_CLASSIFIED_COMMON ${CTH3DS_PLAYER_SOURCES} ${CTH3DS_RESOURCE_EXPERIMENT_SOURCES} ${CTH3DS_RESOURCE_TOOL_SOURCES})
+file(GLOB CTH3DS_ACTUAL_COMMON RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/src/common" "src/common/*.cpp")
+list(SORT CTH3DS_CLASSIFIED_COMMON)
+list(SORT CTH3DS_ACTUAL_COMMON)
+if(NOT CTH3DS_CLASSIFIED_COMMON STREQUAL CTH3DS_ACTUAL_COMMON)
+  message(FATAL_ERROR "Common sources must have exactly one explicit owner in src/common/sources.cmake")
+endif()
+foreach(group PLAYER RESOURCE_EXPERIMENT RESOURCE_TOOL)
+  list(TRANSFORM CTH3DS_${group}_SOURCES PREPEND "src/common/")
+endforeach()
+add_library(cth3ds_common STATIC ${CTH3DS_PLAYER_SOURCES})
+add_library(cth3ds_resource_experiment STATIC ${CTH3DS_RESOURCE_EXPERIMENT_SOURCES})
+target_link_libraries(cth3ds_resource_experiment PUBLIC cth3ds_common)
+add_library(cth3ds_resource_tools STATIC ${CTH3DS_RESOURCE_TOOL_SOURCES})
+target_link_libraries(cth3ds_resource_tools PUBLIC cth3ds_common)
 
 target_include_directories(cth3ds_common PUBLIC include)
 
-target_compile_options(cth3ds_common PRIVATE
+foreach(common_target cth3ds_common cth3ds_resource_experiment cth3ds_resource_tools)
+target_compile_options(${common_target} PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow>
 )
 if(CTH3DS_WARNINGS_AS_ERRORS)
-  target_compile_options(cth3ds_common PRIVATE
+  target_compile_options(${common_target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Werror>
   )
 endif()
 
 if(CTH3DS_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-  target_compile_options(cth3ds_common PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
-  target_link_options(cth3ds_common PUBLIC -fsanitize=address,undefined)
+  target_compile_options(${common_target} PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
+  target_link_options(${common_target} PUBLIC -fsanitize=address,undefined)
 endif()
-
+endforeach()
 
 if(CTH3DS_BUILD_3DS_SYNTAX_CHECK)
   include(src/3ds/sources.cmake)
@@ -65,7 +68,7 @@ if(CTH3DS_BUILD_3DS_SYNTAX_CHECK)
     include
     src/3ds
   )
-  target_compile_definitions(cth3ds-3ds-syntax PRIVATE __3DS__=1 CTH3DS_STUB_BUILD=1)
+  target_compile_definitions(cth3ds-3ds-syntax PRIVATE __3DS__=1 CTH3DS_STUB_BUILD=1 CTH3DS_RESOURCE_EXPERIMENT=${CTH3DS_RESOURCE_EXPERIMENT})
   target_compile_options(cth3ds-3ds-syntax PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow>
   )
@@ -85,7 +88,7 @@ if(CTH3DS_BUILD_SIMULATOR)
 endif()
 
 add_executable(cth3ds-runtime-probe src/host/runtime_probe_main.cpp)
-target_link_libraries(cth3ds-runtime-probe PRIVATE cth3ds_common)
+target_link_libraries(cth3ds-runtime-probe PRIVATE cth3ds_resource_experiment)
 target_compile_options(cth3ds-runtime-probe PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow>
 )
@@ -122,7 +125,7 @@ if(CTH3DS_BUILD_TESTS)
     tests/test_texture_cache.cpp
     tests/test_th3ds_runtime.cpp
   )
-  target_link_libraries(cth3ds-tests PRIVATE cth3ds_common)
+  target_link_libraries(cth3ds-tests PRIVATE cth3ds_resource_experiment cth3ds_resource_tools)
   target_include_directories(cth3ds-tests PRIVATE tests)
   target_compile_options(cth3ds-tests PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow>
@@ -133,7 +136,9 @@ if(CTH3DS_BUILD_TESTS)
     )
   endif()
   add_test(NAME cth3ds-tests COMMAND cth3ds-tests)
+  # Each Python fixture owns its profile; host target identity remains explicit above.
   set(CTH3DS_PYTHON_TEST_ENV
+    CTH3DS_BUILD_PROFILE=loose
     PYTHONPATH=${CMAKE_SOURCE_DIR}/tools
     PYTHONDONTWRITEBYTECODE=1
     CTH3DS_RUNTIME_PROBE=$<TARGET_FILE:cth3ds-runtime-probe>)

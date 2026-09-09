@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
+#include "cth3ds/build_profile.hpp"
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/frame_tail.hpp"
 #include "cth3ds/memory_telemetry.hpp"
@@ -15,8 +16,10 @@ union SDL_Event;
 
 namespace cth3ds {
 
+#if CTH3DS_RESOURCE_EXPERIMENT
 class ResourceTelemetrySink;
 class ResourceBudgetGate;
+#endif
 
 void register_lua_module(lua_State* state);
 [[nodiscard]] bool runtime_initialize(lua_State* state, const char* mode = "loose");
@@ -106,11 +109,13 @@ void report_allocation_failure(const char* category, const char* identity,
                                const char* allocator = "app",
                                const char* detail = nullptr) noexcept;
 
+#if CTH3DS_RESOURCE_EXPERIMENT
 //! Canonical TH3DS pool telemetry and heap gates consumed by ResourceManager.
 //! The loose-file diagnostic counters above remain separate.
 [[nodiscard]] std::shared_ptr<ResourceTelemetrySink>
 make_runtime_resource_telemetry_sink();
 [[nodiscard]] std::shared_ptr<ResourceBudgetGate>
 make_runtime_resource_budget_gate();
+#endif
 
 }  // namespace cth3ds

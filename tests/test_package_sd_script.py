@@ -22,7 +22,7 @@ from validate_sd_tree import validate_sd_tree
 
 
 class PackageSdScriptTests(unittest.TestCase):
-    def make_environment(self, root: Path) -> tuple[dict[str, str], Path]:
+    def make_environment(self, root: Path, profile: str = "loose") -> tuple[dict[str, str], Path]:
         source, languages, _atlas = make_fixture(root)
         runtime = root / "external" / "CorsixTH" / "CorsixTH"
         runtime.mkdir(parents=True)
@@ -57,6 +57,7 @@ class PackageSdScriptTests(unittest.TestCase):
         environment = independent_environment()
         environment.update(
             {
+                "CTH3DS_BUILD_PROFILE": profile,
                 "CTH3DS_BUILD_DIR": str(build),
                 "CTH3DS_DEPS_PREFIX": str(root / "deps"),
                 "CTH3DS_EXTERNAL_DIR": str(root / "external"),
@@ -64,19 +65,19 @@ class PackageSdScriptTests(unittest.TestCase):
                 "CTH3DS_BUILD_MANIFEST": str(root / "build-manifest.json"),
             }
         )
-        self.seal_packaging_fixture(root)
+        self.seal_packaging_fixture(root, profile)
         return environment, source
 
-    def seal_packaging_fixture(self, root: Path) -> None:
+    def seal_packaging_fixture(self, root: Path, profile: str = "loose") -> None:
         # Explicit packaging-only fixture: these synthetic bytes prove binding
         # checks and packaging, never an ARM build or game startup.
         from integration.generated_view import seal_view
         from source_view import binding
         runtime = root / "external/CorsixTH"
         binary = root / "build/CorsixTH/CorsixTH-3DS.3dsx"
-        seal_view(runtime, ROOT, "test-fixture:synthetic")
+        seal_view(runtime, ROOT, "test-fixture:synthetic", profile)
         manifest = {"source_commit": "0" * 39 + "1", "source_tree": "0" * 39 + "2",
-                    "generated_source": binding(runtime, ROOT, binary)}
+                    "generated_source": binding(runtime, ROOT, binary, profile)}
         (root / "build-manifest.json").write_text(json.dumps(manifest))
 
     def run_package(
@@ -104,7 +105,7 @@ class PackageSdScriptTests(unittest.TestCase):
     def test_th3ds_candidate_is_complete_atomic_and_excludes_loose_originals(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            environment, source = self.make_environment(root)
+            environment, source = self.make_environment(root, "resource-experiment")
             dist = root / "dist-th3ds"
             completed = self.run_package(environment, source, dist, "th3ds")
             self.assertEqual(completed.returncode, 0, completed.stderr)

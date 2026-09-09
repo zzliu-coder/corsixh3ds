@@ -67,7 +67,7 @@ from .clock import (
 )
 
 
-def check_integrated(root: Path, overlay: Path) -> list[str]:
+def check_integrated(root: Path, overlay: Path, profile: str = 'loose') -> list[str]:
     errors: list[str] = check_sound_lifetime(root, SOUND_INIT_R41_TRANSACTION)
     errors.extend(check_dual_screen(root))
     errors.extend(check_render_fast(root))
@@ -143,7 +143,12 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
         ):
             if limit_alias not in generated_platform_text:
                 errors.append(f"3DS C++ Lua ABI is missing limit alias {limit_alias}")
-    for source, relative in iter_overlay_files(overlay):
+    from .build_profile import common_sources, cmake_contract
+    selected = common_sources(overlay, profile)
+    actual = {p.name for p in (root / "CorsixTH/Src/3ds/common").glob("*.cpp")}
+    if actual != set(selected):
+        errors.append("generated common sources differ from build profile")
+    for source, relative in iter_overlay_files(overlay, profile):
         destination = root / relative
         if not destination.is_file():
             errors.append(f"missing copied file {relative}")
@@ -154,6 +159,8 @@ def check_integrated(root: Path, overlay: Path) -> list[str]:
         errors.append("missing generated 3DS CMake source list")
     else:
         generated_text = read_text(generated)
+        if cmake_contract(profile, selected) not in generated_text:
+            errors.append("generated CMake build-profile contract differs")
         for required in ("liblfs.a", "liblpeg.a", "ctr_generate_smdh", "ctr_create_3dsx"):
             if required not in generated_text:
                 errors.append(f"generated 3DS CMake is missing {required}")

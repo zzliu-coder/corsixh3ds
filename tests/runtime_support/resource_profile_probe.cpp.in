@@ -1,0 +1,195 @@
+// Actual Runtime methods inserted by test_resource_profile_runtime.py.
+// Hardware/Lua boundaries are instrumented; lifecycle/atomic IO/resource core are real.
+#include <array>
+#include <atomic>
+#include <cassert>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+#include "cth3ds/build_profile.hpp"
+#include "cth3ds/events.hpp"
+#include "cth3ds/lifecycle.hpp"
+#include "cth3ds/interval_gate.hpp"
+#include "cth3ds/panel_refresh.hpp"
+#include "cth3ds/screen_layout.hpp"
+#include "cth3ds/telemetry.hpp"
+#include "cth3ds/memory_telemetry.hpp"
+#include "cth3ds/atomic_save.hpp"
+#if CTH3DS_RESOURCE_EXPERIMENT
+#include "cth3ds/runtime_session.hpp"
+#endif
+using namespace cth3ds;
+using Uint32 = unsigned;
+using Result = int;
+struct lua_State {};
+struct SDL_Window {};
+struct SDL_Surface {};
+struct SDL_Event { int type{}; };
+struct aptHookCookie {};
+constexpr int SDL_QUIT = 1;
+constexpr bool R_SUCCEEDED(Result value) { return value == 0; }
+std::uint64_t tick_time = 1000;
+std::uint64_t now_us() { return tick_time; }
+int windows=0, releases=0, hooks=0, unhooks=0, ptmu=0, quit=0, halt=0;
+bool sleep_allowed=true, music_paused=false;
+std::array<bool,32> paused{};
+int ptmuInit(){++ptmu;return 0;}
+void ptmuExit(){--ptmu;}
+void aptHook(aptHookCookie*, void(*)(int,void*), void*){++hooks;}
+void aptUnhook(aptHookCookie*){++unhooks;}
+void aptSetSleepAllowed(bool value){sleep_allowed=value;}
+void SDL_DestroyWindow(SDL_Window*){++releases;}
+void SDL_PushEvent(SDL_Event*){++quit;}
+int Mix_HaltMusic(){++halt;return 0;}
+int Mix_HaltChannel(int){++halt;return 0;}
+int Mix_Paused(int c){return paused[static_cast<std::size_t>(c)];}
+int Mix_PausedMusic(){return music_paused;}
+void Mix_Pause(int c){paused[static_cast<std::size_t>(c)]=true;}
+void Mix_Resume(int c){paused[static_cast<std::size_t>(c)]=false;}
+void Mix_PauseMusic(){music_paused=true;}
+void Mix_ResumeMusic(){music_paused=false;}
+template<class... T> void boot_log(T...){}
+template<class... T> void boot_log_memory(T...){}
+template<class... T> void boot_log_checkpoint(T...){}
+void boot_log_close(){}
+void seal_observation_tail(const char*){}
+void reset_benchmark_activation(){}
+std::uint64_t runtime_span_begin(TimingStage){return 1;}
+void runtime_span_end(std::uint64_t,bool){}
+template<class... T> void runtime_observe_memory(T...){}
+bool probe_regular_heap(const char*,MemoryGate){return true;}
+std::string g_adapter_origin="origin";
+struct Collector {
+ bool running=false, paused=false; int stops=0;
+ bool start(std::uint64_t(*)()){running=true;return true;}
+ bool stop(){running=false;++stops;return true;}
+ void pause(bool p){paused=p;}
+ void discard(){}
+};
+struct Mapper { void reset(){} };
+#if CTH3DS_RESOURCE_EXPERIMENT
+const char* kResourceBundlePath=nullptr;
+std::shared_ptr<ResourceTelemetrySink> make_runtime_resource_telemetry_sink(){return {};}
+std::shared_ptr<ResourceBudgetGate> make_runtime_resource_budget_gate(){return {};}
+// INSERT_GROUP
+#endif
+class Runtime {
+ public:
+ lua_State* lua_state_=nullptr;
+ std::string asset_mode_;
+ std::uint64_t epoch_=0,last_tick_us_=0;
+ bool initialized_=false,ready_=false,dirty_=false,input_failed_=false;
+ bool apt_hooked_=false,ptmu_ready_=false,lifecycle_audio_suspended_=false;
+ bool audio_paused_before_[32]{},music_paused_before_=false;
+ SDL_Window *bottom_window_=nullptr,*game_window_=nullptr;
+ SDL_Surface *bottom_surface_=nullptr,*game_surface_=nullptr;
+ unsigned bottom_window_id_=0,game_window_id_=0;
+ aptHookCookie apt_cookie_{};
+ std::atomic<unsigned> pending_lifecycle_{0};
+ std::atomic<bool> exit_requested_{false};
+ Collector input_collector_;
+ Mapper input_mapper_;
+ LifecycleController lifecycle_{60000000};
+ PanelRefreshGate panel_refresh_{33333};
+ IntervalGate state_refresh_gate_{500000},system_refresh_gate_{2000000},
+              battery_refresh_gate_{10000000},telemetry_log_gate_{10000000};
+ std::vector<ActionType> actions;
+#if CTH3DS_RESOURCE_EXPERIMENT
+ std::unique_ptr<RuntimeSession> resource_session_;
+ bool resource_start_failed_=false;
+#endif
+ static void apt_callback(int,void*){}
+ bool ensure_bottom_window(){static SDL_Window window;bottom_window_=&window;++windows;return true;}
+ void stage(const char*,const char*){}
+ void refresh_system_status(bool){}
+ void set_notice(std::string,bool){}
+ void show_fatal(const char*){}
+ void dispatch(lua_State*,const Action& action){actions.push_back(action.type);}
+// INSERT_METHODS
+};
+Runtime instance;
+Runtime& runtime(){return instance;}
+bool lua_boolean=true;
+std::string lua_message;
+const char* luaL_checkstring(lua_State*,int){return "menu";}
+const char* luaL_optstring(lua_State*,int,const char*){return "-";}
+bool lua_isnoneornil(lua_State*,int){return true;}
+bool lua_toboolean(lua_State*,int){return true;}
+void lua_pushboolean(lua_State*,int v){lua_boolean=v!=0;}
+void lua_pushnil(lua_State*){lua_message.clear();}
+void lua_pushlstring(lua_State*,const char* s,std::size_t n){lua_message.assign(s,n);}
+void lua_pushstring(lua_State*,const char* s){lua_message=s;}
+// INSERT_LUA
+int main(int argc,char** argv){
+ assert(argc==3);
+ lua_State owner,other;
+ auto& r=runtime();
+ assert(!r.initialize(&owner,nullptr));
+ assert(!r.initialize(&owner,"unknown"));
+ assert(r.lua_state_==nullptr && r.epoch_==0 && windows==0 && hooks==0);
+#if !CTH3DS_RESOURCE_EXPERIMENT
+ assert(!r.initialize(&owner,"th3ds"));
+ assert(r.lua_state_==nullptr && r.asset_mode_.empty() && r.epoch_==0 && windows==0);
+#endif
+ assert(r.initialize(&owner,"loose"));
+ assert(windows==1 && hooks==1 && ptmu==1 && r.epoch_==1);
+ assert(r.initialize(&owner,"loose") && r.epoch_==1 && windows==1);
+ assert(!r.initialize(&other,"loose") && r.epoch_==1 && r.lua_state_==&owner);
+ assert(r.mark_ready(&owner) && r.ready_ && r.input_collector_.running);
+ assert(!r.mark_ready(&other));
+ assert(l_resource_event(&owner)==2 && !lua_boolean &&
+        lua_message=="resource_event is invalid in loose mode");
+ paused[2]=true;music_paused=true;
+ r.apply_lifecycle_decision(&owner,r.lifecycle_.signal(LifecycleSignal::Suspend,tick_time),false);
+ assert(r.lifecycle_audio_suspended_ && r.input_collector_.paused);
+ assert(r.actions.size()==1 && r.actions.back()==ActionType::LifecycleSuspend);
+ ++tick_time;
+ r.apply_lifecycle_decision(&owner,r.lifecycle_.signal(LifecycleSignal::Restore,tick_time),true);
+ assert(!r.lifecycle_audio_suspended_ && !r.input_collector_.paused);
+ assert(paused[2] && !paused[1] && music_paused && r.last_tick_us_==tick_time);
+ r.begin_critical_io();r.begin_critical_io();
+ assert(!sleep_allowed && r.input_collector_.paused);
+ r.end_critical_io();assert(!sleep_allowed && r.input_collector_.paused);
+ // Real filesystem transaction under the actual critical-IO method.
+ const std::filesystem::path destination=argv[2];
+ const auto committed=atomic_write_file(destination,[](const std::filesystem::path& temporary,std::string&){
+   std::ofstream out(temporary);out<<"AR6 saved";return static_cast<bool>(out);
+ });
+ assert(committed.ok);
+ std::ifstream saved(destination);std::string payload;std::getline(saved,payload);
+ assert(payload=="AR6 saved");
+ const auto exiting=r.lifecycle_.signal(LifecycleSignal::Exit,tick_time);
+ assert(!exiting.request_exit && !exiting.request_autosave);
+ r.apply_lifecycle_decision(&owner,exiting,false);assert(quit==0);
+ r.end_critical_io();assert(sleep_allowed && !r.input_collector_.paused);
+ const auto deferred=r.lifecycle_.tick(tick_time);
+ assert(deferred.request_exit && !deferred.request_autosave);
+ r.apply_lifecycle_decision(&owner,deferred,false);assert(quit==1);
+ for(auto action:r.actions)assert(action!=ActionType::QuickSave);
+ r.shutdown();
+ assert(!r.initialized_ && !r.ready_ && !r.lua_state_ && !r.bottom_window_);
+ assert(r.asset_mode_.empty() && !r.input_collector_.running && releases==1 && unhooks==1 && ptmu==0);
+ r.shutdown();assert(releases==1 && unhooks==1);
+ assert(r.initialize(&other,"loose") && r.lua_state_==&other && r.epoch_==2);
+ r.shutdown();
+#if CTH3DS_RESOURCE_EXPERIMENT
+ kResourceBundlePath=argv[1];
+ assert(r.initialize(&owner,"th3ds") && r.resource_session_);
+ assert(r.resource_session_->snapshot().state==RuntimeSessionState::Menu);
+ assert(l_resource_event(&owner)==2 && lua_boolean && lua_message.empty());
+ assert(r.resource_event("save-begin","slot",true));
+ assert(r.resource_event("save-end","slot",true));
+ r.apply_lifecycle_decision(&owner,r.lifecycle_.signal(LifecycleSignal::Suspend,tick_time),false);
+ assert(r.resource_session_->snapshot().state==RuntimeSessionState::Suspended);
+ r.apply_lifecycle_decision(&owner,r.lifecycle_.signal(LifecycleSignal::Restore,tick_time),true);
+ assert(r.resource_session_->snapshot().state==RuntimeSessionState::Menu);
+ r.shutdown();assert(!r.resource_session_);
+#else
+ (void)argv[1];
+#endif
+ std::cout<<"actual Runtime initialize/owner/loose resource rejection/save/critical IO/suspend/restore/exit/shutdown PASS profile="<<CTH3DS_RESOURCE_EXPERIMENT<<"\n";
+}

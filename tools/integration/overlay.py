@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from .platform_sources import platform_files
+from .build_profile import common_sources, cmake_contract, validate_profile
 from typing import Iterable, Sequence
 import shutil
 import subprocess
@@ -77,12 +78,12 @@ def validate_upstream(root: Path, allow_unverified: bool) -> str:
     return "source-signature:v0.70.1" if signature_ok else "unverified"
 
 
-def iter_overlay_files(overlay: Path) -> Iterable[tuple[Path, Path]]:
+def iter_overlay_files(overlay: Path, profile: str = 'loose', *, all_sources=False) -> Iterable[tuple[Path, Path]]:
     include_root = overlay / "include" / "cth3ds"
     for source in sorted(include_root.glob("*.hpp")):
         yield source, Path("CorsixTH/Src/3ds/include/cth3ds") / source.name
-    for source in sorted((overlay / "src" / "common").glob("*.cpp")):
-        yield source, Path("CorsixTH/Src/3ds/common") / source.name
+    for name in common_sources(overlay, profile, all_sources=all_sources):
+        yield overlay / "src/common" / name, Path("CorsixTH/Src/3ds/common") / name
     sources, headers = platform_files(overlay / "src/3ds")
     for name in [*sources, *headers, "sources.cmake"]:
         source = overlay / "src" / "3ds" / name
@@ -113,11 +114,11 @@ def refresh_embedded_adapter(overlay: Path) -> None:
         )
 
 
-def copy_overlay(root: Path, overlay: Path, dry_run: bool) -> list[Change]:
+def copy_overlay(root: Path, overlay: Path, dry_run: bool, profile: str = 'loose') -> list[Change]:
     changes: list[Change] = []
     if not dry_run:
         refresh_embedded_adapter(overlay)
-    for source, relative in iter_overlay_files(overlay):
+    for source, relative in iter_overlay_files(overlay, profile):
         if not source.is_file():
             raise IntegrationError(f"overlay file is missing: {source}")
         destination = root / relative
@@ -136,8 +137,7 @@ if(NOT CORSIXTH_3DS_DEPS_PREFIX)
   message(FATAL_ERROR "CORSIXTH_3DS_DEPS_PREFIX must point to the staged 3DS dependencies")
 endif()
 
-file(GLOB CTH3DS_COMMON_SOURCES CONFIGURE_DEPENDS
-  "${CTH3DS_PLATFORM_ROOT}/common/*.cpp")
+@COMMON_PROFILE_CONTRACT@
 
 target_sources(CorsixTH_lib PRIVATE
   ${CTH3DS_COMMON_SOURCES})
@@ -210,15 +210,16 @@ ctr_create_3dsx(corsixth_3dsx
   OUTPUT "${CMAKE_BINARY_DIR}/CorsixTH-3DS.3dsx"
   SMDH "${CTH3DS_SMDH}")
 """
+    generated_text = generated_text.replace("@COMMON_PROFILE_CONTRACT@", cmake_contract(profile, common_sources(overlay, profile)))
     if not generated.is_file() or read_text(generated) != generated_text:
         write_text(generated, generated_text, dry_run)
         changes.append(Change(generated.relative_to(root).as_posix(), "generate"))
     return changes
 
 
-def manifest(root: Path, overlay: Path, provenance: str) -> dict[str, object]:
+def manifest(root: Path, overlay: Path, provenance: str, profile: str = 'loose') -> dict[str, object]:
     files = []
-    for source, relative in iter_overlay_files(overlay):
+    for source, relative in iter_overlay_files(overlay, profile):
         destination = root / relative
         if not destination.is_file():
             raise IntegrationError(f"integrated file is missing: {relative}")
@@ -235,5 +236,6 @@ def manifest(root: Path, overlay: Path, provenance: str) -> dict[str, object]:
         "upstream_tag": UPSTREAM_TAG,
         "upstream_commit": UPSTREAM_COMMIT,
         "provenance": provenance,
+        "build_profile": validate_profile(profile),
         "files": files,
     }

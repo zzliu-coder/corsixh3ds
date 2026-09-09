@@ -53,8 +53,10 @@
 #include "cth3ds/interval_gate.hpp"
 #include "cth3ds/lifecycle.hpp"
 #include "cth3ds/memory_telemetry.hpp"
+#if CTH3DS_RESOURCE_EXPERIMENT
 #include "cth3ds/resource_manager.hpp"
 #include "cth3ds/runtime_session.hpp"
+#endif
 #include "cth3ds/screen_layout.hpp"
 #include "cth3ds/software_canvas.hpp"
 #include "cth3ds/telemetry.hpp"
@@ -98,10 +100,13 @@ constexpr std::uint64_t kTelemetryLogUs = 10000000U;
 
 constexpr const char* kOverlayVersion = "0.6.1";
 constexpr const char* kLogPath = "sdmc:/3ds/corsixth/boot.log";
+#if CTH3DS_RESOURCE_EXPERIMENT
 constexpr const char* kResourceBundlePath =
     "sdmc:/3ds/corsixth/resources/bundle.th3ds.json";
+#endif
 constexpr const char* kAdapterModule = "3ds.platform";
 
+#if CTH3DS_RESOURCE_EXPERIMENT
 std::uint32_t resource_group_id(std::string_view identity) noexcept {
   std::uint32_t hash = 2166136261U;
   for (const char character : identity) {
@@ -113,6 +118,7 @@ std::uint32_t resource_group_id(std::string_view identity) noexcept {
   return 2U + (hash % 0x7FFFFFFDU);
 }
 
+#endif
 // Dropping this file on the SD card switches the lower screen back to the
 // standalone management panel. Game mirroring is the default; the file exists
 // so a device can fall back without a rebuild.
@@ -472,6 +478,7 @@ void log_allocation_failure(const char* category, const char* identity,
   boot_log_memory(g_current_stage);
 }
 
+#if CTH3DS_RESOURCE_EXPERIMENT
 std::array<char, 33> resource_identity(const ResourceId& id) noexcept {
   constexpr char digits[] = "0123456789abcdef";
   std::array<char, 33> result{};
@@ -607,6 +614,7 @@ class RuntimeResourceBudgetGate final : public ResourceBudgetGate {
   }
 };
 
+#endif
 // Identity of the Lua adapter this process actually ended up running. Printed
 // on the lower screen so a binary/SD-card mismatch is visible without a
 // debugger; that mismatch is exactly what "3DS ADAPTER IS NOT ATTACHED" means.
@@ -866,7 +874,12 @@ class Runtime {
         panel_refresh_(33333U), lifecycle_(60000000U) {}
 
   bool initialize(lua_State* state, const char* mode) {
+    // Reject unsupported resources before acquiring a window, Lua owner or epoch.
+#if CTH3DS_RESOURCE_EXPERIMENT
     if (!mode || (std::strcmp(mode,"loose") && std::strcmp(mode,"th3ds"))) return false;
+#else
+    if (!mode || std::strcmp(mode, "loose")) return false;
+#endif
     if (initialized_) return state == lua_state_ && asset_mode_ == mode;
     if (lua_state_ && lua_state_ != state) return false;
     lua_state_ = state;
@@ -878,6 +891,7 @@ class Runtime {
       return false;
     }
 
+#if CTH3DS_RESOURCE_EXPERIMENT
     if (resource_start_failed_) {
       return false;
     }
@@ -916,6 +930,7 @@ class Runtime {
               static_cast<std::size_t>(ResourcePool::Scratch)]));
     }
 
+#endif
     const Result ptmu_result = ptmuInit();
     ptmu_ready_ = R_SUCCEEDED(ptmu_result);
     aptHook(&apt_cookie_, &Runtime::apt_callback, this);
@@ -982,6 +997,7 @@ class Runtime {
     // NDSP callback against freed chunks is a classic 3DS exit hang.
     Mix_HaltMusic();
     Mix_HaltChannel(-1);
+#if CTH3DS_RESOURCE_EXPERIMENT
     if (resource_session_ != nullptr) {
       const auto closed = resource_session_->shutdown();
       if (!closed) {
@@ -993,6 +1009,7 @@ class Runtime {
         resource_session_.reset();
       }
     }
+#endif
     if (apt_hooked_) {
       aptSetSleepAllowed(true);
       aptUnhook(&apt_cookie_);
@@ -1012,7 +1029,9 @@ class Runtime {
     initialized_ = false; ready_ = false;
     lua_state_ = nullptr;
     game_window_=nullptr;game_window_id_=0;game_surface_=nullptr;
+#if CTH3DS_RESOURCE_EXPERIMENT
     resource_start_failed_=false;resource_session_.reset();
+#endif
     pending_lifecycle_.store(0);exit_requested_.store(false);
     lifecycle_.reset(0);last_tick_us_=0;panel_refresh_.reset();
     g_adapter_origin.clear();asset_mode_.clear();
@@ -1536,6 +1555,7 @@ class Runtime {
     }
   }
 
+#if CTH3DS_RESOURCE_EXPERIMENT
   ResourceResult<void> resource_event(std::string_view event,
                                       std::string_view identity,
                                       bool success) {
@@ -1569,6 +1589,7 @@ class Runtime {
     return result;
   }
 
+#endif
   void set_notice(std::string notice, bool is_error) {
     BottomUiState copy = bottom_ui_.state();
     if (copy.notice == notice && copy.notice_is_error == is_error) {
@@ -1748,6 +1769,7 @@ class Runtime {
       for(int c=0;c<32;++c) { audio_paused_before_[c]=Mix_Paused(c)!=0; if(!audio_paused_before_[c])Mix_Pause(c); }
       music_paused_before_=Mix_PausedMusic()!=0;Mix_PauseMusic();
     }
+#if CTH3DS_RESOURCE_EXPERIMENT
     if (decision.pause_simulation && resource_session_ != nullptr) {
       const auto suspended = resource_session_->suspend();
       if (!suspended) {
@@ -1768,6 +1790,7 @@ class Runtime {
         boot_log("runtime-core: resume commit");
       }
     }
+#endif
     if (decision.resume_audio && lifecycle_audio_suspended_) {
       input_collector_.pause(false);
 #ifndef CTH3DS_STUB_BUILD
@@ -1798,6 +1821,7 @@ class Runtime {
       Action action;
       action.type = ActionType::LifecycleExit;
       dispatch(state, action);
+#if CTH3DS_RESOURCE_EXPERIMENT
       if (resource_session_ != nullptr) {
         const auto closed = resource_session_->shutdown();
         if (!closed) {
@@ -1809,6 +1833,7 @@ class Runtime {
           resource_session_.reset();
         }
       }
+#endif
       SDL_Event quit{};
       quit.type = SDL_QUIT;
       SDL_PushEvent(&quit);
@@ -2141,7 +2166,9 @@ class Runtime {
   aptHookCookie apt_cookie_{};
   std::atomic<std::uint32_t> pending_lifecycle_{0U};
   std::atomic<bool> exit_requested_{false};
+#if CTH3DS_RESOURCE_EXPERIMENT
   std::unique_ptr<RuntimeSession> resource_session_{};
+#endif
   std::uint64_t last_tick_us_{0U};
   IntervalGate state_refresh_gate_{kStateRefreshUs};
   IntervalGate system_refresh_gate_{kSystemRefreshUs};
@@ -2156,7 +2183,9 @@ class Runtime {
   bool lifecycle_audio_suspended_{false};
   bool apt_hooked_{false};
   bool ptmu_ready_{false};
+#if CTH3DS_RESOURCE_EXPERIMENT
   bool resource_start_failed_{false};
+#endif
   bool dirty_{true};
   std::string startup_code_{"S10"};
   std::string startup_label_{"NATIVE BOOTSTRAP"};
@@ -2749,6 +2778,7 @@ int l_resource_event(lua_State* state) {
   const char* identity = luaL_optstring(state, 2, "-");
   const bool success = lua_isnoneornil(state, 3) ||
                        lua_toboolean(state, 3) != 0;
+#if CTH3DS_RESOURCE_EXPERIMENT
   const auto result = runtime().resource_event(event != nullptr ? event : "",
                                                identity != nullptr ? identity : "-",
                                                success);
@@ -2759,6 +2789,13 @@ int l_resource_event(lua_State* state) {
     lua_pushlstring(state, result.error().message.data(),
                     result.error().message.size());
   }
+#else
+  (void)event;
+  (void)identity;
+  (void)success;
+  lua_pushboolean(state, 0);
+  lua_pushstring(state, "resource_event is invalid in loose mode");
+#endif
   return 2;
 }
 
@@ -2964,6 +3001,7 @@ void report_allocation_failure(const char* category, const char* identity,
   log_allocation_failure(category, identity, requested_bytes, allocator, detail);
 }
 
+#if CTH3DS_RESOURCE_EXPERIMENT
 std::shared_ptr<ResourceTelemetrySink>
 make_runtime_resource_telemetry_sink() {
   return std::make_shared<RuntimeResourceTelemetry>();
@@ -2973,6 +3011,7 @@ std::shared_ptr<ResourceBudgetGate> make_runtime_resource_budget_gate() {
   return std::make_shared<RuntimeResourceBudgetGate>();
 }
 
+#endif
 void runtime_set_game_window(SDL_Window* window) noexcept {
   runtime().set_game_window(window);
 }

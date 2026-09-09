@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export CTH3DS_BUILD_PROFILE=resource-experiment
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
 source_owner "$0" "$@"
 
@@ -39,6 +40,7 @@ set_cmake_generator
 CC=clang CXX=clang++ cmake -S "${CTH3DS_ROOT}" -B "${ASAN_BUILD}" \
   "${CTH3DS_CMAKE_GENERATOR[@]}" \
   -DCMAKE_BUILD_TYPE=Debug \
+  -DCTH3DS_BUILD_PROFILE=resource-experiment \
   -DCTH3DS_ENABLE_SANITIZERS=ON \
   -DCTH3DS_BUILD_TESTS=ON \
   -DCTH3DS_BUILD_SIMULATOR=ON \
@@ -52,6 +54,7 @@ cmake --build "${ASAN_BUILD}" --parallel "${CTH3DS_JOBS}" \
 # mandatory, with immediate abort on the first finding.
 ASAN_OPTIONS=halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+CTH3DS_BUILD_PROFILE=loose \
   ctest --test-dir "${ASAN_BUILD}" --output-on-failure \
   >"${ACCEPT_ROOT}/asan-ctest.log" 2>&1
 

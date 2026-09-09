@@ -32,6 +32,11 @@ done
 
 [[ "${ASSET_MODE}" == "th3ds" || "${ASSET_MODE}" == "loose" ]] || \
   die '--asset-mode must be th3ds or loose'
+if [[ "${ASSET_MODE}" == "loose" ]]; then
+  [[ "${CTH3DS_BUILD_PROFILE}" == "loose" ]] || die 'loose player package requires loose build profile'
+else
+  [[ "${CTH3DS_BUILD_PROFILE}" == "resource-experiment" ]] || die 'th3ds assets require resource-experiment build profile'
+fi
 [[ -n "${THEME_HOSPITAL}" ]] || \
   die '--theme-hospital is required for loose product candidates and th3ds experiments'
 [[ "${NO_BINARY_COPY}" -eq 0 ]] || \
@@ -63,7 +68,7 @@ mkdir -p "${WORK_DEST}"
 built="${CTH3DS_BUILD_DIR}/CorsixTH/CorsixTH-3DS.3dsx"
 [[ -s "${built}" ]] || die 'build the non-empty .3dsx first'
 python3 "${CTH3DS_ROOT}/tools/source_view.py" verify-build --view "${UPSTREAM_DIR}" \
-  --overlay "${CTH3DS_ROOT}" --binary "${built}" \
+  --overlay "${CTH3DS_ROOT}" --build-profile "${CTH3DS_BUILD_PROFILE}" --binary "${built}" \
   --manifest "${CTH3DS_BUILD_MANIFEST}"
 cp "${built}" "${WORK_DEST}/CorsixTH-3DS.3dsx"
 

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(cth3ds_runtime_core_v2_red_contract LANGUAGES CXX)
 
+set(CTH3DS_BUILD_PROFILE resource-experiment CACHE STRING "" FORCE)
 set(CTH3DS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(CTH3DS_BUILD_SIMULATOR OFF CACHE BOOL "" FORCE)
 set(CTH3DS_BUILD_3DS_SYNTAX_CHECK OFF CACHE BOOL "" FORCE)
@@ -11,7 +12,7 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../.."
 
 function(add_runtime_core_v2_observer target source)
   add_executable(${target} "${source}")
-  target_link_libraries(${target} PRIVATE cth3ds_common)
+  target_link_libraries(${target} PRIVATE cth3ds_resource_experiment)
   target_compile_features(${target} PRIVATE cxx_std_17)
   target_compile_options(${target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow;-Werror>

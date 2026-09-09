@@ -14,7 +14,7 @@ inline std::uint32_t thermal_cool_uint16(std::uint16_t value) noexcept {
 }
 // Exact division for the neighbour sum (<= 16*65535), no ARM software divide.
 inline std::uint32_t thermal_average(std::uint32_t n,unsigned d) noexcept {
-  constexpr std::array<std::uint32_t,17> reciprocal{{0,0,2147483648U,1431655766U,
+  static constexpr std::array<std::uint32_t,17> reciprocal{{0,0,2147483648U,1431655766U,
     1073741824U,858993460U,715827883U,613566757U,536870912U,477218589U,
     429496730U,390451573U,357913942U,330382100U,306783379U,286331154U,268435456U}};
   if(d<=1)return n;

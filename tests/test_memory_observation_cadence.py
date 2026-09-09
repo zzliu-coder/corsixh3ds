@@ -45,8 +45,8 @@ void boot_log(const char*,...) {}
 void boot_log_memory(const char*) {++fail_logs;}
 // ACTUAL_RUNTIME_METHOD
 void reset() {time_us=snapshots=lua_queries=recorded=fail_logs=0;g_memory_sampling={};}
-void observe(const char* site,bool failed=false,std::uint64_t requested=0,bool known=false) {
- runtime_observe_memory(site,"after","fixture",MemoryGate::Operation,requested,known,0,false,failed,false);
+void observe(const char* site,bool failed=false,std::uint64_t requested=0,bool known=false,const char* phase="after") {
+ runtime_observe_memory(site,phase,"fixture",MemoryGate::Operation,requested,known,0,false,failed,false);
  assert(snapshots==lua_queries && snapshots==recorded);
 }
 int main() {
@@ -69,6 +69,29 @@ int main() {
  observe("sound_play",true);assert(snapshots==3 && fail_logs==1 && g_memory_sampling.forced==2);
  time_us=250000;observe("textures");assert(snapshots==3);
  time_us=250001;observe("textures");assert(snapshots==4);
+ // Each millisecond contains a before/after pair, sharing the existing gate.
+ reset();for(time_us=0;time_us<60000000;time_us+=1000) {
+  observe("sound_read",false,4,true,"before");observe("sound_read",false,4,true,"after");
+ }
+ assert(snapshots==240 && g_memory_sampling.skipped==119760 && !g_memory_sampling.forced);
+ for(const auto* phase:{"before","after"})for(const auto request:{0ULL,4ULL,262143ULL,262144ULL}) {
+  reset();observe("textures");observe("sound_read",false,request,true,phase);
+  assert(snapshots==(request>=262144?2:1));
+  observe("sound_read",false,request,false,phase);assert(snapshots==(request>=262144?3:2));
+ }
+ for(const auto* phase:std::array<const char*,6>{{"music-playing","decode-before","chunk-after","owner-after","",nullptr}}) {
+  reset();observe("sound_read",false,4,true,"before");observe("sound_read",false,4,true,phase);
+  assert(snapshots==2 && g_memory_sampling.forced==1);
+ }
+ for(const auto request:{0ULL,4ULL,262143ULL,262144ULL}) {
+  reset();observe("sound_read",false,4,true,"before");
+  observe("sound_read",true,request,true,"after");
+  assert(snapshots==2 && fail_logs==1 && g_memory_sampling.forced==1);
+ }
+ for(const auto* site:{"sound_decode","sound_index","sound_evict"}) {
+  reset();observe("sound_read",false,4,true,"before");observe(site,false,4,true);
+  assert(snapshots==2 && g_memory_sampling.forced==1);
+ }
  // Zero origin, exact boundary, backward clock and reset preserve determinism.
  MemoryObservationGate gate;
  assert(gate.take(0,false));assert(!gate.take(0,false));assert(!gate.take(249999,false));

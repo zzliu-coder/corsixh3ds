@@ -1878,7 +1878,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R66 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R67 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1972,7 +1972,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R66 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R67 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2822,7 +2822,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R66 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16");
+  boot_log("diagnostics: revision=R67 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));
@@ -2949,14 +2949,17 @@ void runtime_operation_boundary() noexcept {
 void runtime_observe_memory(const char* checkpoint, const char* phase, const char* resource,
     MemoryGate gate, std::uint64_t requested, bool requested_known,
     std::uint64_t held, bool held_known, bool failed, bool opaque) noexcept {
-  // Detailed high-frequency sprite/texture/GC/playback observations are paced.
+  // Detailed high-frequency sprite/texture/GC/playback and known slice reads
+  // are paced. Other sound phases and unknown slice requests stay immediate.
   // Operation, language and sound loading boundaries, large requests and every
   // reported failure remain unconditional. Admission uses fresh snapshots and
   // Lua allocation peaks/failures are counted by AllocationWatch independently.
   const bool frequent=checkpoint && (std::strcmp(checkpoint,"vspr_decode")==0 ||
       std::strcmp(checkpoint,"textures")==0 || std::strcmp(checkpoint,"release")==0 ||
       std::strcmp(checkpoint,"gc")==0 || std::strcmp(checkpoint,"sound_play")==0 ||
-      std::strcmp(checkpoint,"sound_release")==0);
+      std::strcmp(checkpoint,"sound_release")==0 ||
+      (std::strcmp(checkpoint,"sound_read")==0 && requested_known && phase &&
+       (std::strcmp(phase,"before")==0 || std::strcmp(phase,"after")==0)));
   if(!g_memory_sampling.take(now_us(),!frequent || failed || (requested_known && requested>=262144)))return;
   CpuWorkScope observation_cost(CpuWork::MemoryObserve);
   update_lua_memory(g_observation_state);

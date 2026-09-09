@@ -7,11 +7,12 @@ namespace cth3ds {
 struct GpuSubmitSample {
   enum Counter { Calls, Culled, Errors, Pieces, Whole, Multi, Partial, Hits,
     Uploads, Switches, ObjectCheckpoint, CommandCheckpoint, EvictCheckpoint,
-    Sampled, Rejected, FloorCalls, Floors, Frames, Count };
+    Sampled, Rejected, FloorCalls, Floors, Frames, FloorPieces, FloorSwitches, Count };
   std::uint64_t count[Count]{}, ticks[4][4]{};
   std::uint64_t floor_ticks{}, floor_start{}, bridge_start{}, begin_us{}, end_us{}, samples[4]{};
   std::uint32_t ordinal{}, phase{};
   int last_page{-1};
+  int floor_last_page{-1};
   bool enabled{}, eligible{}, overflow{}, rollback{}, bridge{}, selected{}, floor{};
   void add(std::uint64_t& dst,std::uint64_t n=1) noexcept {
     if(n>std::numeric_limits<std::uint64_t>::max()-dst){overflow=true;dst=UINT64_MAX;}

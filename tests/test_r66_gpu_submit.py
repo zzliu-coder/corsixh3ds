@@ -116,6 +116,8 @@ int main(){
         self.assertGreater(counts['uploads'],0)
         self.assertGreater(counts['hits'],0)
         self.assertEqual(counts['floor_calls'],256)
+        self.assertEqual(counts['floor_pieces'],256)
+        self.assertEqual(counts['floor_switches'],0)
         self.assertEqual(counts['floors'],1)
         self.assertEqual(counts['sampled'],sum(map(int,re.findall(r'sampled_only=1 samples=(\d+)',first))))
 

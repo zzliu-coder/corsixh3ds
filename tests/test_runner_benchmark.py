@@ -6,6 +6,26 @@ import test_benchmark
 class RunnerBenchmarkTests(unittest.TestCase):
     setUpClass=classmethod(lambda cls: test_benchmark.BenchmarkTests.setUpClass())
     run_benchmark_lua=test_benchmark.BenchmarkTests.run_benchmark_lua
+    def test_context_is_bounded_relative_work_and_does_not_open_sample(self):
+        self.run_benchmark_lua('local B=dofile('+repr(str(Path(__file__).resolve().parents[1]/'lua/3ds/benchmark.lua'))+')\n'+r'''
+local now=1000
+local app={world={entities={},game_date={tostring=function()return string.rep('x',140)..'\n' end}}}
+local b=setmetatable({run={},app=app,index=2,results={},
+ warmup_progress={world=90,hours=30,entities=60,frames=10,at=100},
+ sample_progress={world=105,hours=35,entities=70,frames=15,at=1000},
+ expected_camera_x=-160,expected_camera_y=240,
+ native={benchmark_mark=function()error('context must precede sample')end}},B)
+b:captureSampleContext()
+assert(b.results.sample_2_warmup_work=='world=15;hours=5;entities=10;frames=5;observed_ms=900')
+assert(b.results.sample_2_scene_begin=='date='..string.rep('x',128)..';camera_x=-160;camera_y=240;staff=0;patients=0')
+assert(#b.results.sample_2_scene_begin<240)
+b.sample_progress.world=89
+assert(not pcall(b.captureSampleContext,b))
+b.sample_progress.world=105;b.sample_progress.at=99
+assert(not pcall(b.captureSampleContext,b))
+b.run=nil;assert(pcall(b.captureSampleContext,b))
+''')
+
     def test_runner_private_complete_cancel_failure_and_repeat(self):
         self.run_benchmark_lua('local B=dofile('+repr(str(Path(__file__).resolve().parents[1]/'lua/3ds/benchmark.lua'))+')\n'+r'''
 local now,root=0,'sdmc:/3ds/ftpd-runner/runs/new-run-01/'
@@ -36,6 +56,9 @@ local b=B.new(app,native);assert(#b.profiles==1);b:tick()
 now=1000;b:tick();now=2000;b:tick()
 assert(exits==1 and results[1].outcome=='PASS' and #loads==1 and #saves==1)
 assert(tonumber(results[1].fields.sample_1_world)>0 and tonumber(results[1].fields.frames)==20)
+assert(results[1].fields.sample_1_warmup_work=='world=55;hours=55;entities=55;frames=20;observed_ms=1000')
+assert(results[1].fields.sample_1_scene_begin=='date=unknown;camera_x=nil;camera_y=nil;staff=0;patients=0')
+assert(results[1].fields.exact_state_ab=='NOT_PROVEN')
 assert(results[1].fields.recovery_outcome=='NOT_PROVEN')
 assert(marks[#marks]=='WORKLOAD-END')
 for _,mark in ipairs(marks)do assert(mark~='COMPLETE')end

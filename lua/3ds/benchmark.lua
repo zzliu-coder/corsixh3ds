@@ -282,6 +282,7 @@ function Benchmark:load()
   if self.app.ui and self.app.ui.anyMustPauseWindowOpen and self.app.ui:anyMustPauseWindowOpen() then error(NEEDS_INPUT) end
   assert(self.app.world:getCurrentSpeed()==profile.speed,"benchmark speed could not be selected")
   self:mark("WARMUP")
+  self.warmup_progress=self:progress()
   self.phase="warmup";self.deadline=self.native.clock_ms()+(self.warmup_ms or 30000)
   self.native.set_notice("AUTO BENCHMARK - WARMUP",false)
 end
@@ -384,6 +385,31 @@ function Benchmark:advanceRecovery()
   end
 end
 
+-- Fixed wall-time warmup can complete different amounts of simulation on two
+-- builds. Record that difference and the scene before opening the timed window.
+-- These bounded scalars describe comparability; they do not claim exact-state A/B.
+function Benchmark:captureSampleContext()
+  if not self.run then return end
+  local before=assert(self.warmup_progress)
+  local now=self.sample_progress
+  local work={}
+  for _,key in ipairs{"world","hours","entities","frames"} do
+    assert(now[key]>=before[key],"warmup progress moved backwards")
+    work[#work+1]=key.."="..(now[key]-before[key])
+  end
+  assert(now.at>=before.at,"warmup clock moved backwards")
+  work[#work+1]="observed_ms="..(now.at-before.at)
+  local health=Health.assertActive(self.app)
+  local world=self.app.world
+  local date=world.game_date and world.game_date:tostring() or "unknown"
+  date=date:gsub("[\r\n]"," "):sub(1,128)
+  local prefix="sample_"..self.index.."_"
+  self.results[prefix.."warmup_work"]=table.concat(work,";")
+  self.results[prefix.."scene_begin"]="date="..date
+    ..";camera_x="..tostring(self.expected_camera_x)..";camera_y="..tostring(self.expected_camera_y)
+    ..";staff="..health.staff..";patients="..health.patients
+end
+
 function Benchmark:advance()
   if self.phase=="pending" then self:load();return end
   assert((self.app._3ds and self.app._3ds.simulation_errors or 0)==self.expected_errors,
@@ -415,6 +441,7 @@ function Benchmark:advance()
   if self.native.clock_ms()<self.deadline then return end
   if self.phase=="warmup" then
     self.sample_progress=self:progress()
+    self:captureSampleContext()
     self:mark("SAMPLE-BEGIN",self.sample_progress);self.phase="sample"
     local duration=self.sample_ms or 60000
     self.deadline=self.sample_progress.at_us and

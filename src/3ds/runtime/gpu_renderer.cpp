@@ -16,6 +16,7 @@
 #include "cth3ds/cpu_work.hpp"
 #include "cth3ds/gpu_diagnostics.hpp"
 #include "cth3ds/gpu_submit_sample.hpp"
+#include "cth3ds/gpu_atlas_affinity.hpp"
 #include "runtime_3ds.hpp"
 
 namespace cth3ds {
@@ -53,6 +54,7 @@ unsigned objects{};std::uint64_t epoch{1},touch_sequence{};
 SDL_Rect clip{0,0,640,480};
 Image* images{};
 GpuSubmitSample submit;
+GpuAtlasAffinity affinity;
 
 float command_usage() noexcept {
   // The public libctru cursor reports this job, unlike C3D's last-split metric.
@@ -131,7 +133,7 @@ bool place(Image& image,Piece& piece) noexcept {
     pages[piece.page].used=epoch;pages[piece.page].touched=++touch_sequence;++stats.hits;return true;
   }
   int selected=-1,x=0,y=0;
-  for(unsigned i=0;i<page_count;++i)
+  for(unsigned i:affinity.order(pages))
     if(pages[i].shelf.allocate(piece.w,piece.h,x,y)){selected=static_cast<int>(i);break;}
   if(selected<0){
     auto oldest=[&](){unsigned n=0;
@@ -140,10 +142,12 @@ bool place(Image& image,Piece& piece) noexcept {
     unsigned n=oldest();
     if(pages[n].used==epoch){submit.inc(GpuSubmitSample::EvictCheckpoint);if(!checkpoint())return false;n=oldest();}
     auto& page=pages[n];page.shelf={};++page.generation;++stats.evictions;
+    if(affinity.page==static_cast<int>(n))affinity.page=-1;
     if(!page.shelf.allocate(piece.w,piece.h,x,y))return false;
     selected=static_cast<int>(n);
   }
   auto& page=pages[selected];
+  affinity.placed(selected,page.generation);
   auto* output=static_cast<std::uint32_t*>(page.texture.data);
   // Each page is immutable while the GPU reads it. Appends touch disjoint
   // tiles; eviction is allowed only after a completed queue boundary.
@@ -374,6 +378,8 @@ bool gpu_initialize() noexcept {
     static_cast<unsigned long>(linearSpaceFree()),static_cast<unsigned long>(vramSpaceFree()));
   boot_log("gpu: existing_lcd_format_top=%u bottom=%u SDL_owns_framebuffers=1",
     static_cast<unsigned>(gfxGetScreenFormat(GFX_TOP)),static_cast<unsigned>(gfxGetScreenFormat(GFX_BOTTOM)));
+  boot_log("gpu: atlas_floor_affinity=%u affinity_bytes=%u extra_texture_bytes=0",
+    CTH3DS_GPU_ATLAS_AFFINITY?1U:0U,unsigned(sizeof(affinity)));
   return true;
 failed:
   gpu_shutdown();boot_log("gpu: selected=software reason=allocation-or-init-failed");return false;
@@ -386,6 +392,7 @@ void gpu_quiesce() noexcept {
   outputs(false);record_completion();
 }
 void gpu_shutdown() noexcept {
+  affinity={};
   if(c3_ready)gpu_quiesce();
   if(canvas_target)C3D_RenderTargetDelete(canvas_target);
   canvas_target=nullptr;
@@ -502,7 +509,7 @@ void gpu_images_release(SDL_Renderer* renderer) noexcept {
 }
 int gpu_image_draw(SDL_Texture* texture,const SDL_Rect* source,const SDL_FRect* destination,SDL_RendererFlip flip) noexcept {
   submit.inc(GpuSubmitSample::Calls);
-  if(submit.floor)submit.inc(GpuSubmitSample::FloorCalls);
+  if(affinity.floor)submit.inc(GpuSubmitSample::FloorCalls);
   const bool chosen=submit.enabled && (submit.bridge?submit.selected:submit.choose());
   const auto entry=chosen?svcGetSystemTick():0;
   bool emitted=false,failed=true,accepted=false;
@@ -554,7 +561,14 @@ int gpu_image_draw(SDL_Texture* texture,const SDL_Rect* source,const SDL_FRect* 
     if(!draw_image(pages[piece.page].texture,sub,dst,C2D_Color32(r,g,b,a),fx,fy))return SDL_SetError("GPU vertex buffer exhausted");
     const auto drawn=timed?svcGetSystemTick():0;
     const bool switched=submit.last_page>=0&&submit.last_page!=piece.page;
-    if(submit.enabled){submit.last_page=piece.page;if(switched)submit.inc(GpuSubmitSample::Switches);}
+    if(submit.enabled){
+      submit.last_page=piece.page;if(switched)submit.inc(GpuSubmitSample::Switches);
+      if(affinity.floor){
+        submit.inc(GpuSubmitSample::FloorPieces);
+        if(submit.floor_last_page>=0&&submit.floor_last_page!=piece.page)submit.inc(GpuSubmitSample::FloorSwitches);
+        submit.floor_last_page=piece.page;
+      }
+    }
     submit.inc(GpuSubmitSample::Pieces);emitted=true;
     if(timed){
       // Disjoint classes: queue boundary, upload, hit with page switch, plain hit.
@@ -573,8 +587,12 @@ int gpu_image_draw(SDL_Texture* texture,const SDL_Rect* source,const SDL_FRect* 
   }
   failed=false;return 0;
 }
-void gpu_submit_sample_begin(std::uint64_t boundary_us) noexcept {submit.begin(boundary_us);}
-void gpu_submit_sample_end(std::uint64_t boundary_us,bool eligible) noexcept {submit.end(boundary_us,eligible&&active);}
+void gpu_submit_sample_begin(std::uint64_t boundary_us) noexcept {
+  submit.begin(boundary_us);submit.eligible=!affinity.floor;
+}
+void gpu_submit_sample_end(std::uint64_t boundary_us,bool eligible) noexcept {
+  submit.end(boundary_us,eligible&&active&&submit.eligible&&!affinity.floor);
+}
 void gpu_submit_bridge_begin() noexcept {
   if(!submit.enabled)return;
   submit.bridge=true;submit.selected=submit.choose();
@@ -582,10 +600,12 @@ void gpu_submit_bridge_begin() noexcept {
 }
 void gpu_submit_bridge_end() noexcept {submit.bridge=false;submit.selected=false;}
 void gpu_submit_floor_begin() noexcept {
+  affinity.floor=true;
   if(!submit.enabled)return;
-  submit.floor=true;submit.floor_start=svcGetSystemTick();
+  submit.floor=true;submit.floor_last_page=-1;submit.floor_start=svcGetSystemTick();
 }
 void gpu_submit_floor_end() noexcept {
+  affinity.floor=false;
   if(!submit.enabled||!submit.floor)return;
   submit.add(submit.floor_ticks,submit.delta(submit.floor_start,svcGetSystemTick()));
   submit.inc(GpuSubmitSample::Floors);submit.floor=false;
@@ -596,7 +616,7 @@ void gpu_submit_sample_log() noexcept {
   boot_log("gpu-submit-sample: eligible=%u sampled_calls_only=1 stride=64 bytes=%u overflow=%u clock_rollback=%u tick_hz=%llu floor_ticks=%llu floor_is_upper_bound=1",
     submit.eligible?1U:0U,unsigned(sizeof(submit)),submit.overflow?1U:0U,submit.rollback?1U:0U,
     (unsigned long long)SYSCLOCK_ARM11,(unsigned long long)submit.floor_ticks);
-  static const char* names[]={"calls","culled","errors","pieces","whole","multi_excluded","partial_excluded","hits","uploads","page_switches","checkpoint_objects","checkpoint_commands","checkpoint_eviction","sampled","rejected","floor_calls","floors","frames"};
+  static const char* names[]={"calls","culled","errors","pieces","whole","multi_excluded","partial_excluded","hits","uploads","page_switches","checkpoint_objects","checkpoint_commands","checkpoint_eviction","sampled","rejected","floor_calls","floors","frames","floor_pieces","floor_switches"};
   for(unsigned i=0;i<GpuSubmitSample::Count;++i)
     boot_log("gpu-submit-count: name=%s value=%llu",names[i],(unsigned long long)submit.count[i]);
   static const char* kinds[]={"hit","hit_switch","upload","checkpoint"};

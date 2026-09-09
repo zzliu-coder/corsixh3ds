@@ -264,7 +264,21 @@ void recover_main_thread_memory(lua_State* state) noexcept {
   // save writer can enter here. A finalizer error is contained by lua_pcall.
   bool ok=false;
   if(lua_checkstack(state,2)) {
-    lua_pushcfunction(state,[](lua_State* L)->int {lua_gc(L,LUA_GCCOLLECT,0);return 0;});
+    lua_pushcfunction(state,[](lua_State* L)->int {
+      // At this safe point Lua owns the optional raw-picture warm references.
+      // Release those before collection; live windows retain their own images.
+      // This entire lookup/call remains within the existing protected boundary.
+      lua_getglobal(L,"TheApp");
+      if(lua_istable(L,-1)) {
+        lua_getfield(L,-1,"gfx");
+        if(lua_istable(L,-1)) {
+          lua_getfield(L,-1,"trimRawWarm");
+          if(lua_isfunction(L,-1)) {lua_pushvalue(L,-2);lua_call(L,1,0);}
+        }
+      }
+      lua_settop(L,0);
+      lua_gc(L,LUA_GCCOLLECT,0);return 0;
+    });
     const auto token=runtime_span_begin(TimingStage::GC);
     ok=lua_pcall(state,0,0,0)==LUA_OK;
     if(!ok){const char* error=lua_tostring(state,-1);boot_log("memory-pressure: gc_error=%.160s",error?error:"non-string finalizer error");lua_pop(state,1);}
@@ -1864,7 +1878,7 @@ class Runtime {
     if (!has_error && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R63 " + state.build_tag;
+    const std::string text = has_error || show_notice ? state.notice : "R64 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -1958,7 +1972,7 @@ class Runtime {
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R63 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R64 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -2351,10 +2365,29 @@ int l_benchmark_enabled(lua_State* state){
 int l_benchmark_mark(lua_State* state){
   const char* event=luaL_checkstring(state,1);const char* speed=luaL_checkstring(state,2);
   const char* date=luaL_checkstring(state,3);
-  g_observations.sample_mark(event,now_us(),{boot_log,boot_log_flush,nullptr});
-  boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
+  const bool begin=!std::strcmp(event,"SAMPLE-BEGIN");
+  const bool end=!std::strcmp(event,"SAMPLE-END");
+  if((begin && g_observations.sample_open()) || (end && !g_observations.sample_open())) {
+    g_observations.sample_mark("INVALID-ORDER",now_us(),{boot_log,boot_log_flush,nullptr});
+    return luaL_error(state,"benchmark sample marks out of order");
+  }
+  // Begin logging belongs to warmup. End logging belongs to the closed window's
+  // report. Both consumers receive the same monotonic boundary, even on fsync.
+  if(begin)boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
     (unsigned long long)now_us(),event,speed,date);
-  return 0;
+  const auto boundary=now_us();
+  const auto frames=runner_frames();
+  if(end && !g_observations.sample_can_close(boundary)) {
+    g_observations.sample_mark("INVALID-TIME",boundary,{boot_log,boot_log_flush,nullptr});
+    return luaL_error(state,"benchmark sample clock moved backwards");
+  }
+  g_observations.sample_mark(event,boundary,{boot_log,boot_log_flush,nullptr});
+  if(!begin)
+  boot_log("benchmark: at_us=%llu event=%.48s speed=\"%.32s\" date=%.48s",
+    (unsigned long long)boundary,event,speed,date);
+  lua_pushnumber(state,static_cast<lua_Number>(boundary));
+  lua_pushinteger(state,frames);
+  return 2;
 }
 int l_runner_context(lua_State* state){
   if(!runner_active()){lua_pushnil(state);return 1;}
@@ -2760,7 +2793,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R63 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 varint_scratch=stack lua_allocator_watch=1 raw=indexed128 warm_backgrounds=3 atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors");
+  boot_log("diagnostics: revision=R64 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 varint_scratch=stack lua_allocator_watch=1 raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));

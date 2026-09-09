@@ -10,12 +10,19 @@ using namespace cth3ds;
 static std::uint64_t clock_us=0;
 static std::string output;
 static unsigned flush_count=0;
+static bool slow_sample_output=false,output_saw_open=false;
 RuntimeObservations observations;
 static_assert(!std::is_copy_constructible_v<RuntimeObservations>);
 static_assert(!std::is_copy_assignable_v<RuntimeObservations>);
 static_assert(!std::is_move_assignable_v<RuntimeObservations>);
 SimulationClock g_simulation_clock;
 void log_line(const char* format,...) {
+  if(slow_sample_output){
+    output_saw_open=output_saw_open||observations.sample_open()||cpu_work.sample_active;
+    clock_us+=500000;
+    observations.sample_present(clock_us,PresentResult::Success);
+    cpu_work.record(static_cast<std::size_t>(CpuWork::World),clock_us,clock_us+500000);
+  }
   char b[4096];va_list args;va_start(args,format);
   vsnprintf(b,sizeof(b),format,args);va_end(args);output+=b;output+='\n';
 }
@@ -135,7 +142,11 @@ int main() {
   cpu_work.record(static_cast<std::size_t>(CpuWork::World),2300000,2300600);
   observations.sample_present(2100000,PresentResult::Success);
   observations.sample_present(62100000,PresentResult::Success);
+  slow_sample_output=true;clock_us=62200000;
   observations.sample_mark("SAMPLE-END",62200000,sink);
+  slow_sample_output=false;
+  CHECK(!output_saw_open && clock_us>=62700000);
+  CHECK(output.find("end=62200000 elapsed=60200000")!=std::string::npos);
   CHECK(output.find("benchmark-cpu: eligible=1 name=world calls=2 total_us=1000 max_us=600")!=std::string::npos);
   cpu_work.record(static_cast<std::size_t>(CpuWork::World),62200000,62300000);
   CHECK(cpu_work.sample_rows[static_cast<std::size_t>(CpuWork::World)].calls==2);
@@ -149,7 +160,10 @@ int main() {
     observations.sample_present(60000100,PresentResult::Success);
     observations.sample_mark(event,60000200,sink);
     CHECK(output.find("eligible=0")!=std::string::npos);
+    CHECK(!observations.sample_open());
   }
+  output.clear();observations.sample_mark("SAMPLE-END",70000000,sink);
+  CHECK(output.empty()); // Unopened/duplicate ends cannot produce an eligible row.
   output.clear();observations.reset(0);
   observations.sample_mark("SAMPLE-BEGIN",1,sink);
   observations.sample_present(100,PresentResult::Success);
@@ -157,6 +171,16 @@ int main() {
   observations.sample_present(60000100,PresentResult::Success);
   observations.sample_mark("SAMPLE-END",60000200,sink);
   CHECK(output.find("eligible=0")!=std::string::npos);
+  for(const char* event:{"SAMPLE-END","TERMINAL"}){
+    observations.reset(0);output.clear();
+    observations.sample_mark("SAMPLE-BEGIN",100,sink);
+    observations.sample_present(200,PresentResult::Success);
+    observations.sample_present(60000200,PresentResult::Success);
+    CHECK(!observations.sample_can_close(60000100));
+    observations.sample_mark(event,60000100,sink);
+    CHECK(!observations.sample_open());
+    CHECK(output.find("eligible=0")!=std::string::npos);
+  }
   // Window flush keeps the crossing interval but explicitly disqualifies it.
   observations.reset(1);output.clear();
   observations.timing.present_complete(1,PresentResult::Success);

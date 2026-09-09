@@ -71,4 +71,50 @@ function Staff:tick()
     if sampler.ordinal % 16 == sampler.offset then mark = sampler.mark end
   end'''
         text=replace_exact(text,old,new,'rotate staff sampling across stable entity order')
+    if 'CORSIXTH_3DS_STAFF_COST_R64' not in text:
+        text=replace_exact(text,'function Staff:updateSpeed()','''-- CORSIXTH_3DS_STAFF_COST_R64: captures are assigned after the method
+-- definitions below. Overrides retain the original virtual call sequence.
+local speed_crack_up, speed_very_tired, speed_get_attribute
+function Staff:updateSpeed()''','staff speed original method identities')
+        text=replace_exact(text,'''    if self:isCrackUpTired() then
+      level = level - 2
+    elseif self:isVeryTired() then
+      level = level - 1
+    end''','''    if self.isCrackUpTired == speed_crack_up and self.getAttribute == speed_get_attribute then
+      local fatigue = self:getAttribute("fatigue") * 1000
+      local gbv = self.world.map.level_config.gbv
+      if fatigue >= gbv.CrackUpTired then
+        level = level - 2
+      elseif self.isVeryTired == speed_very_tired then
+        if fatigue >= gbv.VeryTired then level = level - 1 end
+      elseif self:isVeryTired() then
+        level = level - 1
+      end
+    elseif self:isCrackUpTired() then
+      level = level - 2
+    elseif self:isVeryTired() then
+      level = level - 1
+    end''','staff speed single fatigue read')
+        anchor='''function Staff:isCrackUpTired()
+  return self:getAttribute("fatigue") * 1000 >= self.world.map.level_config.gbv.CrackUpTired
+end'''
+        text=replace_exact(text,anchor,anchor+'''
+speed_crack_up, speed_very_tired = Staff.isCrackUpTired, Staff.isVeryTired
+speed_get_attribute = Humanoid.getAttribute''','staff speed capture original methods')
+        text=replace_exact(text,'''  if self:getAttribute("fatigue") >= self.hospital.policies["goto_staffroom"] and
+      not class.is(self:getRoom(), StaffRoom) then''','''  local needs_rest = self:getAttribute("fatigue") >= self.hospital.policies["goto_staffroom"]
+  local checked_room = needs_rest and self:getRoom()
+  if needs_rest and not class.is(checked_room, StaffRoom) then''','staff rest room lookup')
+        text=replace_exact(text,'''    if self.waiting_for_staffroom then
+      self:changeAttribute("happiness", -0.001)
+    end
+
+    local room = self:getRoom()''','''    local room = checked_room
+    if self.waiting_for_staffroom then
+      self:changeAttribute("happiness", -0.001)
+      room = self:getRoom()
+    elseif self.getRoom ~= Humanoid.getRoom then
+      -- A virtual room lookup may have effects of its own.
+      room = self:getRoom()
+    end''','staff rest reuse only uninterrupted base lookup')
     yield name,text

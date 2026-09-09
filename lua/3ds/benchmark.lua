@@ -67,11 +67,28 @@ function Benchmark:captureMedia()
   self.media_captured=true
 end
 
-function Benchmark:mark(event)
+function Benchmark:mark(event,progress)
   local world=self.app.world
   local date=world and world.game_date and world.game_date:tostring() or "unknown"
   local speed=world and world:getCurrentSpeed() or "No world"
-  self.native.benchmark_mark(event,speed,date)
+  -- Opening diagnostics happen before the window; closing diagnostics happen
+  -- after it. Native returns the exact timestamp used by its frame window.
+  local function boundary()
+    local at_us,frames=self.native.benchmark_mark(event,speed,date)
+    if progress and self.run then
+      assert(type(at_us)=="number" and at_us>=0 and at_us<math.huge and
+        type(frames)=="number" and frames>=0 and frames<math.huge,
+        "native benchmark boundary missing or invalid")
+    end
+    if progress and at_us then
+      -- Millisecond completion reports retain their integer wire format;
+      -- truncation at each end differs from native by less than one ms.
+      progress.at=math.floor(at_us/1000)
+      progress.at_us=math.floor(at_us)
+      if frames then progress.frames=frames end
+    end
+  end
+  if event~="SAMPLE-BEGIN" then boundary() end
   if self.media_profiles then
     local p=self.profiles[self.index]
     print("benchmark-media: event="..event.." variant="..p.label
@@ -85,6 +102,7 @@ function Benchmark:mark(event)
     ..tostring(self.app.audio and self.app.audio.speech_file_name)
     .." voice_playback=NOT_PROVEN")
   self.native.flush_observations()
+  if event=="SAMPLE-BEGIN" then boundary() end
 end
 
 function Benchmark:applyMedia(language, music, selected, stopped)
@@ -119,7 +137,7 @@ end
 function Benchmark:terminal(outcome,reason)
   if not self.run then return end
   local fields={simulation_ticks=tostring(self.sample_ticks),frames=tostring(self.sample_frames),
-    elapsed_us=tostring(self.sample_elapsed*1000),recovery_outcome="NOT_PROVEN",
+    elapsed_us=tostring(math.floor(self.sample_elapsed_us or self.sample_elapsed*1000)),recovery_outcome="NOT_PROVEN",
     recovery_roundtrip_outcome=self.recovery_verified and "PASS" or "NOT_PROVEN",
     recovery_behavior_outcome="NOT_PROVEN",
     healthy_baseline_outcome=outcome,errors=tostring(self.app._3ds.simulation_errors or 0),
@@ -285,14 +303,21 @@ function Benchmark:advance()
   if self.native.clock_ms()<self.deadline then return end
   if self.phase=="warmup" then
     self.sample_progress=self:progress()
-    self:mark("SAMPLE-BEGIN");self.phase="sample"
-    self.deadline=self.native.clock_ms()+(self.sample_ms or 60000)
+    self:mark("SAMPLE-BEGIN",self.sample_progress);self.phase="sample"
+    local duration=self.sample_ms or 60000
+    self.deadline=self.sample_progress.at_us and
+      math.ceil((self.sample_progress.at_us+duration*1000)/1000) or
+      self.sample_progress.at+duration
     self.native.set_notice("AUTO BENCHMARK - SAMPLING",false)
   elseif self.phase=="sample" then
     Health.assertActive(self.app)
     local start=self.sample_progress;local finish=self:progress()
     assert(finish.world>start.world and finish.hours>start.hours and finish.entities>start.entities,
       "no completed simulation work; performance sample invalid")
+    if self.run then assert(finish.frames>start.frames,"no valid rendered frames") end
+    self:mark("SAMPLE-END",finish)
+    assert(finish.at>start.at,"benchmark sample boundary did not advance")
+    local elapsed_us=(finish.at_us or finish.at*1000)-(start.at_us or start.at*1000)
     print("benchmark-simulation: mode=fixed-wall-time elapsed_ms="..(finish.at-start.at)
       .." completed_world="..(finish.world-start.world).." completed_hours="..(finish.hours-start.hours)
       .." completed_entities="..(finish.entities-start.entities)
@@ -306,13 +331,14 @@ function Benchmark:advance()
       self.sample_ticks=self.sample_ticks+finish.world-start.world
       self.sample_frames=self.sample_frames+finish.frames-start.frames
       self.sample_elapsed=self.sample_elapsed+finish.at-start.at
+      self.sample_elapsed_us=(self.sample_elapsed_us or 0)+elapsed_us
+      self.results[prefix.."elapsed_us"]=elapsed_us
       if self.native.runner_checkpoint then
         local checkpoint={phase="sample_complete",outcome="NOT_PROVEN"}
         for k,v in pairs(self.results)do checkpoint[k]=tostring(v)end
         self.native.runner_checkpoint(checkpoint)
       end
     end
-    self:mark("SAMPLE-END")
     if self.index<#self.profiles then self.index=self.index+1;self:load()
     else
       if (self.run and self.stress_duration>0) or (not self.run and self.expanded) then

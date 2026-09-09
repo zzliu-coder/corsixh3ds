@@ -237,6 +237,10 @@ function Platform:installAtomicSaves()
     local ok, err = xpcall(function()
       self:resourceEvent("save-begin", filename, true); transaction = true
       native.begin_critical_io(); critical = true
+      -- Drop optional source residency before serializer admission/GC. Visible
+      -- windows keep their pictures; the engine/GPU own deferred destruction.
+      local gfx = instance.gfx
+      if gfx and type(gfx.trimRawWarm) == "function" then gfx:trimRawWarm() end
       if native.prepare_save then native.prepare_save() end
       assert(original_save(instance, temporary) == true, "save writer did not confirm success")
       local committed, detail = native.atomic_commit(temporary, filename, true)
@@ -304,6 +308,13 @@ function Platform:installLoadTelemetry()
       local repaired,count=pcall(require("3ds.state_health").repairR62,instance.world)
       if not repaired then
         if instance.world then instance.world:setSpeed("Pause") end
+        -- Audit observes the refused copy only. It cannot relax recovery or
+        -- replace its original error, even if diagnostic output itself fails.
+        local audit_ok,audit_error=pcall(require("3ds.state_health").auditR62,
+          instance.world,self.native.diagnostic_line or print)
+        if not audit_ok then
+          print("r64-recovery-audit: failed="..tostring(audit_error):sub(1,160))
+        end
         self:showError("RECOVERY REFUSED: "..tostring(count))
         return false,count
       end

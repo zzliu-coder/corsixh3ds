@@ -36,12 +36,17 @@ void RuntimeObservations::sample_present(std::uint64_t now, PresentResult result
 }
 void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const ObservationOutput& output) noexcept {
   const bool begin=!std::strcmp(event,"SAMPLE-BEGIN");
+  const bool interrupted=sample_active;
   if(sample_active){
+    // Freeze both collectors before invoking any potentially slow log sink.
+    sample_active=false;
+    cpu_work.sample_active=false;
     const auto d=sample_intervals.snapshot();
     const auto elapsed=now>=sample_begin?now-sample_begin:0;
     const auto initial=sample_anchor?sample_first-sample_begin:elapsed;
     const auto tail=sample_anchor&&now>=sample_last?now-sample_last:elapsed;
     const bool eligible=!std::strcmp(event,"SAMPLE-END") && sample_valid && !d.total_overflowed &&
+      now>=sample_begin && (!sample_anchor || now>=sample_last) &&
       d.count>0 && elapsed>=60000000U && initial<=1000000U && tail<=1000000U;
     output.line("benchmark-frames: end_event=%s eligible=%d begin=%llu end=%llu elapsed=%llu coverage_begin=%llu coverage_end=%llu first_delay_us=%llu open_gap_us=%llu intervals=%llu sum_us=%llu p95_hi_us=%llu max_us=%llu workload_guard=lua_each_tick presentation_api_timing=1",
       event,eligible,(unsigned long long)sample_begin,(unsigned long long)now,(unsigned long long)elapsed,
@@ -58,7 +63,7 @@ void RuntimeObservations::sample_mark(const char* event,std::uint64_t now,const 
     }
     sample_active=false;
   }
-  if(begin){
+  if(begin && !interrupted){
     sample_intervals.clear();sample_begin=now;sample_first=sample_last=0;
     sample_anchor=false;sample_active=sample_valid=true;
     cpu_work.sample_rows={};cpu_work.sample_begin=now;cpu_work.sample_active=true;

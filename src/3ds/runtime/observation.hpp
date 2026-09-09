@@ -42,6 +42,10 @@ class RuntimeObservations {
   void flush(const ObservationInputs& inputs, const ObservationOutput& output, bool force) noexcept;
   void sample_mark(const char* event, std::uint64_t now, const ObservationOutput& output) noexcept;
   void sample_present(std::uint64_t now, PresentResult result) noexcept;
+  bool sample_open() const noexcept { return sample_active; }
+  bool sample_can_close(std::uint64_t now) const noexcept {
+    return sample_active && now>=sample_begin && (!sample_anchor || now>=sample_last);
+  }
  private:
   DurationDistribution sample_intervals;
   std::uint64_t sample_begin{},sample_first{},sample_last{};

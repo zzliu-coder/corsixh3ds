@@ -88,11 +88,11 @@ int main(){static uint8_t data[640*480]{};palette pal;raw_bitmap image;render_ta
         bottom=(self.generated/'CorsixTH/Lua/dialogs/bottom_panel.lua').read_text()
         script='Graphics={}\n'+method(graphics,'function Graphics:_retainRaw(')+'\n'
         script+='UIBottomPanel={}\n'+method(bottom,'function UIBottomPanel:addDialog(')+r'''
-local gfx=setmetatable({cache={raw=setmetatable({},{__mode='v'})}},{__index=Graphics})
+local gfx=setmetatable({raw_warm_max_entries=3,cache={raw=setmetatable({},{__mode='v'})}},{__index=Graphics})
 local alive=setmetatable({},{__mode='v'})
 local visible={}
 for i=1,10 do local bitmap={};gfx.cache.raw[tostring(i)]=bitmap;alive[i]=bitmap
- gfx:_retainRaw(tostring(i),bitmap);if i==1 then visible[1]=bitmap end
+ gfx:_retainRaw(tostring(i),bitmap,100);if i==1 then visible[1]=bitmap end
 end
 collectgarbage('collect');assert(alive[1] and alive[8] and alive[9] and alive[10])
 for i=2,7 do assert(not alive[i])end

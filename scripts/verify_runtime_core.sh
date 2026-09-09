@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+source_owner "$0" "$@"
 
 require_cmd cmake
 require_cmd python3
@@ -67,8 +68,7 @@ UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 
 [[ -n "${CTH3DS_EXTERNAL_DIR:-}" ]] || die 'CTH3DS_EXTERNAL_DIR is required for final-ELF acceptance'
 [[ -n "${CTH3DS_DEPS_PREFIX:-}" ]] || die 'CTH3DS_DEPS_PREFIX is required for final-ELF acceptance'
-python3 "${CTH3DS_ROOT}/tools/integrate_corsixth.py" \
-  "${CTH3DS_EXTERNAL_DIR}/CorsixTH" \
+"${CTH3DS_ROOT}/scripts/bootstrap_upstream.sh" \
   >"${ACCEPT_ROOT}/integrate.log" 2>&1
 "${CTH3DS_ROOT}/scripts/build_3ds.sh" --skip-bootstrap \
   >"${ACCEPT_ROOT}/cross-build.log" 2>&1

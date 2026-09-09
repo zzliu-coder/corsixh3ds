@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import struct
 import subprocess
@@ -52,16 +53,31 @@ class PackageSdScriptTests(unittest.TestCase):
             encoding="utf-8",
         )
         fake_git.chmod(0o755)
-        environment = os.environ.copy()
+        from source_view import independent_environment
+        environment = independent_environment()
         environment.update(
             {
                 "CTH3DS_BUILD_DIR": str(build),
                 "CTH3DS_DEPS_PREFIX": str(root / "deps"),
                 "CTH3DS_EXTERNAL_DIR": str(root / "external"),
                 "PATH": str(fake_bin) + os.pathsep + environment["PATH"],
+                "CTH3DS_BUILD_MANIFEST": str(root / "build-manifest.json"),
             }
         )
+        self.seal_packaging_fixture(root)
         return environment, source
+
+    def seal_packaging_fixture(self, root: Path) -> None:
+        # Explicit packaging-only fixture: these synthetic bytes prove binding
+        # checks and packaging, never an ARM build or game startup.
+        from integration.generated_view import seal_view
+        from source_view import binding
+        runtime = root / "external/CorsixTH"
+        binary = root / "build/CorsixTH/CorsixTH-3DS.3dsx"
+        seal_view(runtime, ROOT, "test-fixture:synthetic")
+        manifest = {"source_commit": "0" * 39 + "1", "source_tree": "0" * 39 + "2",
+                    "generated_source": binding(runtime, ROOT, binary)}
+        (root / "build-manifest.json").write_text(json.dumps(manifest))
 
     def run_package(
         self, environment: dict[str, str], source: Path, dist: Path, mode: str

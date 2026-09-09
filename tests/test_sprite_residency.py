@@ -55,8 +55,9 @@ class SpriteResidencyTests(unittest.TestCase):
     def test_actual_generated_cache_with_real_sdl_textures(self):
         with tempfile.TemporaryDirectory(prefix='cth3ds-sprite-residency-') as temp:
             temp=Path(temp)
-            upstream=original_sources(temp/'upstream')
-            self.assertEqual(integrate([str(upstream),'--overlay-root',str(ROOT)]),0)
+            original=original_sources(temp/'original')
+            upstream=original.parent/'upstream'
+            self.assertEqual(integrate([str(original),'--overlay-root',str(ROOT),'--private-output',str(upstream)]),0)
             generated=(upstream/'CorsixTH/Src/th_gfx_sdl.cpp').read_text()
             self.assertIn(CACHE,generated)
             self.assertIn('sprite_texture_remember(&sprite.texture, texture_bytes)',generated)

@@ -41,7 +41,7 @@ class OperationsTests(unittest.TestCase):
                 path=tree/relative;original=path.read_bytes()
                 self.assertIn(marker.encode(),original)
                 path.write_bytes(original.replace(marker.encode(),b'MISSING_R68_MARKER',1))
-                for mode in ((),('--dry-run',),('--check',)):
+                for mode in (('--output',str(directory/'new-view')),('--dry-run',),('--check',)):
                     with self.subTest(relative=relative,mode=mode):
                         before_tree,before_overlay=snapshot(tree),snapshot(overlay)
                         result=subprocess.run(command+list(mode),capture_output=True,text=True,timeout=60)
@@ -53,7 +53,7 @@ class OperationsTests(unittest.TestCase):
                 path.write_bytes(original)
             adapter.write_bytes(original_adapter)
             before_tree,before_overlay=snapshot(tree),snapshot(overlay)
-            result=subprocess.run(command,capture_output=True,text=True,timeout=60)
+            result=subprocess.run(command+['--output',str(directory/'final-view')],capture_output=True,text=True,timeout=60)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(snapshot(tree),before_tree)
             self.assertEqual(snapshot(overlay),before_overlay)

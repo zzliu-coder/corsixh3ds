@@ -47,6 +47,7 @@ class IntegratorTests(unittest.TestCase):
             upstream = self.make_upstream(Path(directory)/'upstream')
             code, _, error = self.run_main(str(upstream))
             self.assertEqual(code, 0, error)
+            upstream = self.generated
             cmake = (upstream/'CorsixTH/Src/3ds/corsixth_3ds_sources.cmake').read_text()
             self.assertIn('include("${CTH3DS_PLATFORM_ROOT}/sources.cmake")', cmake)
             for name in sources + headers:
@@ -83,6 +84,12 @@ class IntegratorTests(unittest.TestCase):
     def run_main(self, *arguments: str) -> tuple[int, str, str]:
         stdout = io.StringIO()
         stderr = io.StringIO()
+        arguments = list(arguments)
+        self.generated = Path(arguments[0])
+        if "--check" not in arguments and "--dry-run" not in arguments:
+            self._view_number = getattr(self, "_view_number", 0) + 1
+            self.generated = self.generated.parent / ("generated-" + str(self._view_number))
+            arguments += ["--output", str(self.generated)]
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = main([*arguments, "--overlay-root", str(OVERLAY)])
         return code, stdout.getvalue(), stderr.getvalue()
@@ -92,7 +99,8 @@ class IntegratorTests(unittest.TestCase):
             upstream = self.make_upstream(Path(temporary) / "upstream")
             code, output, error = self.run_main(str(upstream))
             self.assertEqual(code, 0, error)
-            self.assertIn("Applied", output)
+            upstream = self.generated
+            self.assertIn("Published", output)
             app_text = (upstream / "CorsixTH/Lua/app.lua").read_text(encoding="utf-8")
             self.assertEqual(app_text.count(APP_ATTACH_MARKER), 1)
             self.assertIn(SDL_TICK_MARKER, (upstream / "CorsixTH/Src/sdl_core.cpp").read_text())
@@ -162,10 +170,12 @@ class IntegratorTests(unittest.TestCase):
 
             code, output, error = self.run_main(str(upstream))
             self.assertEqual(code, 0, error)
-            self.assertIn("Applied 0 changes", output)
+            upstream = self.generated
+            self.assertIn("Published 0 changes", output)
 
             code, output, error = self.run_main(str(upstream), "--check")
             self.assertEqual(code, 0, error)
+            upstream = self.generated
             self.assertIn("verified", output)
 
     def test_dry_run_does_not_modify_tree(self) -> None:
@@ -174,7 +184,8 @@ class IntegratorTests(unittest.TestCase):
             before = (upstream / "CMakeLists.txt").read_bytes()
             code, output, error = self.run_main(str(upstream), "--dry-run")
             self.assertEqual(code, 0, error)
-            self.assertIn("Would apply", output)
+            upstream = self.generated
+            self.assertIn("Verified", output)
             self.assertEqual((upstream / "CMakeLists.txt").read_bytes(), before)
             self.assertFalse((upstream / "CorsixTH/Src/3ds").exists())
 
@@ -182,11 +193,12 @@ class IntegratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             upstream = self.make_upstream(Path(temporary) / "upstream")
             self.assertEqual(self.run_main(str(upstream))[0], 0)
+            upstream = self.generated
             runtime = upstream / "CorsixTH/Src/3ds/runtime_3ds.cpp"
             runtime.write_text(runtime.read_text() + "\n// drift\n", encoding="utf-8")
             code, _output, error = self.run_main(str(upstream), "--check")
             self.assertEqual(code, 2)
-            self.assertIn("differs from overlay", error)
+            self.assertIn("complete generated-source inventory changed", error)
 
     def test_rejects_unknown_release_signature(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -203,6 +215,7 @@ class IntegratorTests(unittest.TestCase):
             upstream = self.make_upstream(Path(temporary) / 'upstream')
             code, _, error = self.run_main(str(upstream))
             self.assertEqual(code, 0, error)
+            upstream = self.generated
             sound = upstream / 'CorsixTH/Src/th_sound.cpp'
             expected = sound.read_bytes()
             text = expected.decode()
@@ -210,13 +223,18 @@ class IntegratorTests(unittest.TestCase):
             sound.write_text(text.replace(SOUND_INIT_TRANSACTION, SOUND_INIT_LEGACY))
             code, _, error = self.run_main(str(upstream), '--check')
             self.assertNotEqual(code, 0)
-            self.assertIn('sound initialization transaction', error)
+            self.assertIn('complete generated-source inventory changed', error)
+            # Keep the low-level historical migration oracle; production assembly
+            # now refuses edited/legacy generated inputs before touching them.
             code, _, error = self.run_main(str(upstream))
-            self.assertEqual(code, 0, error)
+            self.assertNotEqual(code, 0)
+            from integrate_corsixth import patch_sound_initialization
+            patch_sound_initialization(upstream)
             self.assertEqual(sound.read_bytes(), expected)
             code, output, error = self.run_main(str(upstream))
             self.assertEqual(code, 0, error)
-            self.assertIn('Applied 0 changes', output)
+            upstream = self.generated
+            self.assertIn('Published 0 changes', output)
 
 
 if __name__ == "__main__":

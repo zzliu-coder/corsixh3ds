@@ -309,11 +309,14 @@
             },
             {
               "const": "lua/"
+            },
+            {
+              "const": "upstream_overrides/"
             }
           ],
           "items": false,
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 5,
+          "maxItems": 5,
           "uniqueItems": true
         },
         "expected_product_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
@@ -466,8 +469,8 @@
         },
         "additionalProperties": false
       },
-      "minItems": 115,
-      "maxItems": 115,
+      "minItems": 118,
+      "maxItems": 118,
       "uniqueItems": true
     },
     "environment_profiles": {
@@ -838,8 +841,8 @@
         },
         "additionalProperties": false
       },
-      "minItems": 14,
-      "maxItems": 14,
+      "minItems": 17,
+      "maxItems": 17,
       "uniqueItems": true
     },
     "host_regression": {

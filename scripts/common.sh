@@ -3,15 +3,37 @@ set -euo pipefail
 
 CTH3DS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CTH3DS_EXTERNAL_DIR="${CTH3DS_EXTERNAL_DIR:-${CTH3DS_ROOT}/external}"
+CTH3DS_UPSTREAM_PIN="${CTH3DS_UPSTREAM_PIN:-${CTH3DS_EXTERNAL_DIR}/CorsixTH-pin}"
+export CTH3DS_ROOT CTH3DS_EXTERNAL_DIR CTH3DS_UPSTREAM_PIN
 CTH3DS_BUILD_DIR="${CTH3DS_BUILD_DIR:-${CTH3DS_ROOT}/build-3ds}"
 CTH3DS_DEPS_PREFIX="${CTH3DS_DEPS_PREFIX:-${CTH3DS_BUILD_DIR}/deps}"
+CTH3DS_BUILD_MANIFEST="${CTH3DS_BUILD_MANIFEST:-${CTH3DS_ROOT}/artifacts/verification/cross-build/artifact-manifest.json}"
 CTH3DS_DIST_DIR="${CTH3DS_DIST_DIR:-${CTH3DS_ROOT}/dist}"
 CTH3DS_JOBS="${CTH3DS_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+export CTH3DS_BUILD_DIR CTH3DS_BUILD_MANIFEST
+CTH3DS_SOURCE_OWNER_LOCK="${CTH3DS_SOURCE_OWNER_LOCK:-${CTH3DS_EXTERNAL_DIR}/.source-owner.lock}"
+export CTH3DS_SOURCE_OWNER_LOCK
 PIN_FILE="${CTH3DS_ROOT}/config/upstream-pins.json"
 
 log() { printf '[cth3ds] %s\n' "$*"; }
 die() { printf '[cth3ds] error: %s\n' "$*" >&2; exit 2; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
+
+source_owner() {
+  export CTH3DS_SOURCE_OWNER_RECEIPT="${CTH3DS_BUILD_MANIFEST}"
+  # Re-enter this exact script once with an inherited owner FD. Nested build
+  # bootstrap calls share the same open lock; no background alias changes.
+  if [[ -z "${CTH3DS_SOURCE_OWNER_FD:-}" ]]; then
+    exec python3 "${CTH3DS_ROOT}/tools/source_view.py" run \
+      --lock "${CTH3DS_SOURCE_OWNER_LOCK}" -- bash "$@"
+  fi
+  python3 "${CTH3DS_ROOT}/tools/source_view.py" check-owner \
+    --lock "${CTH3DS_SOURCE_OWNER_LOCK}"
+}
+
+independent_tests() {
+  python3 "${CTH3DS_ROOT}/tools/source_view.py" isolated -- "$@"
+}
 
 pin() {
   python3 "${CTH3DS_ROOT}/tools/check_pins.py" --manifest "${PIN_FILE}" --get "$1"

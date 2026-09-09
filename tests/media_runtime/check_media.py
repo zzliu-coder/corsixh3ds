@@ -290,6 +290,9 @@ M.release(a,api);assert(live==0)
             language.write_text(language.read_text()+'\nmissing="龘"\n')
             with self.assertRaisesRegex(ValueError,'missing required'):prepare(source,root/'missing-font',runtime)
             language.write_text(language.read_text().replace('\nmissing="龘"\n',''))
+            # Final synthetic bilingual inputs have now been prepared. Seal this
+            # packaging fixture explicitly; the binary remains a test header.
+            fixture.seal_packaging_fixture(root)
             environment['CTH3DS_DIST_DIR']=str(root/'dist')
             result=subprocess.run([str(ROOT/'scripts/package_sd.sh'),'--asset-mode','loose',
                 '--language','Chinese (simplified)','--theme-hospital',str(game),'--private-media',str(stage)],

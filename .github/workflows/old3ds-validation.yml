@@ -486,6 +486,7 @@ jobs:
             build-3ds/CorsixTH/runtime-core-link-proof.json
             build-3ds/deps/cth3ds-dependencies.json
             external/CorsixTH/CorsixTH/Src/3ds/integration-manifest.json
+            artifacts/verification/cross-build/generated-source.json
             config/upstream-pins.json
 
   fresh-chain-final-seal:

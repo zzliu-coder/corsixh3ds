@@ -42,9 +42,10 @@ def original_sources(root):
 
 def generated_sources(directory):
     """Generate from the pinned sources and a private copy of this checkout."""
-    generated = original_sources(directory / 'upstream')
-    originals = {str(path.relative_to(generated)): hashlib.sha256(path.read_bytes()).hexdigest()
-                 for path in generated.rglob('*') if path.is_file()}
+    original = original_sources(directory / 'original')
+    generated = directory / 'upstream'
+    originals = {str(path.relative_to(original)): hashlib.sha256(path.read_bytes()).hexdigest()
+                 for path in original.rglob('*') if path.is_file()}
     if originals != SOURCE_HASHES or len(originals) != 43:
         raise RuntimeError('pinned upstream source inventory/hash mismatch')
     overlay = directory / 'overlay'
@@ -68,15 +69,18 @@ def generated_sources(directory):
     for attempt in (1, 2):
         result = subprocess.run([
             sys.executable, '-B', str(overlay / 'tools/integrate_corsixth.py'),
-            str(generated), '--overlay-root', str(overlay)],
+            str(original), '--overlay-root', str(overlay), '--private-output',
+            str(generated if attempt == 1 else directory / 'repeat')],
             capture_output=True, text=True)
         if result.returncode:
             raise RuntimeError('integration %d failed: %s\n%s' %
                                (attempt, result.stdout, result.stderr))
-        current = hashes(generated)
+        current = hashes(generated if attempt == 1 else directory / 'repeat')
         if first is not None and current != first:
             raise RuntimeError('repeat generation changed file inventory or bytes')
         first = current
+    if hashes(original) != SOURCE_HASHES:
+        raise RuntimeError('integration changed original pinned fixtures')
     if hashes(overlay) != before:
         after = hashes(overlay)
         changed = sorted(name for name in before.keys() | after.keys()

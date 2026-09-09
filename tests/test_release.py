@@ -33,6 +33,9 @@ class ReleaseArchiveTests(unittest.TestCase):
             (project / "artifacts" / "verification" / "summary.json").write_text("{}\n", encoding="utf-8")
             (project / "artifacts" / "preview" / "preview.txt").write_text("preview\n", encoding="utf-8")
             (project / "work" / "hardmac-runs" / "private.bin").write_bytes(b"private")
+            override = project / "upstream_overrides" / "CorsixTH" / "Lua" / "world.lua"
+            override.parent.mkdir(parents=True)
+            override.write_text("-- future final-source fixture\n")
 
             self.assertEqual(main(["--root", str(project), "--output", str(output)]), 0)
             source = output / "corsixth-3ds-old3ds-v9.8.7-source.zip"
@@ -46,6 +49,8 @@ class ReleaseArchiveTests(unittest.TestCase):
                 self.assertTrue(archive.infolist())
                 self.assertTrue(all(info.date_time == FIXED_TIME for info in archive.infolist()))
                 self.assertFalse(any("/work/" in info.filename for info in archive.infolist()))
+                self.assertTrue(any(info.filename.endswith(
+                    "/upstream_overrides/CorsixTH/Lua/world.lua") for info in archive.infolist()))
 
             checksum_lines = (output / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(checksum_lines), 2)

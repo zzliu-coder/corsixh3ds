@@ -76,8 +76,9 @@ class SoundInitializationTests(unittest.TestCase):
         from integrate_corsixth import main as integrate
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            upstream = original_sources(root / 'upstream')
-            self.assertEqual(integrate([str(upstream), '--overlay-root', str(ROOT)]), 0)
+            original = original_sources(root / 'original')
+            upstream = root / 'upstream'
+            self.assertEqual(integrate([str(original), '--overlay-root', str(ROOT), '--private-output', str(upstream)]), 0)
             source = (upstream / 'CorsixTH/Src/th_sound.cpp').read_text()
             begin = source.index('void sound_player::populate_from(')
             end = source.index('\nuint32_t sound_player::play(', begin)

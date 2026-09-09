@@ -2,6 +2,7 @@
 set -euo pipefail
 set -E
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+source_owner "$0" "$@"
 source "$(cd "$(dirname "$0")" && pwd)/ci_diagnostics.sh"
 
 LOG_DIR="${CTH3DS_ROOT}/artifacts/verification"
@@ -166,10 +167,10 @@ PY
     # detect_leaks there aborts every sanitized test before it starts.
     ASAN_OPTIONS="halt_on_error=1${CTH3DS_ASAN_LEAKS_OPTION:-}" \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-      ctest --test-dir "${build}" --output-on-failure \
+      independent_tests ctest --test-dir "${build}" --output-on-failure \
       >"${LOG_DIR}/${name}-ctest.log" 2>&1
   else
-    ctest --test-dir "${build}" --output-on-failure \
+    independent_tests ctest --test-dir "${build}" --output-on-failure \
       >"${LOG_DIR}/${name}-ctest.log" 2>&1
   fi
   ci_diag_step "${name}-cpp-tests" "${LOG_DIR}/${name}-ctest.log" \
@@ -229,7 +230,7 @@ if [[ "${RUN_COMMON}" == "1" ]]; then
 
   # Catch flaky state transitions without repeatedly starting the Python runtime.
   ci_diag_step repeat-50 "${LOG_DIR}/repeat-50.log"
-  ctest --test-dir "${CTH3DS_ROOT}/build-verify-gcc-debug" \
+  independent_tests ctest --test-dir "${CTH3DS_ROOT}/build-verify-gcc-debug" \
     -R '^cth3ds-tests$' --repeat until-fail:50 --output-on-failure \
     >"${LOG_DIR}/repeat-50.log" 2>&1
 
@@ -243,7 +244,7 @@ if [[ "${RUN_COMMON}" == "1" ]]; then
   CTH3DS_SIMULATOR="${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-simulator" \
   CTH3DS_RUNTIME_PROBE="${CTH3DS_ROOT}/build-verify-gcc-debug/cth3ds-runtime-probe" \
   PYTHONDONTWRITEBYTECODE=1 \
-    python3 "${CTH3DS_ROOT}/scripts/run_host_python_suite.py" \
+    independent_tests python3 "${CTH3DS_ROOT}/scripts/run_host_python_suite.py" \
       --repo "${CTH3DS_ROOT}" \
       --manifest "${CTH3DS_ROOT}/tests/host-python-suite.json" \
       --output "${LOG_DIR}/host-python-suite-result.json" \
@@ -276,6 +277,8 @@ if [[ "${RUN_COMMON}" == "1" ]]; then
   ACTUAL_API_CHECKED=0
   UPSTREAM_DIR="${CTH3DS_EXTERNAL_DIR}/CorsixTH"
   if [[ -d "${UPSTREAM_DIR}" ]]; then
+    python3 "${CTH3DS_ROOT}/tools/integrate_corsixth.py" "${UPSTREAM_DIR}" \
+      --overlay-root "${CTH3DS_ROOT}" --check >"${LOG_DIR}/source-view-check.log"
     ci_diag_step upstream-lua-api "${LOG_DIR}/upstream-lua-api.json"
     python3 "${CTH3DS_ROOT}/tools/check_upstream_lua_api.py" "${UPSTREAM_DIR}" --json \
       >"${LOG_DIR}/upstream-lua-api.json"
@@ -300,7 +303,7 @@ if [[ "${RUN_COMMON}" == "1" ]]; then
     CROSS_SKIP_REASON="cross-build disabled by CTH3DS_VERIFY_CROSS"
   elif [[ -z "${DEVKITPRO:-}" || ! -f "${DEVKITPRO}/cmake/3DS.cmake" ]]; then
     CROSS_SKIP_REASON="devkitPro/devkitARM is unavailable in this environment"
-  elif [[ ! -f "${UPSTREAM_DIR}/CorsixTH/Src/3ds/integration-manifest.json" ]]; then
+  elif [[ ! -f "${UPSTREAM_DIR}/.cth3ds-view.json" ]]; then
     CROSS_SKIP_REASON="integrated pinned CorsixTH checkout is unavailable"
   elif [[ ! -f "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" ]]; then
     CROSS_SKIP_REASON="staged 3DS dependency libraries are unavailable"

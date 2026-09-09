@@ -120,8 +120,9 @@ class DualScreenCanvasTests(unittest.TestCase):
     def test_generated_renderer_real_sdl_pixels_and_lifetime(self):
         with tempfile.TemporaryDirectory(prefix='cth3ds-canvas-') as temp:
             temp=Path(temp)
-            upstream=original_sources(temp/'upstream')
-            self.assertEqual(integrate([str(upstream),'--overlay-root',str(ROOT)]),0)
+            original=original_sources(temp/'original')
+            upstream=original.parent/'upstream'
+            self.assertEqual(integrate([str(original),'--overlay-root',str(ROOT),'--private-output',str(upstream)]),0)
             self.assertEqual(integrate([str(upstream),'--overlay-root',str(ROOT),'--check']),0)
             source=(upstream/'CorsixTH/Src/th_gfx_sdl.cpp').read_text()
             # These are the emitted production methods, not a replacement renderer.
@@ -144,8 +145,9 @@ class DualScreenCanvasTests(unittest.TestCase):
 
     def test_real_level_identity_uses_map_and_header_is_required(self):
         with tempfile.TemporaryDirectory(prefix='cth3ds-canvas-contract-') as temp:
-            upstream=original_sources(Path(temp)/'upstream')
-            self.assertEqual(integrate([str(upstream),'--overlay-root',str(ROOT)]),0)
+            original=original_sources(Path(temp)/'original')
+            upstream=original.parent/'upstream'
+            self.assertEqual(integrate([str(original),'--overlay-root',str(ROOT),'--private-output',str(upstream)]),0)
             app=(upstream/'CorsixTH/Lua/app.lua').read_text()
             self.assertEqual(app.count("'level:'..tostring((...).map and (...).map.level_number or 'loading')"),2)
             header=upstream/'CorsixTH/Src/th_gfx_sdl.h'

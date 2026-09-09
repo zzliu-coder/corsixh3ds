@@ -3,6 +3,7 @@ set -euo pipefail
 set -E
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
 source "$(cd "$(dirname "$0")" && pwd)/ci_diagnostics.sh"
+source_owner "$0" "$@"
 
 SKIP_BOOTSTRAP=0
 while [[ $# -gt 0 ]]; do
@@ -13,7 +14,16 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-BUILD_EVIDENCE_DIR="${CTH3DS_ROOT}/artifacts/verification/cross-build"
+BUILD_EVIDENCE_DIR="${CTH3DS_BUILD_EVIDENCE_DIR:-${CTH3DS_ROOT}/artifacts/verification/cross-build}"
+mkdir -p "${BUILD_EVIDENCE_DIR}"
+rm -f -- "${CTH3DS_BUILD_MANIFEST}"
+# A success receipt is usable only after every required build/evidence step.
+# Preserve diagnostic logs on failure while invalidating this exact receipt.
+BUILD_RECEIPT_COMMITTED=0
+trap 'if [[ "${BUILD_RECEIPT_COMMITTED}" != 1 ]]; then rm -f -- "${CTH3DS_BUILD_MANIFEST}"; fi' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 ci_diag_init old3ds-cross-build "${BUILD_EVIDENCE_DIR}"
 ci_diag_step preflight
 require_devkitpro
@@ -29,8 +39,8 @@ if [[ "${SKIP_BOOTSTRAP}" -eq 0 ]]; then
 fi
 
 UPSTREAM_DIR="${CTH3DS_EXTERNAL_DIR}/CorsixTH"
-[[ -f "${UPSTREAM_DIR}/CorsixTH/Src/3ds/integration-manifest.json" ]] || \
-  die 'CorsixTH 3DS integration is missing; run scripts/bootstrap_upstream.sh'
+python3 "${CTH3DS_ROOT}/tools/integrate_corsixth.py" "${UPSTREAM_DIR}" \
+  --overlay-root "${CTH3DS_ROOT}" --check
 [[ -f "${CTH3DS_DEPS_PREFIX}/cth3ds-dependencies.json" ]] || \
   die '3DS dependencies are missing; run scripts/bootstrap_3ds_deps.sh'
 
@@ -66,6 +76,9 @@ cmake -S "${UPSTREAM_DIR}" -B "${BUILD}" "${CTH3DS_CMAKE_GENERATOR[@]}" \
 
 ci_diag_step build "${BUILD_EVIDENCE_DIR}/configure.log" \
   "${BUILD_EVIDENCE_DIR}/build.log"
+# Always clean the game target before using the fixed source alias. Dependency
+# installations are external to this target and stay cached.
+cmake --build "${BUILD}" --target clean >"${BUILD_EVIDENCE_DIR}/clean.log" 2>&1
 cmake --build "${BUILD}" --parallel "${CTH3DS_JOBS}" --target corsixth_3dsx \
   >"${BUILD_EVIDENCE_DIR}/build.log" 2>&1
 OUTPUT="${BUILD}/CorsixTH-3DS.3dsx"
@@ -206,7 +219,7 @@ if not result["pass"]:
     raise SystemExit("Runtime Core archive-to-final-ELF call-edge proof failed")
 PY
 sha256_file "${OUTPUT}" > "${OUTPUT}.sha256"
-python3 - "${CTH3DS_ROOT}" "${BUILD_EVIDENCE_DIR}/artifact-manifest.json" \
+python3 - "${CTH3DS_ROOT}" "${CTH3DS_BUILD_MANIFEST}" \
   "${OUTPUT}" "${ELF}" "${BUILD}/heap-budget.json" \
   "${BUILD}/runtime-core-link-proof.json" \
   "${BUILD}/runtime-stack-proof.json" \
@@ -247,10 +260,15 @@ manifest = {
 }
 output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 PY
+cp "${UPSTREAM_DIR}/.cth3ds-view.json" "${BUILD_EVIDENCE_DIR}/generated-source.json"
+python3 "${CTH3DS_ROOT}/tools/source_view.py" bind --view "${UPSTREAM_DIR}" \
+  --overlay "${CTH3DS_ROOT}" --binary "${OUTPUT}" \
+  --manifest "${CTH3DS_BUILD_MANIFEST}"
 ci_diag_step complete "${BUILD_EVIDENCE_DIR}/configure.log" \
   "${BUILD_EVIDENCE_DIR}/build.log" "${BUILD}/heap-budget.json" \
   "${BUILD}/runtime-core-link-proof.json" "${OUTPUT}.sha256" \
   "${BUILD}/runtime-stack-proof.json" \
-  "${BUILD_EVIDENCE_DIR}/artifact-manifest.json"
+  "${CTH3DS_BUILD_MANIFEST}"
 ci_diag_mark_pass
 log "Nintendo 3DS build complete: ${OUTPUT}"
+BUILD_RECEIPT_COMMITTED=1

@@ -41,8 +41,9 @@ class SoundLifetimeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory(prefix='cth3ds-sound-lifetime-')
         cls.addClassCleanup(cls.temp.cleanup);cls.root=Path(cls.temp.name)
-        cls.upstream=original_sources(cls.root/'upstream')
-        assert integrate([str(cls.upstream),'--overlay-root',str(ROOT)])==0
+        original=original_sources(cls.root/'original')
+        cls.upstream=cls.root/'upstream'
+        assert integrate([str(original),'--overlay-root',str(ROOT),'--private-output',str(cls.upstream)])==0
         # Copy only generated consumers into the test seam include view.
         # Their bytes remain identical to full integrator output.
         cls.consumer=cls.root/'consumer';cls.consumer.mkdir()

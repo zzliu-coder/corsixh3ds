@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+source_owner "$0" "$@"
 
 THEME_HOSPITAL=""
 ASSET_MODE="loose"
@@ -61,6 +62,9 @@ mkdir -p "${WORK_DEST}"
 
 built="${CTH3DS_BUILD_DIR}/CorsixTH/CorsixTH-3DS.3dsx"
 [[ -s "${built}" ]] || die 'build the non-empty .3dsx first'
+python3 "${CTH3DS_ROOT}/tools/source_view.py" verify-build --view "${UPSTREAM_DIR}" \
+  --overlay "${CTH3DS_ROOT}" --binary "${built}" \
+  --manifest "${CTH3DS_BUILD_MANIFEST}"
 cp "${built}" "${WORK_DEST}/CorsixTH-3DS.3dsx"
 
 python3 - "${SOURCE_DATA}" "${WORK_DEST}" <<'PY'
@@ -123,7 +127,7 @@ else
   python3 "${CTH3DS_ROOT}/tools/prepare_loose_assets.py" \
     --runtime "${SOURCE_DATA}" --game "${THEME_HOSPITAL}" \
     --stage "${WORK_DEST}" --language "${LANGUAGE}" \
-    --upstream "${UPSTREAM_DIR}"
+    --upstream "${CTH3DS_UPSTREAM_PIN}"
 fi
 
 if [[ -n "${PRIVATE_MEDIA}" ]]; then

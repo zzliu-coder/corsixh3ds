@@ -59,6 +59,8 @@ SOURCE_FILES = {
     "generator": "tests/runtime_core_v2/generate_no_level_fixture.py",
     "integrator": "tools/integrate_corsixth.py",
     "embed_platform": "tools/embed_platform_lua.py",
+    "generated_view": "tools/integration/generated_view.py",
+    "source_view_owner": "tools/source_view.py",
     "host_python_runner": "scripts/run_host_python_suite.py",
     "host_python_manifest": "tests/host-python-suite.json",
     "lock": "requirements/verifier.lock",

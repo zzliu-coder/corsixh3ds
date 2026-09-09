@@ -70,6 +70,9 @@ CLOSURE_INPUTS = {
     "fixture-generator": "tests/runtime_core_v2/generate_no_level_fixture.py",
     "host-python-runner": "scripts/run_host_python_suite.py",
     "host-python-manifest": "tests/host-python-suite.json",
+    "generated-view": "tools/integration/generated_view.py",
+    "source-view-owner": "tools/source_view.py",
+    "integrator": "tools/integrate_corsixth.py",
 }
 
 
@@ -410,6 +413,8 @@ def fingerprint(repo: Path, revision: str,
 
 def source_tree(root: Path, run_id: str, tree_role: str,
                 root_id: str) -> dict[str, Any]:
+    if root.is_symlink() or not root.is_dir():
+        raise RuntimeError(f"source root must be a real directory: {root}")
     files = []
     for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().encode()):
         relative = path.relative_to(root).as_posix()
@@ -477,29 +482,43 @@ def extract_archive(archive: Path, destination: Path) -> None:
                 raise RuntimeError(f"unsupported archive member: {member.name}")
 
 
-def integrate(repo: Path, integrated: Path) -> None:
+def integrate(repo: Path, source: Path, integrated: Path) -> None:
+    """Use the complete generator, keeping fresh authority roots real directories."""
     tool = repo / "tools/integrate_corsixth.py"
-    for tail in (("--json",), ("--check", "--json")):
-        result = subprocess.run(
-            [sys.executable, str(tool), str(integrated),
-             "--overlay-root", str(repo), *tail],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        )
-        if result.returncode:
-            raise RuntimeError(
-                "integration tool failed: " + result.stderr.decode(errors="replace")
-            )
+    result = subprocess.run(
+        [sys.executable, str(tool), str(source), "--overlay-root", str(repo),
+         "--private-output", str(integrated), "--json"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode:
+        raise RuntimeError("integration tool failed: " +
+                           result.stderr.decode(errors="replace"))
+    result = subprocess.run(
+        [sys.executable, str(tool), str(integrated), "--overlay-root", str(repo),
+         "--check", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode:
+        raise RuntimeError("integration check failed: " +
+                           result.stderr.decode(errors="replace"))
 
 
 def prepare_sources(repo: Path, archive: Path, snapshot: Path, integrated: Path,
                     upstream_manifest: Path, integrated_manifest: Path,
                     run_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    for destination in (snapshot, integrated):
+        if destination.is_symlink() or (destination.exists() and
+                (not destination.is_dir() or any(destination.iterdir()))):
+            raise RuntimeError(f"source destination must be fresh real directory: {destination}")
+    a, b = snapshot.resolve(), integrated.resolve()
+    if a == b or a in b.parents or b in a.parents:
+        raise RuntimeError("source snapshot and generated roots must be disjoint")
     extract_archive(archive, snapshot)
-    if integrated.exists() and any(integrated.iterdir()):
-        raise RuntimeError(f"integrated destination is not empty: {integrated}")
-    shutil.copytree(snapshot, integrated, copy_function=shutil.copy2,
-                    dirs_exist_ok=True)
-    integrate(repo, integrated)
+    # Empty precreated roots are accepted only as exclusive real directories.
+    # Preserve fresh authority's existing links/hard-links/nonempty refusals.
+    if integrated.is_symlink():
+        raise RuntimeError(f"integrated destination is a link: {integrated}")
+    if integrated.exists():
+        if not integrated.is_dir() or any(integrated.iterdir()):
+            raise RuntimeError(f"integrated destination is not empty: {integrated}")
+    integrate(repo, snapshot, integrated)
     upstream = source_tree(snapshot, run_id, "upstream-snapshot",
                            "source_upstream_snapshot")
     combined = source_tree(integrated, run_id, "integrated",
@@ -679,7 +698,7 @@ def registry(policy_id: str) -> list[dict[str, Any]]:
                      "allowed_root_ids": ["candidate"], "node_type": "regular_file",
                      "media_type": "application/octet-stream",
                      "required_owner_kind": "none"})
-    assert len(rows) == 115
+    assert len(rows) == 101 + len(CLOSURE_INPUTS)
     return rows
 
 
@@ -865,7 +884,7 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
     product_fp, product_entries = fingerprint(
         repo, head, {"tools/th3ds_convert.py", "scripts/build_3ds.sh",
                      "scripts/bootstrap_upstream.sh"},
-        ("cmake/", "include/", "src/", "lua/"))
+        ("cmake/", "include/", "src/", "lua/", "upstream_overrides/"))
     expected_product = authority["product_boundary"]
     if expected_product["sha256"] != PRODUCT_FP or \
             product_fp != PRODUCT_FP or \
@@ -947,7 +966,7 @@ def build_policy(context: Any, consumer: Any, args: argparse.Namespace) -> int:
             "fingerprint_algorithm": "v3-mode-type-path-payload-sha256-nul",
             "product_exact": ["tools/th3ds_convert.py", "scripts/build_3ds.sh",
                               "scripts/bootstrap_upstream.sh"],
-            "product_prefixes": ["cmake/", "include/", "src/", "lua/"],
+            "product_prefixes": ["cmake/", "include/", "src/", "lua/", "upstream_overrides/"],
             "expected_product_fingerprint": expected_product["sha256"],
             "expected_product_entries": expected_product["entry_count"],
             "allowlist_exact": list(authority["authorized_diff_exact"]),
@@ -1397,7 +1416,7 @@ def produce(context: Any, args: argparse.Namespace) -> int:
 def internal_prepare(args: argparse.Namespace) -> int:
     upstream, combined = prepare_sources(
         args.repo.resolve(strict=True), args.archive.resolve(strict=True),
-        args.snapshot.resolve(), args.integrated.resolve(),
+        args.snapshot.absolute(), args.integrated.absolute(),
         args.upstream_manifest.resolve(), args.integrated_manifest.resolve(),
         args.run_id)
     print(json.dumps({"upstream_file_count": upstream["file_count"],

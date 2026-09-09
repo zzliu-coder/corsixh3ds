@@ -27,9 +27,12 @@ commit: 56bd5d00f76331c7f76d7b696726a7926303ca0c
 补丁器可单独运行：
 
 ```bash
-python3 tools/integrate_corsixth.py external/CorsixTH --overlay-root .
-python3 tools/integrate_corsixth.py external/CorsixTH --overlay-root . --check
+python3 tools/integrate_corsixth.py external/CorsixTH-pin --overlay-root . --dry-run
+python3 tools/integrate_corsixth.py external/CorsixTH-pin --overlay-root . --output external/new-view
+python3 tools/integrate_corsixth.py external/new-view --overlay-root . --check
 ```
+
+原始 pin 保持独立；新输出必须不存在。生产脚本在稳定源码 owner 内选择该完整视图，见 `GENERATED_SOURCE_VIEWS.md`。原地生成入口已关闭。
 
 ## 修改点
 

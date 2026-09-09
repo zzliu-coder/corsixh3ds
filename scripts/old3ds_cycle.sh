@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+source_owner "$0" "$@"
 
 HOST="${CTH3DS_HOST:-}"
 PORT="${CTH3DS_FTP_PORT:-5000}"
@@ -58,7 +59,7 @@ if [[ "${LANE}" == "release" ]]; then
     "${CTH3DS_ROOT}/scripts/test_all.sh" >"${RUN_DIR}/logs/test-all.log" 2>&1
 else
   PYTHONPATH="${CTH3DS_ROOT}/tools" PYTHONDONTWRITEBYTECODE=1 \
-    python3 -m unittest discover -s "${CTH3DS_ROOT}/tests" -p 'test_*.py' -v \
+    independent_tests python3 -m unittest discover -s "${CTH3DS_ROOT}/tests" -p 'test_*.py' -v \
     >"${RUN_DIR}/logs/python-tests.log" 2>&1
 fi
 

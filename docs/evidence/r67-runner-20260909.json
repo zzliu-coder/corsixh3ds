@@ -1,0 +1,600 @@
+{
+  "format": 2,
+  "product": "R67",
+  "source_commit": "ee0dd57f83832c5e3c14a834bb3c365f48ef16fa",
+  "source_digest": "fd46492dc85a63a66f662e8c66c4f5b41a5da0b55289b144a4047793a7166223",
+  "artifact_sha256": "b5531c746ae95dd9ddbe2083cc44d2a987ebe7d2297debbe6eeb9f76356cab52",
+  "elf_sha256": "634b0936f87b96ba68581259326eed51f0bb09fc1531b7906735547f789d3e0a",
+  "config_sha256": "b04022fad7eb4a922594583d41291bc0ff71deceb76ea93142b309bd89f48a62",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "run_id": "20260909-154803-f98c0cd6e6d7",
+  "identity": "PASS",
+  "launcher_roundtrip": "PASS",
+  "game_outcome": "PASS",
+  "game_reason": "COMPLETE",
+  "deployment": {
+    "outcome": "PASS",
+    "files": 4,
+    "bytes": 2968984,
+    "binary_last": true,
+    "journal": "candidate/deployment-journal.json",
+    "socket_timeout_seconds": 20
+  },
+  "source_tests_unique": 81,
+  "source_test_executions": 82,
+  "test_count_note": "one save-stream Lua test ran twice; 81 distinct tests",
+  "assembled_lua": 304,
+  "host_reader_tests": 10,
+  "stage_seconds": {
+    "targeted-final-02": 48.654,
+    "arm-final-02": 6.558,
+    "assembly-final-02": 0.257,
+    "deploy-final": 196.519,
+    "device-run-final": 459.058
+  },
+  "sample": [
+    {
+      "index": 1,
+      "completed_metrics": {
+        "world": 2751,
+        "hours": 917,
+        "entities": 29720,
+        "frames": 918,
+        "at": 60014
+      },
+      "simulation_completed": "PASS",
+      "performance_observation": "PASS",
+      "reason": "accepted native coverage (boundary tolerance 250ms)",
+      "precise_elapsed_us": 60013458,
+      "timing_source": "sample_elapsed_us",
+      "begin_log_excluded_us": 273,
+      "sample_presented_hz": 15.297,
+      "native_interval_hz": 15.296,
+      "native_frame_line": 566
+    }
+  ],
+  "frame_p95_upper_us": 85800,
+  "frame_max_us": 647687,
+  "performance_detail": {
+    "index": 1,
+    "clock": {
+      "outcome": "PASS",
+      "begin_us": 20663489637,
+      "end_us": 20723503095,
+      "elapsed_us": 60013458,
+      "steps": 2751,
+      "completed": 2751,
+      "failed": 0,
+      "debt_begin_us": 90000,
+      "debt_end_us": 90000,
+      "dropped_us": 10488769,
+      "rebases": 0,
+      "budget_exits": 917,
+      "completed_steps_hz": 45.83971815121868,
+      "normal_world_nominal_hz": 55.55555555555556,
+      "normal_entity_nominal_hz": 18.51851851851852,
+      "dropped_seconds": 10.488769,
+      "scope": "clock boundary delta; scheduling unchanged; not hardware utilization",
+      "completed_rates_hz": {
+        "world": 45.83971815121868,
+        "hours": 15.279906050406227,
+        "entities": 495.22225498154097,
+        "frames": 15.29656897957788
+      }
+    },
+    "gpu_submit": {
+      "outcome": "PASS",
+      "begin_us": 20663489637,
+      "end_us": 20723503095,
+      "counts": {
+        "calls": 876941,
+        "culled": 243368,
+        "errors": 0,
+        "pieces": 637540,
+        "whole": 873033,
+        "multi_excluded": 3908,
+        "partial_excluded": 0,
+        "hits": 637228,
+        "uploads": 312,
+        "page_switches": 69759,
+        "checkpoint_objects": 0,
+        "checkpoint_commands": 0,
+        "checkpoint_eviction": 2,
+        "sampled": 9831,
+        "rejected": 3883,
+        "floor_calls": 595782,
+        "floors": 918,
+        "frames": 918,
+        "floor_pieces": 374544,
+        "floor_switches": 0
+      },
+      "classes": {
+        "hit": {
+          "samples": 8770,
+          "ticks": {
+            "bridge": 16765178,
+            "geometry": 8259070,
+            "atlas_queue": 5804102,
+            "c2d": 10410842
+          },
+          "sampled_total_us": {
+            "bridge": 62530.535762655716,
+            "geometry": 30804.56837388049,
+            "atlas_queue": 21648.061695563363,
+            "c2d": 38830.21868305592
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": 7.1300496878740836,
+            "geometry": 3.5124935432018805,
+            "atlas_queue": 2.468422086153177,
+            "c2d": 4.4276190060497065
+          }
+        },
+        "hit_switch": {
+          "samples": 1053,
+          "ticks": {
+            "bridge": 2295208,
+            "geometry": 1040272,
+            "atlas_queue": 863792,
+            "c2d": 6851168
+          },
+          "sampled_total_us": {
+            "bridge": 8560.635975754836,
+            "geometry": 3879.9925356527315,
+            "atlas_queue": 3221.759801625483,
+            "c2d": 25553.39440117859
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": 8.129758761400604,
+            "geometry": 3.68470326272814,
+            "atlas_queue": 3.059600951211285,
+            "c2d": 24.267231150217086
+          }
+        },
+        "upload": {
+          "samples": 8,
+          "ticks": {
+            "bridge": 18690,
+            "geometry": 8322,
+            "atlas_queue": 227000,
+            "c2d": 34954
+          },
+          "sampled_total_us": {
+            "bridge": 69.70971100957206,
+            "geometry": 31.039283842785377,
+            "atlas_queue": 846.6615515876329,
+            "c2d": 130.37095979821197
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": 8.713713876196508,
+            "geometry": 3.879910480348172,
+            "atlas_queue": 105.83269394845411,
+            "c2d": 16.296369974776496
+          }
+        },
+        "checkpoint": {
+          "samples": 0,
+          "ticks": {
+            "bridge": 0,
+            "geometry": 0,
+            "atlas_queue": 0,
+            "c2d": 0
+          },
+          "sampled_total_us": {
+            "bridge": 0.0,
+            "geometry": 0.0,
+            "atlas_queue": 0.0,
+            "c2d": 0.0
+          },
+          "mean_us_per_sampled_call": {
+            "bridge": null,
+            "geometry": null,
+            "atlas_queue": null,
+            "c2d": null
+          }
+        }
+      },
+      "tick_hz": 268111856,
+      "collector_bytes": 384,
+      "floor_first_pass_total_us": 6894192.414974741,
+      "floor_first_pass_fraction_of_window": 0.11487743990647466,
+      "floor_first_pass_mean_us": 7510.013523937626,
+      "scope": "actual selected calls only; no x64 extrapolation; floor includes adjacent shadows and traversal; potential saving upper bound; no hardware utilization",
+      "floor_switches_per_emitted_floor_piece": 0.0,
+      "page_switches_per_emitted_piece": 0.10941901684600182,
+      "floor_piece_fraction": 0.5874831383128901,
+      "floor_count_scope": "actual emitted pieces and page transitions during first floor pass; no sampled-tick extrapolation"
+    },
+    "fps_reference": {
+      "target_hz": 30,
+      "classification": "informational",
+      "measured_presented_hz": 15.297,
+      "scope": "measured FPS; no release failure is inferred from being below 30"
+    },
+    "initial_context": {
+      "outcome": "PASS",
+      "exact_state_ab": "NOT_PROVEN",
+      "scope": "pre-window initial-state description; fixed-wall-time warmup; completed work and state are not locked",
+      "warmup_work": {
+        "world": 1327,
+        "hours": 443,
+        "entities": 13923,
+        "frames": 444,
+        "observed_ms": 30030
+      },
+      "scene_begin": {
+        "date": "1-09-09T43",
+        "camera_x": 523,
+        "camera_y": 1614,
+        "staff": 17,
+        "patients": 9
+      }
+    }
+  },
+  "performance_target_policy": "30fps_reference_not_release_gate",
+  "recovery": {
+    "requested": false,
+    "current_run": "NOT_PROVEN",
+    "reason": "R67 intentionally omits recovery; R66 observations retained separately"
+  },
+  "stress": {
+    "cycles": 11,
+    "elapsed_ms": 209841,
+    "save_reload_count": 2,
+    "outcome": "PASS"
+  },
+  "save_writer": [
+    {
+      "line": 1328,
+      "outcome": "PASS",
+      "proves_atomic_commit": false,
+      "bytes": 387448,
+      "flush_count": 24,
+      "elapsed_ms": 2195
+    },
+    {
+      "line": 1353,
+      "outcome": "PASS",
+      "proves_atomic_commit": false,
+      "bytes": 387448,
+      "flush_count": 24,
+      "elapsed_ms": 1989
+    },
+    {
+      "line": 1701,
+      "outcome": "PASS",
+      "proves_atomic_commit": false,
+      "bytes": 383336,
+      "flush_count": 24,
+      "elapsed_ms": 2504
+    },
+    {
+      "line": 1726,
+      "outcome": "PASS",
+      "proves_atomic_commit": false,
+      "bytes": 383336,
+      "flush_count": 24,
+      "elapsed_ms": 2106
+    },
+    {
+      "line": 1759,
+      "outcome": "PASS",
+      "proves_atomic_commit": false,
+      "bytes": 384212,
+      "flush_count": 24,
+      "elapsed_ms": 2086
+    }
+  ],
+  "memory_low_bytes": {
+    "heap_available_low": 20912704,
+    "linear_low": 2199552,
+    "min_heap_available": 20912744,
+    "min_linear_free": 2199552
+  },
+  "cpu_inclusive_not_additive": [
+    {
+      "line": 568,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "temperature",
+      "calls": "917",
+      "total_us": "5941343",
+      "max_us": "15960",
+      "units": "15024128",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 569,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "pathfind",
+      "calls": "398",
+      "total_us": "103622",
+      "max_us": "4588",
+      "units": "398",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 570,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "input_action",
+      "calls": "923",
+      "total_us": "655444",
+      "max_us": "46783",
+      "units": "923",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 571,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world",
+      "calls": "2751",
+      "total_us": "27486876",
+      "max_us": "617605",
+      "units": "2751",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 572,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "ui",
+      "calls": "2751",
+      "total_us": "4702486",
+      "max_us": "172888",
+      "units": "2751",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 573,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "gpu_upload",
+      "calls": "312",
+      "total_us": "28298",
+      "max_us": "557",
+      "units": "1582860",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 574,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "gpu_prepare",
+      "calls": "99",
+      "total_us": "64534",
+      "max_us": "43307",
+      "units": "597852",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 575,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_calendar",
+      "calls": "917",
+      "total_us": "2000282",
+      "max_us": "88700",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 576,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_animations",
+      "calls": "917",
+      "total_us": "68610",
+      "max_us": "293",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 577,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_hospitals",
+      "calls": "917",
+      "total_us": "1109423",
+      "max_us": "123791",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 578,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_entities",
+      "calls": "917",
+      "total_us": "17214403",
+      "max_us": "334213",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 579,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_map",
+      "calls": "917",
+      "total_us": "6026486",
+      "max_us": "16057",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 580,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_ui",
+      "calls": "917",
+      "total_us": "756884",
+      "max_us": "592483",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 581,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "world_dispatch",
+      "calls": "917",
+      "total_us": "30931",
+      "max_us": "142",
+      "units": "917",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 582,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "memory_observe",
+      "calls": "288",
+      "total_us": "449791",
+      "max_us": "3140",
+      "units": "288",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 583,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_entity_staff",
+      "calls": "986",
+      "total_us": "919920",
+      "max_us": "7265",
+      "units": "986",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 584,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_entity_patient",
+      "calls": "584",
+      "total_us": "85407",
+      "max_us": "7042",
+      "units": "584",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 585,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_entity_object",
+      "calls": "310",
+      "total_us": "26604",
+      "max_us": "276",
+      "units": "310",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 586,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_base",
+      "calls": "974",
+      "total_us": "225529",
+      "max_us": "4831",
+      "units": "974",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 587,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_rest",
+      "calls": "974",
+      "total_us": "129211",
+      "max_us": "446",
+      "units": "974",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 588,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_attributes",
+      "calls": "974",
+      "total_us": "258222",
+      "max_us": "1180",
+      "units": "974",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 589,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_litter",
+      "calls": "974",
+      "total_us": "87330",
+      "max_us": "379",
+      "units": "974",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    },
+    {
+      "line": 590,
+      "native_sample_index": 1,
+      "eligible": "1",
+      "name": "sample_staff_speed",
+      "calls": "974",
+      "total_us": "242914",
+      "max_us": "834",
+      "units": "974",
+      "contained_scopes": "1",
+      "inclusive": "1"
+    }
+  ],
+  "logging": {
+    "write_failures": 0,
+    "truncated": false,
+    "slow_event_rows_dropped": 6,
+    "complete_slow_event_catalog": "NOT_PROVEN"
+  },
+  "protected_original_files": 27,
+  "protected_before_after": "PASS",
+  "connections_closed": true,
+  "comparison_limit": "R67 omits recovery and changes warmup cache history; single R66/R67 values cannot establish causal gain",
+  "scope": {
+    "30fps": "REFERENCE_ONLY",
+    "net_performance_gain": "NOT_PROVEN",
+    "exact_state_ab": "NOT_PROVEN",
+    "complete_reception_service": "NOT_PROVEN",
+    "large_levels_and_long_soak": "NOT_PROVEN",
+    "audible_speech_and_music_this_run": "NOT_PROVEN",
+    "media_matrix_repeated": false,
+    "new_texture_memory_bytes": 0,
+    "github_pushed": false
+  },
+  "artifact_hashes": {
+    "manifest.kv": "1dc6014430c4d74677cd276150d808f89b1907eb11ebd10d25ea81b9435aa35c",
+    "result.kv": "21a4fe6f84d2a203107ed0b171e3892449bca58e8c38324176900c65bc2a0420",
+    "receipt.kv": "d9105295bb0aa2c9558b3a9ce5a1df6734166e0250e6e7dd77e81b4c999de9c4",
+    "artifacts/boot.log": "c62753d5602a70d1815d3926681082f3818fd1e13761441e74aab9db4f4f254f"
+  },
+  "analysis_script_sha256": "1378be5f13cc85a552e6b35b792d5ee2faaddbe7a2bfc9a8fd215ccefbf2f264"
+}

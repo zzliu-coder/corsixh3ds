@@ -1,0 +1,317 @@
+{
+  "format": 2,
+  "product": "R69",
+  "source_commit": "d0eb969aa97c107ab09706a9d35cf99a6394e74f",
+  "source_tree": "c4afa0f2bf2e3ea6f1b9466bd2053302951f7e66",
+  "source_digest": "bc33b114c441087b2eaf35502656bb1523ff4a7b86e77a8922628e14d4e8e722",
+  "source_files": 474,
+  "source_unchanged_during_validation": true,
+  "test_only_followup_commit": "d02efb866bf888eb29ddcdb9afadc475d0c6c86f",
+  "test_followup_changes_installed_binary": false,
+  "artifact_sha256": "8f9c1d319e7070ad0c4a065557ad5b65327c3832e08cc49949847ff65985061c",
+  "artifact_bytes": 2823036,
+  "elf_sha256": "a39a36c43aa081e7111b058ccc5ca8deab181ba15b728a8306736e480c20173f",
+  "config_sha256": "03899fa74868b3e7371c1562de938476cac42f8163914416a2a3bd109517ff11",
+  "input_sha256": "9e7e77fc5f05e7545b9941518726ae614d5069c4bfc16f5571ecd437622518de",
+  "run_id": "20260910-011901-2171b478de7b",
+  "run_count": 1,
+  "identity": "PASS",
+  "launcher_roundtrip": "PASS",
+  "game_outcome": "PASS",
+  "game_reason": "COMPLETE",
+  "return_boot": "cd091c56ca2abd37d4e5a9adbcc4e044",
+  "deployment": {
+    "outcome": "PASS",
+    "files": 4,
+    "uploaded_bytes": 2991599,
+    "uploaded_bytes_are_total_network_traffic": false,
+    "binary_last": true,
+    "full_asset_download": false,
+    "toolchain_reused": true,
+    "protection_read_deduplication": "PLANNED"
+  },
+  "host_suite": {
+    "full_run": {
+      "file": "full-host-suite-01.json",
+      "outcome": "FAIL",
+      "discovered": 327,
+      "selected": 327,
+      "executed": 327,
+      "passed": 320,
+      "failed": 1,
+      "errors": 5,
+      "skipped": 1,
+      "preserved": true
+    },
+    "closure": {
+      "outcome": "PASS",
+      "method": "full_with_test_fixture_repair",
+      "effective_passed": 326,
+      "effective_skipped": 1,
+      "targeted_executed": 11,
+      "targeted_passed": 11,
+      "reused_outcomes": 316,
+      "reused_passed": 315,
+      "reused_skipped": 1,
+      "original_ids_retained": 327,
+      "previous_r68_ids_retained": 310,
+      "frozen_baseline_ids_retained": 143,
+      "unchanged_product_tool_input_paths": 472,
+      "repeated_full_suite": false,
+      "repeated_arm_build": false,
+      "repeated_device_run": false
+    },
+    "sorted_ids_sha256": "5624f6134ee0d9ec9488225e3ba487e04028b880eadaa0062ce2c81bc1d81681",
+    "allowed_skip": "test_packer.PackerTests.test_case_insensitive_collision_is_rejected",
+    "allowed_skip_reason": "case-insensitive filesystem cannot create collision fixture",
+    "repaired_modules": [
+      "tests/test_playable_path.py",
+      "tests/test_r67_sound_observation.py"
+    ]
+  },
+  "assembly": {
+    "outcome": "PASS",
+    "repeat_identical_files": 737,
+    "syntax_checked_lua": 305,
+    "actual_generated_modules_loaded": 7,
+    "repository_lua_fallback": false,
+    "build_and_package_share_verified_view": true,
+    "integration_manifest_sha256": "32bc1c67614b5ac4b6d6b15937ffcdf53c248b0182daaa2f5f407f1789655ab5"
+  },
+  "arm": {
+    "outcome": "PASS",
+    "stage": "r69-arm-build-01",
+    "verified_debug_files": 7,
+    "retained_debug_bytes": 28844727,
+    "cumulative_stack_high_water": "NOT_PROVEN"
+  },
+  "stage_seconds": {
+    "assembly": 2.533,
+    "host_native": 3.306,
+    "arm": 28.173,
+    "full_host": 1267.694,
+    "targeted_fixture_closure": 6.047,
+    "device_gate": 1.716,
+    "prepare": 10.837,
+    "deploy": 140.629,
+    "runner": 452.039,
+    "parent_readback": 0.208
+  },
+  "sample": {
+    "completed_metrics": {
+      "world": 2691,
+      "hours": 897,
+      "entities": 28933,
+      "frames": 897,
+      "errors": 0
+    },
+    "simulation_completed": "PASS",
+    "precise_elapsed_us": 60051465,
+    "raw_presented_hz": 14.937187627312673,
+    "performance_observation": "PASS",
+    "native_interval_sum_us": 59985352,
+    "native_interval_count": 896,
+    "first_delay_us": 51092,
+    "open_tail_us": 15021,
+    "coverage_gap_us": 66113,
+    "existing_tolerance_us": 250000,
+    "frame_p95_upper_us": 131071,
+    "frame_max_us": 643769,
+    "exclusive_wall_phases_us": {
+      "loop_other": 57281558,
+      "gc_observe": 289653,
+      "gc_step": 62088,
+      "observation_flush": 1320648,
+      "event_wait": 45863,
+      "runtime": 411420,
+      "benchmark_call": 640235
+    },
+    "phases_conserved": true,
+    "phase_scope": "exclusive wall-clock residency; not CPU or GPU utilization; loop_other includes game draw and logic",
+    "last_flush": {
+      "duration_us": 190584,
+      "action": "compact",
+      "completed": true
+    },
+    "clock": {
+      "outcome": "PASS",
+      "completed_world_hz": 44.811562881938016,
+      "normal_nominal_world_hz": 55.55555555555556,
+      "dropped_simulation_us": 11610213,
+      "debt_begin_us": 90000,
+      "debt_end_us": 90000,
+      "failed_steps": 0,
+      "rebases": 0,
+      "speed_rules_unchanged": true,
+      "nominal_progress_met": false
+    },
+    "scene_begin": "date=1-09-09T43;camera_x=523;camera_y=1614;staff=17;patients=9",
+    "warmup_work": {
+      "world": 1327,
+      "hours": 443,
+      "entities": 13923,
+      "frames": 444,
+      "observed_ms": 30051
+    }
+  },
+  "hotspots": {
+    "entity_phase_ms_per_pass": 18.461477146042363,
+    "temperature_ms_per_update": 5.642308807134894,
+    "floor_first_pass_ms_per_frame": 8.179165663269254,
+    "floor_scope": "includes adjacent shadows and traversal; potential-saving upper bound",
+    "gpu": {
+      "pieces": 623848,
+      "page_switches": 68100,
+      "floor_pieces": 365976,
+      "floor_page_switches": 0,
+      "uploads": 343,
+      "eviction_checkpoints": 2,
+      "command_or_object_checkpoints": 0
+    },
+    "cold_popup": {
+      "parent": "world_ui",
+      "begin_us": 8141971697,
+      "duration_us": 588141,
+      "children_nonoverlapping_and_contained": true,
+      "children": [
+        {
+          "resource": "Fax01V",
+          "loader": "raw-image",
+          "begin_us": 8141972237,
+          "duration_us": 374498
+        },
+        {
+          "resource": "Fax02V",
+          "loader": "sprite-sheet",
+          "begin_us": 8142346888,
+          "duration_us": 83321
+        },
+        {
+          "resource": "Font51V",
+          "loader": "sprite-sheet",
+          "begin_us": 8142430363,
+          "duration_us": 122528
+        }
+      ],
+      "child_total_us": 580347,
+      "nested_resource_reads_already_included": true
+    },
+    "startup": {
+      "ready_ms": 45636,
+      "load_complete_ms": 49529,
+      "vspr0_read_ms": 6867.706,
+      "vspr0_sprite_load_ms": 7429.116,
+      "read_scope": "timed resource read path; pure SD throughput not isolated"
+    },
+    "save_writer": {
+      "closed_records": 5,
+      "bytes_min": 386108,
+      "bytes_max": 386744,
+      "flushes_per_record": 24,
+      "duration_ms_min": 2018,
+      "duration_ms_max": 2291,
+      "writer_alone_proves_outer_commit": false
+    }
+  },
+  "healthy_stress": {
+    "outcome": "PASS",
+    "elapsed_ms": 209235,
+    "window_cycles": 11,
+    "private_save_reload_count": 2,
+    "world": 7453,
+    "hours": 2484,
+    "entities": 79611,
+    "frames": 2486,
+    "file_presence_alone_proves_reload": false
+  },
+  "protection": {
+    "outcome": "PASS",
+    "original_files": 27,
+    "save_files": 25,
+    "baseline_before_after_sha256_equal": true,
+    "parent_recomputed_retained_bytes": true
+  },
+  "recovery": {
+    "current_run": "NOT_REQUESTED",
+    "unchanged_r68_evidence_reused": true,
+    "previous_two_natural_windows_seconds": 25,
+    "previous_staff_updated_each_window": 17,
+    "uncovered_reception_service": 2,
+    "all_future_behavior": "NOT_PROVEN"
+  },
+  "normal_completion_cleanup": "PASS",
+  "device_fault_injection": "NOT_PROVEN",
+  "memory": {
+    "heap_available_low_estimate_bytes": 20209752,
+    "linear_free_low_bytes": 2199552,
+    "contiguous_allocation_capacity": "NOT_PROVEN",
+    "large_hospital_capacity": "NOT_PROVEN"
+  },
+  "media": {
+    "language": "Chinese (simplified)",
+    "voice": "zh",
+    "music_configured": true,
+    "audible_playback": "NOT_PROVEN",
+    "unchanged_resource_evidence_reused": true
+  },
+  "log": {
+    "boot_log_sha256": "71a337acf1b2c1d929d5a3fdfb15eef29fe2a4152b19e6a9c9405a6990b39088",
+    "write_failures": 0,
+    "truncated": 0,
+    "slow_event_ring_dropped": 8,
+    "complete_slow_event_inventory": "NOT_PROVEN"
+  },
+  "exact_state_ab": "NOT_PROVEN",
+  "net_performance_benefit": "NOT_PROVEN",
+  "long_term_gameplay": "NOT_PROVEN",
+  "hardware_utilization": "NOT_PROVEN",
+  "fps_policy": "30 FPS informational; normal simulation, state correctness and save protection remain gates",
+  "parent_readback": {
+    "outcome": "PASS",
+    "stage": "r69-root-readback-02",
+    "earlier_historical_reference_schema_error_preserved": true,
+    "recomputed_analyzer_outputs": 2,
+    "extra_ftp_connections": 0,
+    "extra_game_submissions": 0,
+    "queue_idle": true
+  },
+  "local_evidence_root": "/Users/zheliu/Documents/Codex/2026-09-01/chatgpt-conversation-6a91c02a-5884-83e8-99ec/work/iterations/20260909-r69-assembly-thermal",
+  "local_evidence": [
+    {
+      "file": "full-host-suite-01.json",
+      "sha256": "3f06ab99251132bae9d0f57744239929fb67de6670a300adeb237374624458b2"
+    },
+    {
+      "file": "test-validation/device-run-summary.json",
+      "sha256": "b522e20a9726bc76225ee82a128539b8712bad44049d0067654d8a54969b4a4e"
+    },
+    {
+      "file": "test-validation/root-readback-check.json",
+      "sha256": "db8a2f4f1ba920be2e08b1d286bfac34222255117cb6a4e3b1b0cbffd6e385cf"
+    },
+    {
+      "file": "run-analysis.json",
+      "sha256": "a8f2ae6a0c3eedea18ac62c1222820521896f3fc0e59f1d7cb7a81baf388c602"
+    },
+    {
+      "file": "run-analysis-r69.json",
+      "sha256": "30e3a7a8ad774618cd52a1d3d1f5a7e98e471ec98ba27664df476813fca76652"
+    },
+    {
+      "file": "test-consumer-closure/targeted-01.json",
+      "sha256": "3f5b6e15baa14e5a7be53baa7394aadd87e08b5d8391516f3cc62a6e3e8a1f9f"
+    },
+    {
+      "file": "test-consumer-closure/test-only.patch",
+      "sha256": "7b11ac77b153671337117953c308fec7b9a45497218f5a90a08ecf4feac2d38d"
+    },
+    {
+      "file": "stages/r69-device-gate-01.log",
+      "sha256": "bdf26faf4fd423f8ac71b031eba8669c4f1a81dfafe7473eb92d765bb9d0ec1f"
+    },
+    {
+      "file": "debug/artifact-manifest.json",
+      "sha256": "b921a6a806c706e14fa4bff56f9b16617da17d8b7b8c22114e2ec87c98da8068"
+    }
+  ]
+}

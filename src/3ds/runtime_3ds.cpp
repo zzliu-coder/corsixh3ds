@@ -2388,7 +2388,7 @@ int l_runner_checkpoint(lua_State* state){
   if(!runner_active())return 0;
   runner_validate_fields(state,1);char error[256]{};
   try{runner::Fields fields;runner_read_fields(state,1,fields);
-    runner::atomicWrite(runner_directory()+"/artifacts/progress.kv",runner::encode(fields));}
+    runner_checkpoint(fields);}
   catch(const std::exception& e){std::snprintf(error,sizeof(error),"progress persistence failed: %.200s",e.what());}
   if(error[0])return luaL_error(state,"%s",error);
   return 0;

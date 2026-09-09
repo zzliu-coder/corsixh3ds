@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Expose newlib's POSIX fileno declaration under strict C++17 on the 3DS.
+// Expose newlib's POSIX stream declarations under strict C++17 on the 3DS.
 // Keep this feature selection before all system headers, local to this TU.
 #if defined(__3DS__) && !defined(CTH3DS_STUB_BUILD) && !defined(_DEFAULT_SOURCE)
 #define _DEFAULT_SOURCE 1
@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 namespace runner {
 namespace {
 struct SHA {
@@ -165,21 +166,53 @@ std::string read(const std::string &path, size_t limit) {
   s.resize(n);
   return s;
 }
-void atomicWrite(const std::string &path, const std::string &bytes) {
-  auto tmp = path + ".tmp";
-  FILE *f = fopen(tmp.c_str(), "wb");
-  if (!f)
-    throw std::runtime_error(error(tmp));
-  bool ok = fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
-  if (fflush(f) != 0)
-    ok = false;
-  if (fsync(fileno(f)) != 0)
-    ok = false;
-  if (fclose(f) != 0)
-    ok = false;
-  require(ok, "durable_write_failed");
-  require(rename(tmp.c_str(), path.c_str()) == 0, error(path));
+#ifdef CTH3DS_RUNNER_FAULT_TEST
+const char* atomicWriteFaultStage=nullptr;
+#endif
+namespace {
+bool writeFault(const char* stage){
+#ifdef CTH3DS_RUNNER_FAULT_TEST
+  if(atomicWriteFaultStage&&std::strcmp(stage,atomicWriteFaultStage)==0){errno=EIO;return true;}
+#endif
+  (void)stage;return false;
 }
+[[noreturn]] void writeError(const char* stage,const std::string& path,int code){
+  throw std::runtime_error(std::string("durable_write stage=")+stage+" errno="+
+    std::to_string(code)+" path="+path);
+}
+void requireAbsent(const std::string& path){
+  struct stat info{};
+  if(stat(path.c_str(),&info)==0)writeError("destination_exists",path,EEXIST);
+  const int code=errno;
+  if(code!=ENOENT)writeError("destination_stat",path,code);
+}
+void durableWrite(const std::string& path,const std::string& bytes,bool fresh){
+  const auto tmp=path+".tmp";
+  if(fresh)requireAbsent(path);
+  const int fd=open(tmp.c_str(),O_WRONLY|O_CREAT|(fresh?O_EXCL:O_TRUNC),0666);
+  if(fd<0){const int code=errno;writeError("open_temporary",tmp,code);}
+  FILE* f=fdopen(fd,"wb");
+  if(!f){const int code=errno;close(fd);writeError("fdopen",tmp,code);}
+  const char* failed=nullptr;int code=0;
+  if(writeFault("write")||fwrite(bytes.data(),1,bytes.size(),f)!=bytes.size()){
+    code=errno;failed="write";
+  }
+  if(!failed&&(writeFault("flush")||fflush(f)!=0)){code=errno;failed="flush";}
+  if(!failed&&(writeFault("fsync")||fsync(fd)!=0)){code=errno;failed="fsync";}
+  const bool inject_close=writeFault("close");const int injected_errno=errno;
+  const int closed=fclose(f);const int close_errno=errno;
+  if(!failed&&(inject_close||closed!=0)){code=inject_close?injected_errno:close_errno;failed="close";}
+  if(failed)writeError(failed,tmp,code);
+  // The adapter is the sole writer in this run. Refuse existing final files
+  // again immediately before publication; never delete them to make room.
+  if(fresh)requireAbsent(path);
+  if(writeFault("rename")||rename(tmp.c_str(),path.c_str())!=0){
+    const int rename_errno=errno;writeError("rename",path,rename_errno);
+  }
+}
+}
+void atomicWrite(const std::string& path,const std::string& bytes){durableWrite(path,bytes,false);}
+void atomicWriteNew(const std::string& path,const std::string& bytes){durableWrite(path,bytes,true);}
 Fields parse(const std::string &s) {
   require(!s.empty() && s.size() <= 16384 && s.back() == '\n',
           "incomplete_fields");

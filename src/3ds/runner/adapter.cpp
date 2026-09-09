@@ -12,6 +12,7 @@ runner::Job job;
 runner::Fields config;
 bool active=false, finished=false;
 unsigned long long frames=0;
+unsigned checkpoint_sequence=0;
 void require(bool ok,const char* reason){if(!ok)throw std::runtime_error(reason);}
 void luaFiles(const std::string& base,const std::string& relative,std::vector<std::string>& rows){
   DIR* directory=opendir((base+relative).c_str());require(directory!=nullptr,"lua_directory_missing");
@@ -43,6 +44,23 @@ const runner::Fields& runner_config(){return config;}
 std::string runner_directory(){return active?job.dir(runner::SDROOT):"";}
 void runner_present(bool success) noexcept {if(active&&success)++frames;}
 unsigned long long runner_frames() noexcept{return frames;}
+void runner_checkpoint(const runner::Fields& metrics){
+  require(active&&!finished,"checkpoint_requires_active_run");
+  require(checkpoint_sequence<48,"checkpoint_count_limit");
+  runner::Fields fields={{"version","1"},{"run_id",job.id},{"artifact_sha256",job.sha},
+    {"config_sha256",job.configSha},{"input_sha256",job.inputSha},{"manifest_sha256",job.manifestSha},
+    {"checkpoint_sequence",std::to_string(checkpoint_sequence+1)},{"snapshot_complete","1"}};
+  for(const auto& metric:metrics){
+    require(fields.count(metric.first)==0,"reserved_checkpoint_field");
+    fields.emplace(metric);
+  }
+  const auto bytes=runner::encode(fields);
+  require(bytes.size()<=16384,"checkpoint_exceeds_protocol_limit");
+  (void)runner::parse(bytes); // Validate key/value bytes before creating a file.
+  char name[40];std::snprintf(name,sizeof(name),"/artifacts/progress-%04u.kv",checkpoint_sequence+1);
+  runner::atomicWriteNew(job.dir(runner::SDROOT)+name,bytes);
+  ++checkpoint_sequence;
+}
 void runner_finish(const std::string& outcome,const std::string& reason,const runner::Fields& metrics){
   if(!active||finished)return;
   require(outcome=="PASS"||outcome=="FAIL"||outcome=="NOT_PROVEN","invalid_outcome");

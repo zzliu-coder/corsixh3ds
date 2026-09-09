@@ -13,6 +13,11 @@ std::string hashFile(const std::string &path);
 std::string read(const std::string &path, size_t limit = 16384);
 bool exists(const std::string &path);
 void atomicWrite(const std::string &path, const std::string &bytes);
+// Single-writer immutable publication. Existing final or temporary is an error.
+void atomicWriteNew(const std::string &path, const std::string &bytes);
+#ifdef CTH3DS_RUNNER_FAULT_TEST
+extern const char* atomicWriteFaultStage;
+#endif
 Fields parse(const std::string &bytes);
 std::string encode(const Fields &f);
 bool validId(const std::string &id);

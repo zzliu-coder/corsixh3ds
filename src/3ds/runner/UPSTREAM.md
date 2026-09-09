@@ -1,7 +1,12 @@
 Runner protocol source: old3ds-runner cab2721, device/core.cpp, core.hpp,
 rosalina.cpp and rosalina.hpp. core.cpp adds a 3DS-only _DEFAULT_SOURCE feature
-selection before system headers so strict C++17/newlib declares fileno; its
-fflush/fsync/close/rename persistence sequence is unchanged. rosalina.cpp adds
+selection before system headers so strict C++17/newlib declares POSIX stream APIs; its
+fflush/fsync/close/rename persistence sequence is retained. Durable writes now
+capture the failed operation's errno immediately and name its stage, before
+cleanup can alter errno. The added atomicWriteNew entry uses exclusive temporary
+creation and refuses existing final names for single-writer immutable snapshots;
+failed temporary files remain. Compile-time host-only fault injection exercises
+write/flush/fsync/close/rename errors. rosalina.cpp adds
 an explicit disabled loader for host stub builds. GPL-3.0-or-later; LICENSE
 is retained here. This reuse does not change the existing project LICENSE.
 

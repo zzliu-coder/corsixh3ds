@@ -6,6 +6,7 @@ INCLUDE = '''#ifdef CORSIXTH_3DS
 // CORSIXTH_3DS_FAST_BLIT_R51: private handles never leave this translation unit.
 #include "cth3ds/sdl_blitter.hpp"
 #include "cth3ds/gpu_sdl_bridge.hpp"
+#include "cth3ds/bitmap_opacity.hpp"
 #define SDL_DestroyTexture cth3ds::blit_destroy
 #endif
 '''
@@ -18,6 +19,9 @@ RAW_LOAD = '''void raw_bitmap::load_from_th_file(const uint8_t* pPixelData,
                                    render_target* pEventualCanvas,
                                    uint32_t spriteFlags) {
   // CORSIXTH_3DS_RAW_OWNERSHIP_R62: prepare completely before replacing state.
+#ifdef CORSIXTH_3DS
+  opaque_canvas = false; // R73: failed replacement keeps pixels, revokes proof.
+#endif
   if (!pEventualCanvas || !pPixelData || !bitmap_palette || iWidth <= 0 ||
       iPixelDataLength == 0 || iPixelDataLength % static_cast<size_t>(iWidth) != 0 ||
       iPixelDataLength / static_cast<size_t>(iWidth) > 4096) {
@@ -55,6 +59,10 @@ RAW_LOAD = '''void raw_bitmap::load_from_th_file(const uint8_t* pPixelData,
   width = iWidth;
   height = iHeight;
   target = pEventualCanvas;
+#ifdef CORSIXTH_3DS_GPU
+  opaque_canvas = cth3ds::gpu_active() && cth3ds::opaque_canvas_pixels(pPixelData, iPixelDataLength,
+    iWidth, spriteFlags, bitmap_palette->get_argb_data());
+#endif
 }'''
 
 def transform(text):

@@ -110,6 +110,22 @@ int runner_start(int argc,char** argv) noexcept {
       runner::hashFile("sdmc:/3ds/corsixth/config.txt")==config["player_config_sha256"],"player_config_mismatch");
     const int duration=std::stoi(config.at("stress_ms"));
     require(std::to_string(duration)==config["stress_ms"]&&duration>=0&&duration<=22*60000,"invalid_stress_duration");
+    if(config.count("capacity")){
+      require(config.at("capacity")=="r73-v1"&&config["profile"]=="expanded-zh-on"&&duration>0&&duration<=180000&&
+        !config.count("recovery_sha256"),"invalid_capacity_configuration");
+      require(config["continuity_sha256"]=="17b74375444d153599873bf25255b0d6a817343382eed1ebab6d3d89dce3a808",
+        "invalid_continuity_identity");
+      require(config["expanded_sha256"]=="f8a8039644a81a22b44fd1dfed6201c70782ae6bf4873bdb50b3ba7b2c63a0e7",
+        "invalid_capacity_expanded_identity");
+      unsigned index=0;
+      for(const auto& identity:{
+        "c792571dfaeee2b44fca9f3d5100e3baf878580657d471c10f24ba23ff032253|sdmc:/3ds/corsixth/game/LEVELS/LEVEL.L1",
+        "e0c70a7c5d7034b63063901487b94c7b2924b6cf972c7a773f70175e89b407d8|sdmc:/3ds/corsixth/game/LEVELS/LEVEL.L12",
+        "03ef32ce27867196ac5991025de59d658254e3287cf4c9dd73a7c3824bddfd2b|sdmc:/3ds/corsixth/game/LEVELS/FULL00.SAM",
+        "38beafde190313e57034bc8295a07660921c4d7c67568850a57a3f6c4cc27f0b|sdmc:/3ds/corsixth/game/LEVELS/FULL12.SAM"}){
+        require(config["verify_"+std::to_string(++index)]==identity,"invalid_capacity_asset_identity");
+      }
+    }else require(!config.count("continuity_sha256"),"continuity_requires_capacity");
     for(const auto& key:{"warmup_ms","sample_ms"}){
       const int ms=std::stoi(config.at(key));
       require(std::to_string(ms)==config[key]&&ms>=1000&&ms<=60000,"invalid_sample_duration");
@@ -127,8 +143,9 @@ int runner_start(int argc,char** argv) noexcept {
     mkdir((dir+"/artifacts").c_str(),0777);
     copy("sdmc:/3ds/corsixth/config.txt",dir+"/save/config.txt");
     copy(dir+"/input.bin",dir+"/input.sav");
-    for(const auto& name:{"expanded","r62-recovery"}){
-      auto it=config.find(std::string(name)=="expanded"?"expanded_sha256":"recovery_sha256");
+    for(const auto& name:{"expanded","r62-recovery","continuity"}){
+      auto it=config.find(std::string(name)=="expanded"?"expanded_sha256":
+        std::string(name)=="continuity"?"continuity_sha256":"recovery_sha256");
       if(it!=config.end()){
         const std::string source=std::string("sdmc:/3ds/corsixth/Benchmark/")+name+".sav";
         require(runner::validHash(it->second)&&runner::hashFile(source)==it->second,"baseline_hash_mismatch");

@@ -108,6 +108,7 @@ from integration.validation import (
 )
 from integration.render_fast import patch_render_fast
 from integration.render_gpu import patch_render_gpu
+from integration.floor_occlusion import patch_floor_occlusion
 from integration.cpu_hotspots import patch_cpu_hotspots
 from integration.media import patch_media
 
@@ -159,6 +160,7 @@ def generate_complete(root: Path, overlay: Path, provenance: str, profile: str =
     changes.extend(Change(path, "render-gpu") for path in patch_render_gpu(root))
     changes.extend(Change(path, "cpu-hotspots") for path in patch_cpu_hotspots(root, overlay))
     changes.extend(Change(path, "media") for path in patch_media(root))
+    changes.extend(Change(path, "floor-occlusion") for path in patch_floor_occlusion(root))
     from integration.runner_adapter import patch_runner_adapter
     changes.extend(patch_runner_adapter(root))
     integrated_manifest = manifest(root, overlay, provenance, profile)

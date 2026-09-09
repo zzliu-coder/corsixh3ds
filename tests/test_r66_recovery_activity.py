@@ -82,7 +82,7 @@ print('PASS recovered ticks, genuine service, legal waiting, callback failure, l
             source.write_text(script() + r'''
 local w,c=recovered();local permanents,inverse=permanence(w)
 local before=assert(candidate.dump(w,permanents))
-local unchanged=frozen(w,false);A.start(w,c);unchanged()
+local unchanged=frozen(w,false);A.start(w,c,true);unchanged()
 assert(candidate.dump(w,permanents)==before,'observer entered serialized graph')
 serve(w);assert(A.report().outcome=='PASS')
 -- Simulate real world array compaction before the pause/save boundary.
@@ -94,13 +94,14 @@ local file=assert(io.open(directory..'/activity.save','wb'))
 assert(candidate.dump_file(w,permanents,file));assert(file:close())
 file=assert(io.open(directory..'/activity.save','rb'));local bytes=file:read('*a');file:close()
 for _,reader in ipairs{reference,candidate}do
- local restored=assert(reader.load(bytes,inverse));A.start(restored,c)
+ local restored=assert(reader.load(bytes,inverse));A.start(restored,c,true)
  assert(A.report().updated==0,'pre-reload updates leaked into second window')
  local staff,desk=restored.entities[2],restored.entities[1]
  local patient=Patient();patient.action_queue={{name='idle'}};desk.queue[1]=patient
  for i=1,4 do assert(observed(staff));assert(observed(desk))end
  assert(patient.has_passed_reception and A.report().outcome=='PASS')
- assert(A.report().rows[1].services==1);A.stop()
+ assert(A.patientReport().rows[1].patient_services==1)
+ assert(A.patientReport().events[1].tail_after=='seek_room');A.stop()
 end
 print('PASS actual native private file roundtrip, both readers, cohort compaction/rebind and graph isolation')
 ''')

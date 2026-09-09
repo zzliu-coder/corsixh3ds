@@ -54,6 +54,12 @@ function Benchmark.new(app,native)
     end
     self.stress_duration=tonumber(run.stress_ms)
     self.warmup_ms=tonumber(run.warmup_ms);self.sample_ms=tonumber(run.sample_ms)
+    if run.capacity then
+      assert(run.capacity=="r73-v1" and run.profile=="expanded-zh-on" and
+        self.stress_duration>0 and self.stress_duration<=180000 and not run.recovery_sha256,
+        "invalid capacity configuration")
+      self.capacity_requested=true
+    end
   end
   return self
 end
@@ -198,7 +204,7 @@ function Benchmark:terminal(outcome,reason)
         outcome="FAIL";reason="ANNUAL_OBSERVATION_FAILED"
       end
     end
-    local now=self:progress()
+    local now=self.stress_end_progress or self:progress()
     for _,key in ipairs{"world","hours","entities","frames","at"}do
       fields["stress_"..key]=tostring(now[key]-self.stress_progress[key])
     end
@@ -241,6 +247,7 @@ end
 
 function Benchmark:restore()
   Activity.stop()
+  if self.capacity then self.capacity:close() end
   local closed=true
   if self.stress then
     local detail;closed,detail=pcall(self.stress.close,self.stress)
@@ -274,11 +281,19 @@ end
 
 function Benchmark:cancel(reason)
   if self.phase=="done" or self.cleanup_started then return end
+  local capacity_ok=true
+  if self.capacity and Activity.active then
+    local detail;capacity_ok,detail=pcall(self.capacity.report,self.capacity,true)
+    if not capacity_ok then
+      self.results.failure_detail=self.results.failure_detail or failureText(detail)
+      self.results.capacity_failure_outcome="FAIL"
+    end
+  end
   local marked,err=pcall(self.mark,self,"ABORT-"..failureText(reason))
   if not marked then self.results.failure_detail=self.results.failure_detail or failureText(err) end
   local restored=self:cleanup()
-  local reported,report_error=pcall(self.terminal,self,restored and marked and "NOT_PROVEN" or "FAIL",
-    not restored and "CLEANUP_FAILED" or (marked and "CANCEL" or "FAILED"))
+  local reported,report_error=pcall(self.terminal,self,restored and marked and capacity_ok and "NOT_PROVEN" or "FAIL",
+    not restored and "CLEANUP_FAILED" or (marked and capacity_ok and "CANCEL" or "FAILED"))
   self.phase="done"
   if not reported then error(report_error,0) end
   if not pcall(self.native.set_notice,restored and "BENCHMARK STOPPED - LOG RETAINED"
@@ -492,13 +507,18 @@ function Benchmark:advance()
     "simulation timer disconnected; performance sample invalid")
   if self.native.clock_ms()-self.last_health_check>=5000 then
     Health.assertActive(self.app);self.last_health_check=self.native.clock_ms()
-    if (self.phase=="sample" and self.expected_music or self.phase=="recovery" and self.recovery_music)
+    if (self.phase=="sample" and self.expected_music or self.phase=="recovery" and self.recovery_music
+        or self.phase=="capacity" and self.expected_music)
         and self.native.music_state then
       local playing,paused=self.native.music_state()
       assert(playing and not paused,"benchmark music is not actually playing")
     end
   end
   if self.phase=="recovery" then self:advanceRecovery();return end
+  if self.phase=="capacity" then
+    if self.capacity:tick() then self.capacity_complete=true;self:finish() end
+    return
+  end
   if self.phase=="stress" then
     if self.stress:tick() then self:finish() end
     return
@@ -566,10 +586,18 @@ end
 
 function Benchmark:finish()
   if self.phase=="done" or self.cleanup_started then return end
+  if self.capacity_requested and not self.capacity_complete then
+    assert(not self.capacity,"capacity reentered before completion")
+    self.stress_end_progress=self:progress()
+    self.stress:close()
+    self.capacity=require("3ds.benchmark_capacity").new(self)
+    self.phase="capacity";self.deadline=nil
+    return
+  end
   if self.run then
     Health.assertActive(self.app)
     if self.stress then
-      local now=self:progress()
+      local now=self.stress_end_progress or self:progress()
       assert(now.world>self.stress_progress.world and now.hours>self.stress_progress.hours and
         now.entities>self.stress_progress.entities,"stress completed no simulation work")
     end
@@ -601,6 +629,11 @@ function Benchmark:tick()
     end
     self.results.failure_phase=self.results.failure_phase or
       (not self.healthy_started and self.results.recovery_stage or self.phase)
+    if self.phase=="capacity" then
+      local needs=type(err)=="string" and err:match(NEEDS_INPUT.."$")~=nil
+      self.results.capacity_failure_outcome=needs and "NOT_PROVEN" or "FAIL"
+      if Activity.active then observe(self.capacity.report,self.capacity,true) end
+    end
     if self.phase=="recovery" then
       local needs=type(err)=="string" and err:match(NEEDS_INPUT.."$")~=nil
       self.results.recovery_behavior_outcome=needs and "NOT_PROVEN" or "FAIL"

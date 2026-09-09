@@ -12,6 +12,7 @@ from sound_lifetime import (sound_transaction, patch_sound_lifetime,
 from sprite_residency import patch_sprite_residency, check_sprite_residency
 from .render_fast import check_render_fast
 from .render_gpu import check_render_gpu
+from .floor_occlusion import check_floor_occlusion
 from .cpu_hotspots import check_cpu_hotspots
 from .media import check_media
 from .common import (
@@ -72,6 +73,7 @@ def check_integrated(root: Path, overlay: Path, profile: str = 'loose') -> list[
     errors.extend(check_dual_screen(root))
     errors.extend(check_render_fast(root))
     errors.extend(check_render_gpu(root))
+    errors.extend(check_floor_occlusion(root))
     errors.extend(check_cpu_hotspots(root, overlay))
     errors.extend(check_media(root))
     errors.extend(check_sound_callbacks(root))

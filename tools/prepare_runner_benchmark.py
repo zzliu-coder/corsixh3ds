@@ -5,6 +5,32 @@ import hashlib
 import json
 from pathlib import Path
 
+CONTINUITY_SHA='17b74375444d153599873bf25255b0d6a817343382eed1ebab6d3d89dce3a808'
+CAPACITY_ASSETS={
+    'LEVEL.L1':'c792571dfaeee2b44fca9f3d5100e3baf878580657d471c10f24ba23ff032253',
+    'LEVEL.L12':'e0c70a7c5d7034b63063901487b94c7b2924b6cf972c7a773f70175e89b407d8',
+    'FULL00.SAM':'03ef32ce27867196ac5991025de59d658254e3287cf4c9dd73a7c3824bddfd2b',
+    'FULL12.SAM':'38beafde190313e57034bc8295a07660921c4d7c67568850a57a3f6c4cc27f0b'}
+
+def capacity_fields(args,base):
+    if not getattr(args,'capacity',False): return {}
+    if args.profile!='expanded-zh-on' or args.recovery or not 0<args.stress_ms<=180000:
+        raise ValueError('capacity requires expanded-zh-on, stress 1..180000, and no recovery')
+    def bound(relative,expected):
+        path=base/relative
+        if not path.resolve().is_relative_to(base) or any((base/Path(*path.relative_to(base).parts[:i])).is_symlink()
+                for i in range(1,len(path.relative_to(base).parts)+1)):
+            raise ValueError('capacity dependency escapes installed tree or uses symlink')
+        if sha(path)!=expected: raise ValueError('capacity dependency identity mismatch: '+relative)
+    bound('Benchmark/continuity.sav',CONTINUITY_SHA)
+    bound('Benchmark/expanded.sav','f8a8039644a81a22b44fd1dfed6201c70782ae6bf4873bdb50b3ba7b2c63a0e7')
+    fields={'capacity':'r73-v1','continuity_sha256':CONTINUITY_SHA}
+    for i,(name,digest) in enumerate(CAPACITY_ASSETS.items(),1):
+        relative='game/LEVELS/'+name
+        bound(relative,digest)
+        fields['verify_'+str(i)]=digest+'|sdmc:/3ds/corsixth/'+relative
+    return fields
+
 def sha(path):
     digest=hashlib.sha256()
     with path.open('rb') as stream:
@@ -37,6 +63,7 @@ def prepare(args):
         fields['expanded_sha256']=sha(base/'Benchmark/expanded.sav')
     if args.recovery:
         fields['recovery_sha256']=sha(base/'Benchmark/r62-recovery.sav')
+    fields.update(capacity_fields(args,base))
     args.out.mkdir(parents=True,exist_ok=False)
     config=args.out/'config.bin'
     config.write_text(''.join(k+'='+v+'\n' for k,v in sorted(fields.items())))
@@ -49,7 +76,8 @@ def prepare(args):
             'python3','PATH/TO/old3ds-runner/host/runner.py','--host','DEVICE_IP','run',
             '--artifact','CANDIDATE.3dsx','--config',str(config.resolve()),'--input',str(input_path),
             '--launcher-sha','VERIFIED_LAUNCHER_SHA256','--out',str(args.out.resolve()/'runs'),
-            '--timeout',str(300+(args.warmup_ms+args.sample_ms)*(4 if args.profile=='matrix' else 1)//1000+args.stress_ms//1000)
+            '--timeout',str(300+(args.warmup_ms+args.sample_ms)*(4 if args.profile=='matrix' else 1)//1000+args.stress_ms//1000
+                +(545 if getattr(args,'capacity',False) else 0))
         ]},indent=2)+'\n')
     return receipt_path
 
@@ -63,6 +91,7 @@ def main():
     parser.add_argument('--sample-ms',type=int,default=60000)
     parser.add_argument('--stress-ms',type=int,default=0)
     parser.add_argument('--recovery',action='store_true')
+    parser.add_argument('--capacity',action='store_true',help='R73 bounded continuity and normal level 12 loading; requires expanded profile and stress 1..180000')
     parser.add_argument('--out',type=Path,required=True)
     print(prepare(parser.parse_args()))
 

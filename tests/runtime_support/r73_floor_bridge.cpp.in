@@ -1,0 +1,44 @@
+
+#include <cassert>
+#include <cstdio>
+#include <string>
+#include <vector>
+#include <lua.hpp>
+#define ZoneScoped
+struct render_target{};
+struct level_map{
+ std::vector<bool> calls;
+ void draw(render_target*,int,int,int,int,int,int,bool skip){calls.push_back(skip);}
+};
+template<class T>T* luaT_testuserdata(lua_State* L,int index=1){return *static_cast<T**>(luaL_checkudata(L,index,"fixture.pointer"));}
+// INSERT_MAP
+struct raw_bitmap{bool opaque_canvas_for(render_target*) const noexcept;};
+// INSERT_SOFTWARE
+int main(){
+ raw_bitmap bitmap;assert(!bitmap.opaque_canvas_for(nullptr));
+ auto* L=luaL_newstate();luaL_openlibs(L);luaL_newmetatable(L,"fixture.pointer");lua_pop(L,1);
+ level_map map;render_target canvas;
+ auto put=[&](void* p,const char* name){*static_cast<void**>(lua_newuserdatauv(L,sizeof(void*),0))=p;luaL_setmetatable(L,"fixture.pointer");lua_setglobal(L,name);};
+ put(&map,"map");put(&canvas,"canvas");lua_pushcfunction(L,l_map_draw);lua_setglobal(L,"draw");
+ const char* script=R"(
+ assert(draw(map,canvas,1,2,640,480)==map)
+ assert(draw(map,canvas,1,2,83,82,4,5)==map)
+ draw(map,canvas,1,2,640,480,0,0,nil)
+ draw(map,canvas,1,2,640,480,0,0,false)
+ draw(map,canvas,1,2,640,480,0,0,true)
+ draw(map,canvas,1,2,640,480,0,0,1)
+ draw(map,canvas,1,2,640,480,0,0,'true')
+ draw(map,canvas,1,2,640,480,0,0,setmetatable({},{__tostring=function()error('must not call')end}))
+ assert(not pcall(draw,map,canvas,{},2,640,480))
+ assert(not pcall(draw,map,canvas,1,2,640,480,0,{}))
+ )";
+ int status=luaL_dostring(L,script);if(status)std::fprintf(stderr,"%s\n",lua_tostring(L,-1));assert(status==LUA_OK);
+ assert(map.calls.size()==8);for(unsigned i=0;i<8;++i){
+#ifdef CORSIXTH_3DS
+ assert(map.calls[i]==(i==4));
+#else
+ assert(!map.calls[i]);
+#endif
+ }
+ lua_close(L);std::puts("PASS actual l_map_draw + Lua5.4: default/preview/false/nil/true/nonboolean/error, raw return");
+}

@@ -1,7 +1,7 @@
 -- Private recovery observation. No world/entity is stored in a save graph.
 -- Weak keys cannot keep departed staff or desks alive. Rows contain scalars only.
 local A={active=false}
-local targets,desks,rows
+local targets,desks,rows,heads,events,event_drops
 local function action(e)
   local a=e.action_queue and e.action_queue[1]
   return a and tostring(a.name):sub(1,48) or "none",a and a.path_index
@@ -17,18 +17,20 @@ function A.capture(world)
   return cohort
 end
 function A.stop()
-  A.active=false;targets=nil;desks=nil;rows=nil
+  A.active=false;targets=nil;desks=nil;rows=nil;heads=nil;events=nil;event_drops=nil
 end
-function A.start(world,cohort)
+function A.start(world,cohort,patient_events)
   A.stop()
   assert(type(cohort)=="table" and #cohort>0 and #cohort<=64,"recovery cohort unavailable")
   targets=setmetatable({},{__mode="k"});desks=setmetatable({},{__mode="k"});rows={}
+  if patient_events then heads=setmetatable({},{__mode="kv"});events={};event_drops=0 end
   for i,c in ipairs(cohort) do
     local e=assert(world.entities[c.index],"recovered entity missing after reload")
     assert(class.is(e,Staff) and e.humanoid_class==c.kind,"recovered entity identity changed")
     local r={index=c.index,source_index=c.source_index or c.index,kind=c.kind,ticks=0,failures=0,timers=0,callbacks=0,
       actions=0,desk_ticks=0,services=0,partial_timer=0,timerless=0,unscheduled=0}
     rows[i]=r;targets[e]=r
+    if heads then r.patient_services=0 end
   end
   A.active=true
 end
@@ -45,6 +47,11 @@ function A.before(e)
   if r then
     r.before_service_owner=targets[e.receptionist]==r
     r.before_visitors=e.queue and e.queue.visitor_count
+    if heads then
+      local head=e.queue and e.queue:front();heads[e]=head
+      r.before_head_action=head and action(head) or "none"
+      r.before_head_passed=head and head.has_passed_reception==true or false
+    end
   end
 end
 function A.after(e,ok)
@@ -76,11 +83,33 @@ function A.after(e,ok)
       local n=e.queue and e.queue.visitor_count
       if owner and type(n)=="number" and type(r.before_visitors)=="number" and n>r.before_visitors then
         r.services=r.services+n-r.before_visitors
+        local head=heads and heads[e]
+        if head and n==r.before_visitors+1 and e.queue:front()~=head and head.has_passed_reception==true then
+          local patient=class.is(head,Patient)
+          if patient then r.patient_services=r.patient_services+1 end
+          if #events<32 then
+            local tail=head.action_queue and head.action_queue[#head.action_queue]
+            events[#events+1]={source_index=r.source_index,owner_index=r.index,
+              head_kind=patient and "Patient" or tostring(class.type(head)):sub(1,48),
+              head_id=tostring(head):sub(1,64),before=r.before_visitors,after=n,
+              action_before=r.before_head_action,action_after=action(head),
+              tail_after=tail and tostring(tail.name):sub(1,48) or "none",
+              passed_before=r.before_head_passed,passed_after=true,owner_same=true}
+          else event_drops=event_drops+1 end
+        end
       end
     end
     r.before_visitors=nil
     r.before_service_owner=nil
+    r.before_head_action=nil;r.before_head_passed=nil
+    if heads then heads[e]=nil end
   end
+end
+function A.patientReport()
+  local result=A.report()
+  assert(events,"patient observation not enabled")
+  result.events=events;result.event_drops=event_drops
+  return result
 end
 function A.report()
   assert(A.active,"recovery observer stopped")

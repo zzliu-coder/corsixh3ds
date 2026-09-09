@@ -1,0 +1,110 @@
+// Actual raw_bitmap class and functions + actual GPU draw; target's unrelated
+// methods are absent. Software texture creation is an explicit unsupported seam.
+#include "cth3ds/sdl_blitter.hpp"
+#include "cth3ds/bitmap_opacity.hpp"
+#include "runtime_3ds.hpp"
+#include <memory>
+#include <stdexcept>
+#include <stack>
+static unsigned memory_reports;
+namespace cth3ds {
+void runtime_observe_memory(const char*,const char*,const char*,MemoryGate,std::uint64_t,bool,std::uint64_t,bool,bool,bool)noexcept{++memory_reports;}
+}
+#define CORSIXTH_3DS 1
+#define SDL_DestroyTexture cth3ds::blit_destroy
+constexpr int thdf_flip_horizontal=1,thdf_flip_vertical=2,thdf_alpha_50=4,thdf_alpha_75=8,thdf_alt32_plain=0;
+const float frect_overdraw=.01F;
+struct palette {std::array<uint32_t,256> colours{};const auto& get_argb_data()const{return colours;}};
+struct render_target {
+ SDL_Renderer* renderer{};SDL_Surface* game_surface{};int width=640,height=480;
+ struct Scope {SDL_Rect rect;bool scale;void offset(SDL_FRect&r){r.x-=float(rect.x);r.y-=float(rect.y);}};
+ Scope* current_target=nullptr;void* zoom_buffer=nullptr;std::stack<SDL_Rect> clip_rects;
+ double global_scale_factor=1.,bitmap_scale_factor=1.;bool scale_bitmaps=false;
+ SDL_Renderer* get_renderer(){return renderer;}
+ bool should_scale_bitmaps(double* f){*f=bitmap_scale_factor;return scale_bitmaps;}
+ double draw_scale()const{return current_target&&!current_target->scale?1.:global_scale_factor;}
+ // INSERT_GEOMETRY
+ void draw(SDL_Texture*,const SDL_Rect*,const SDL_Rect*,int);
+ SDL_Texture* create_palettized_texture(int,int,const uint8_t*,const palette*,uint32_t){throw std::runtime_error("software path outside GPU probe");}
+};
+// INSERT_RAW_CLASS
+// INSERT_SCALE
+// INSERT_DRAW
+// INSERT_CONVERT
+// INSERT_RAW_METHODS
+int main(){
+ using namespace cth3ds;assert(SDL_Init(0)==0);assert(gpu_initialize());
+ auto* out=SDL_CreateRGBSurfaceWithFormat(0,640,480,32,SDL_PIXELFORMAT_ABGR8888);
+ auto* r=SDL_CreateSoftwareRenderer(out);assert(r);render_target target;target.renderer=r;target.game_surface=out;
+ palette p;for(unsigned i=0;i<256;++i)p.colours[i]=0xff000000U|i*0x010101U;
+ std::vector<uint8_t> data(640*480);for(unsigned i=0;i<data.size();++i)data[i]=uint8_t(i%256);
+ auto pixels=[&](){assert(gpu_read_pixels(out));auto* q=static_cast<uint32_t*>(out->pixels);return std::vector<uint32_t>(q,q+640*480);};
+ unsigned cases=0;
+ {
+ raw_bitmap bitmap;assert(!bitmap.opaque_canvas_for(&target));bitmap.set_palette(&p);
+ bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);assert(bitmap.opaque_canvas_for(&target));
+ // Full opaque background erases every combination of prior floor and shadow,
+ // entities and overlays; prefix work still executes in both command sequences.
+ std::vector<uint32_t> full;
+ for(int skip=0;skip<2;++skip){
+  assert(gpu_begin());assert(gpu_clear(0xff203040U));
+  if(!skip){SDL_Rect f{0,0,640,480};assert(gpu_fill(&f,0xffaabbccU));SDL_Rect s{40,80,250,200};assert(gpu_fill(&s,0x80444444U));}
+  SDL_Rect entity{10,10,26,44};assert(gpu_fill(&entity,0xff123456U));
+  SDL_Rect overlay{80,90,150,10};assert(gpu_fill(&overlay,0x80f0a020U));
+  bitmap.draw(&target,0,0);auto result=pixels();
+  if(!skip)full=result;else assert(full==result);
+  for(unsigned i=0;i<data.size();++i)assert(result[i]==p.colours[data[i]]);
+  ++cases;
+ }
+ // Reject each geometry independently; restoration immediately permits proof.
+ auto test=[&](auto alter,auto restore){alter();assert(!bitmap.opaque_canvas_for(&target));restore();assert(bitmap.opaque_canvas_for(&target));++cases;};
+ test([&]{target.width=800;},[&]{target.width=640;});
+ test([&]{target.height=479;},[&]{target.height=480;});
+ test([&]{target.global_scale_factor=1.5;},[&]{target.global_scale_factor=1.;});
+ test([&]{target.scale_bitmaps=true;target.bitmap_scale_factor=2.;},[&]{target.scale_bitmaps=false;target.bitmap_scale_factor=1.;});
+ render_target::Scope scope{};
+ test([&]{target.current_target=&scope;},[&]{target.current_target=nullptr;});
+ test([&]{target.zoom_buffer=&scope;},[&]{target.zoom_buffer=nullptr;});
+ test([&]{target.clip_rects.push({0,0,639,480});},[&]{target.clip_rects.pop();});
+ render_target other;other.renderer=r;other.game_surface=out;assert(!bitmap.opaque_canvas_for(&other));assert(!bitmap.opaque_canvas_for(nullptr));
+ // Every source index and partial alpha; no file-name or transparent-index guess.
+ for(unsigned i=0;i<256;++i){auto saved=p.colours[i];p.colours[i]&=0x00ffffffU;
+  assert(!opaque_canvas_pixels(data.data(),data.size(),640,0,p.colours));
+  p.colours[i]=saved;}
+ for(unsigned a:{0U,1U,127U,254U}){
+  p.colours[255]=(a<<24U)|0xffffffU;bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);
+  assert(!bitmap.opaque_canvas_for(&target));++cases;
+ }
+ p.colours[255]=0xffffffffU;
+ for(unsigned flag:{1U,2U,3U,4U,8U}){bitmap.load_from_th_file(data.data(),data.size(),640,&target,flag);assert(!bitmap.opaque_canvas_for(&target));++cases;}
+ bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);assert(bitmap.opaque_canvas_for(&target));
+ // Palette mutation alone cannot mutate loaded texture; explicit palette setter
+ // revokes the proof, and reload binds the new alpha to actual indexed bytes.
+ p.colours[0]=0;assert(bitmap.opaque_canvas_for(&target));
+ assert(gpu_begin());assert(gpu_clear(0xff0000ffU));bitmap.draw(&target,0,0);assert(pixels()==full);
+ bitmap.set_palette(&p);assert(!bitmap.opaque_canvas_for(&target));
+ bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);assert(!bitmap.opaque_canvas_for(&target));
+ assert(gpu_begin());assert(gpu_clear(0xff0000ffU));bitmap.draw(&target,0,0);assert(pixels()[0]==0xff0000ffU);
+ p.colours[0]=0xff000000U;bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);
+ // Actual replacement failure preserves old image and revokes eligibility.
+ bool failed=false;try{bitmap.load_from_th_file(nullptr,data.size(),640,&target,0);}catch(const std::invalid_argument&){failed=true;}
+ assert(failed&&!bitmap.opaque_canvas_for(&target));assert(gpu_begin());bitmap.draw(&target,0,0);assert(pixels()==full);
+ bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);
+ source_fail=1;source_calls=0;failed=false;
+ try{bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);}catch(const std::exception&){failed=true;}
+ source_fail=0;assert(failed&&!bitmap.opaque_canvas_for(&target));assert(gpu_begin());bitmap.draw(&target,0,0);assert(pixels()==full);
+ bitmap.load_from_th_file(data.data(),data.size(),640,&target,0);assert(bitmap.opaque_canvas_for(&target));
+ // Destruction releases indexed source bytes. Already queued atlas consumers
+ // may remain pending; their pixels must survive until the normal readback.
+ assert(gpu_begin());bitmap.draw(&target,0,0);
+ }
+ assert(source_live==0);auto final_pixels=pixels();
+ for(unsigned i=0;i<data.size();++i)assert(final_pixels[i]==p.colours[data[i]]);
+ assert(commands.empty()&&pending.empty()&&!in_frame);
+ {raw_bitmap final;final.set_palette(&p);final.load_from_th_file(data.data(),data.size(),640,&target,0);
+  assert(final.opaque_canvas_for(&target));gpu_images_release(r);assert(!final.opaque_canvas_for(&target));
+  gpu_shutdown();assert(!final.opaque_canvas_for(&target));}
+ assert(live==0&&source_live==0&&memory_reports>0);
+ SDL_DestroyRenderer(r);SDL_FreeSurface(out);SDL_Quit();
+ std::printf("PASS actual bitmap/GPU proof: %u geometry/alpha/flags cases +256 alpha entries, pixels, failure/reload/deferred destruction\n",cases);
+}

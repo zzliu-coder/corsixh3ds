@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "date": "2026-09-10",
+  "scope": "R73 read-only audit and R74 plan; no product edits, build, upload or new runner submission",
+  "product": {
+    "revision": "R73",
+    "source_checkpoint": "749f8c56b555a61bcd1d050380d20424998d6de7",
+    "source_tree": "6bded353dad8e761e5f5e463c887ddf79e5e56e3",
+    "binary_bytes": 2729812,
+    "binary_sha256": "d20096d49ecf4e55131e9f90c8fb961f63017c89864899794e31ba6cf3a80e96",
+    "retrieved_related_lua_match": true
+  },
+  "readback": {
+    "file_retr_count": 19,
+    "file_retr_bytes": 5833294,
+    "remote_writes": 0,
+    "new_submissions": 0,
+    "receipt_scope": "successful RETR and local hashes; not a complete post-run protected-save check"
+  },
+  "automatic_run": {
+    "id": "20260910-085402-00fef8c56445",
+    "result": "NOT_PROVEN",
+    "reason": "CANCEL",
+    "stage": "FAIL",
+    "receipt": "COMPLETED",
+    "errors": 0,
+    "stress_seconds": 35.351,
+    "window_cycles": 2,
+    "save_reload_cycles": 0,
+    "capacity_extension": "NOT_STARTED",
+    "normal_game_sleep": "NOT_PROVEN"
+  },
+  "manual_save_ui": {
+    "result": "FAIL",
+    "root_cause": "save_game.lua:126 undeclared IS_3DS; strict fails before app.save",
+    "staff_observed_max": 43,
+    "patients_observed_max": 10,
+    "rooms": 14,
+    "ordinary_heap_low_estimate_bytes": 22999024,
+    "allocation_failure_evidence": false,
+    "generated_entry_reproduction": {
+      "runtime": "Lua 5.4 API-check",
+      "entries": 6,
+      "app_save_calls": 0,
+      "overwrite_cancel": "PASS",
+      "full_application_init": "NOT_PROVEN"
+    },
+    "busy_terminal_saved": "NOT_PROVEN"
+  },
+  "second_manual_save_exit": {
+    "file_commit": "PASS",
+    "file_bytes": 421094,
+    "file_sha256": "ae3f3f9c0d5d9c983de608ab3e362e203f11e6252565dc84f2e50ac445ec2614",
+    "normal_shutdown": true,
+    "reload_continuity": "NOT_PROVEN"
+  },
+  "stalls": {
+    "first_autosave_begin_to_complete_ms": 12488,
+    "first_autosave_writer_including_close_ms": 12160,
+    "associated_frame_interval_max_us": 12646470,
+    "second_autosave_begin_to_complete_ms": 7820,
+    "second_save_exit_begin_to_complete_ms": 3621,
+    "first_logger_explicit_flush_max_us": 1079838,
+    "comparison": "different graphs and conditions; no optimization percentage or net FPS claim"
+  },
+  "linear": {
+    "post_audio_free_bytes": 2199552,
+    "early_free_bytes": 2224128,
+    "continuous_decline_observed": false,
+    "largest_contiguous_allocation": "NOT_PROVEN"
+  },
+  "protection": {
+    "old_27_post_run": "NOT_PROVEN",
+    "reason": "user legitimately modified saves and config before final post-run check; retain new files and create a new baseline"
+  },
+  "next": {
+    "plan": "../R74_FINISH_PLAN.md",
+    "related_review": [
+      "platform capability and authoritative state",
+      "all save entry paths and transaction ownership",
+      "final generated modules and realistic test dependencies"
+    ],
+    "construction": "PENDING",
+    "device_acceptance": "NOT_PROVEN"
+  },
+  "local_evidence": {
+    "directory": "work/iterations/20260910-r74-capacity-finish-audit",
+    "summary_sha256": "6e5df823e2f488fe30a290a87b43afa66f9937e7d6af66a75688d0ef06849215",
+    "analyzer_sha256": "18476b54b03cddbdee4a51db0ba7f463a723c615034277210656756ceb0e42b7",
+    "generated_save_reproduction_sha256": "dd5e6e506285bed553669960b0d7537f49cc7e6df3e79d927108c041236b8527",
+    "lua54_reproduction_receipt_sha256": "5979074c7ed0917c7086f034ff02d49fe9d2d341a721520e4ded8f78beeceb88"
+  }
+}

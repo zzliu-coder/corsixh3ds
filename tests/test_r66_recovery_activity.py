@@ -143,7 +143,8 @@ print('PASS 17 qualified original employees each require actual successful work;
         test_lua_runtime.LuaRuntimeTests().run_lua(script() +
             '\npackage.loaded["3ds.recovery_activity"]=A\nlocal B=dofile(' +
             repr(str(ROOT / 'lua/3ds/benchmark.lua')) + ')\n' + r'''
-package.loaded['3ds.benchmark_stress']={fingerprint=function(app)return H.fingerprint(app.world)end}
+package.loaded['3ds.benchmark_stress']={fingerprint=function(app)return H.fingerprint(app.world)end,
+ assertFingerprint=function(app,before,message)assert(H.fingerprint(app.world)==before,message)end}
 package.loaded['3ds.media']={setSpeech=function(app,code)
  app.config.speech_language=code;app.audio.speech_file_name=code;return true
 end,speechFile=function(app)return app.config.speech_language end}

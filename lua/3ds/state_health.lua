@@ -46,13 +46,44 @@ end
 
 -- Used only around paused private save/reload, never in the per-frame path.
 -- Stable scalar state catches a lost timer/action that an entity count misses.
+-- The pinned serializer stores numbers outside 0..16383 as doubles. Lua 5.4
+-- tostring distinguishes 70000 from 70000.0 although their numeric value is
+-- identical. Canonicalize exact integral values without rounding nonintegers
+-- or large integers; finite fractional doubles use their exact hexadecimal form.
+function Health.scalar(value)
+  if type(value)~="number" then return tostring(value) end
+  assert(value==value and value~=math.huge and value~=-math.huge,
+    "non-finite numeric state in hospital fingerprint")
+  local integer=math.tointeger(value)
+  if integer~=nil then return tostring(integer) end
+  return string.format("%a",value)
+end
+
+-- Failure-only diagnostic: scan the already-built strings, retain no World,
+-- and report the first differing position with bounded, control-free excerpts.
+function Health.fingerprintDifference(before,after)
+  assert(type(before)=="string" and type(after)=="string","fingerprint strings required")
+  local limit=math.min(#before,#after)
+  local offset,line,column=1,1,1
+  while offset<=limit and before:byte(offset)==after:byte(offset) do
+    if before:byte(offset)==10 then line=line+1;column=1 else column=column+1 end
+    offset=offset+1
+  end
+  if offset>limit and #before==#after then return nil end
+  local function excerpt(text)
+    return text:sub(math.max(1,offset-24),offset+39):gsub("[%c]"," ")
+  end
+  return "line="..line.." column="..column.." before_bytes="..#before.." after_bytes="..#after
+    .." before=["..excerpt(before).."] after=["..excerpt(after).."]"
+end
+
 function Health.fingerprint(world)
   local rows={}
   for index,entity in ipairs(world.entities)do
     local name=kind(entity)
     if name then
-      local row={tostring(index),name,tostring(entity.humanoid_class),tostring(entity.ticks),
-        tostring(entity.tile_x),tostring(entity.tile_y),tostring(entity.timer_time),
+      local row={Health.scalar(index),name,tostring(entity.humanoid_class),tostring(entity.ticks),
+        Health.scalar(entity.tile_x),Health.scalar(entity.tile_y),Health.scalar(entity.timer_time),
         type(entity.timer_function)}
       for _,action in ipairs(entity.action_queue or {})do
         row[#row+1]=table.concat({tostring(action.name),tostring(action.must_happen),

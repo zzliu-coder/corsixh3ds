@@ -8,6 +8,10 @@ local categories={"Doctor","Nurse","Handyman","Receptionist"}
 
 function Busy.new(capacity)
   local self=setmetatable({c=capacity,app=capacity.app,next_hire=0,hires=0},Busy)
+  -- The accepted busy range is 40..45. R75 already loads the user's 41-person
+  -- hospital; observe it directly instead of requiring funds to hire to 43.
+  -- R74's historical recruitment workload remains reproducible.
+  self.target=capacity.b.run and capacity.b.run.capacity=="r75-v1" and 40 or 43
   capacity:normal("busy_recruit",120000)
   capacity:snapshot("busy_before")
   return self
@@ -115,7 +119,7 @@ function Busy:saveUI()
   self.c.b.results.capacity_busy_save_entry="UISaveGame.confirmName/trySave/doSave"
   self.c.b.results.capacity_busy_save_ui="PASS"
   self.c:load(file)
-  assert(Stress.fingerprint(app)==before,"capacity busy reload changed hospital state")
+  Stress.assertFingerprint(app,before,"capacity busy reload changed hospital state",self.c.native)
   self.c.b.results.capacity_busy_roundtrip="PASS"
 end
 
@@ -123,7 +127,7 @@ function Busy:tick()
   local c=self.c;local now=c.native.clock_ms()
   assert(self.app.world:getCurrentSpeed()=="Normal","capacity busy speed changed")
   if c.phase=="busy_recruit"then
-    if Health.assertActive(self.app).staff>=43 then
+    if Health.assertActive(self.app).staff>=self.target then
       c:advanced();c:snapshot("busy_loaded");self:observe(1);return false
     end
     if now>=c.b.deadline then

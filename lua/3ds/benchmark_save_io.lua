@@ -80,7 +80,7 @@ function IO:tick()
     local now=b:progress()
     assert(now.world==progress.world and now.hours==progress.hours and now.frames==progress.frames,
       "save IO batch advanced simulation/presentation")
-    assert(Stress.fingerprint(b.app)==fingerprint,"save IO batch changed hospital state")
+    Stress.assertFingerprint(b.app,fingerprint,"save IO batch changed hospital state",b.native)
     assert(ended>=started,"save IO clock reversed")
     local row=pack{capacity=bytes,file="r75-io-"..i..".sav",elapsed_ms=ended-started,
       heap_before=before.heap_available_estimate,heap_after=after.heap_available_estimate,
@@ -94,7 +94,7 @@ function IO:tick()
       .." linear_before="..tostring(before.linear_free).." linear_after="..tostring(after.linear_free))
   end
   c:load(b.app.savegame_dir.."r75-io-4.sav")
-  assert(Stress.fingerprint(b.app)==fingerprint,"save IO roundtrip changed hospital state")
+  Stress.assertFingerprint(b.app,fingerprint,"save IO roundtrip changed hospital state",b.native)
   Health.assertActive(b.app)
   b.results.save_io_roundtrip="PASS"
   b.results.save_io_outcome="HOST_READBACK_REQUIRED"

@@ -330,13 +330,13 @@ function Benchmark:load()
     self.results.recovery_stage="paused_roundtrip"
     local cohort=self.app._3ds.recovery_cohort
     self.app.world:setSpeed("Pause")
-    local fingerprint=require("3ds.benchmark_stress").fingerprint
-    local before=fingerprint(self.app)
+    local stress=require("3ds.benchmark_stress")
+    local before=stress.fingerprint(self.app)
     local output=self.app.savegame_dir.."r63-recovery-roundtrip.sav"
     assert(self.app:save(output)==true,"R62 recovery copy save failed")
     loadBenchmark(self,output,true)
     Health.assertActive(self.app)
-    assert(fingerprint(self.app)==before,"R62 recovery copy roundtrip state changed")
+    stress.assertFingerprint(self.app,before,"R62 recovery copy roundtrip state changed",self.native)
     self.recovery_verified=true
     self.results.recovery_staff=health.staff;self.results.recovery_patients=health.patients
     self.results.recovery_repaired_count=self.app._3ds.recovery_count or "NOT_PROVEN"
@@ -460,13 +460,13 @@ function Benchmark:advanceRecovery()
     self.results.recovery_stage="continuity_roundtrip"
     self.recovery_cohort=cohort
     self.app.world:setSpeed("Pause")
-    local fingerprint=require("3ds.benchmark_stress").fingerprint
-    local before=fingerprint(self.app)
+    local stress=require("3ds.benchmark_stress")
+    local before=stress.fingerprint(self.app)
     local file=self.app.savegame_dir.."r66-recovery-continuity.sav"
     assert(self.app:save(file)==true,"recovery continuity save failed")
     loadBenchmark(self,file,true)
     Health.assertActive(self.app)
-    assert(fingerprint(self.app)==before,"recovery continuity roundtrip changed")
+    stress.assertFingerprint(self.app,before,"recovery continuity roundtrip changed",self.native)
     self.results.recovery_continuity_roundtrip_outcome="PASS"
     self:beginRecoveryObservation(2)
   else

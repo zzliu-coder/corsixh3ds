@@ -87,7 +87,8 @@ local A={start=function()active=true end,report=function()return report end,
 setmetatable(A,{__index=function(_,key)if key=='active'then return active end end})
 package.loaded['3ds.recovery_activity']=A
 package.loaded['3ds.state_health']={assertActive=function(app)assert(not app.broken);return{staff=1}end}
-package.loaded['3ds.benchmark_stress']={fingerprint=function(app)return app.state end}
+package.loaded['3ds.benchmark_stress']={fingerprint=function(app)return app.state end,
+ assertFingerprint=function(app,before,message)assert(app.state==before,message)end}
 class={is=function(e,kind)return e.staff==true end};Staff={}
 local now,writes,fail_at,advanced,closed=0,{},nil,0,false
 local root='sdmc:/3ds/ftpd-runner/runs/r75-test-01/'

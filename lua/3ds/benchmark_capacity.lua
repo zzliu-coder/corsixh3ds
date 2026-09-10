@@ -126,7 +126,7 @@ function C:roundtrip(name)
   assert(self.app:save(file)==true,"capacity private save failed")
   self:guardOperation()
   self:load(file)
-  assert(Stress.fingerprint(self.app)==before,"capacity private roundtrip changed state")
+  Stress.assertFingerprint(self.app,before,"capacity private roundtrip changed state",self.native)
 end
 function C:observation(window)
   Activity.start(self.app.world,self.cohort,true)

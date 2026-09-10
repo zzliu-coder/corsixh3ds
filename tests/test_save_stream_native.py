@@ -63,15 +63,18 @@ class SaveStreamNativeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='cth-save-stream-') as name:
             directory = Path(name)
             binary, closure, generated = build_stream_probe(directory, native_only=True)
-            result = subprocess.run([str(binary), str(closure), str(directory)],
+            result = subprocess.run([str(binary), str(closure), str(directory),
+                str(ROOT/'tests/runtime_support/fingerprint_numeric_cases.lua')],
                 capture_output=True, text=True, timeout=90,
                 env=dict(os.environ, ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',
-                         UBSAN_OPTIONS='halt_on_error=1'))
+                         UBSAN_OPTIONS='halt_on_error=1',
+                         CTH3DS_FINGERPRINT_LUA=str(ROOT/'lua')))
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             for marker in ('PASS format cross-read', 'PASS native block boundaries',
                            'PASS clock contract',
                            'PASS real FILE failures', 'PASS output memory bound',
-                           'PASS failed writer GC and retry', 'PASS capacity A/B'):
+                           'PASS failed writer GC and retry', 'PASS capacity A/B',
+                           'PASS native numeric fingerprint'):
                 self.assertIn(marker, result.stdout)
             print(result.stdout, end='')
 

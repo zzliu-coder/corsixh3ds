@@ -90,20 +90,40 @@ b:cancel('lifecycle')
     def test_busy_complete_controller_and_boundaries_with_explicit_ui_services(self):
         script=previous.benchmark_script().replace("capacity='r73-v1'","capacity='r74-v1'")
         script=script.replace("runner_context=function()", "simulation_clock=function()return {at_us=now*1000,nominal_timer_us=18000,completed_steps=now,failed_steps=0,dropped_us=now,debt_us=20,rebases=0,budget_exits=0}end,\n runner_context=function()")
-        self.run_lua(script+r'''
+        exercise=r'''
+if b.run.capacity=='r75-v1' then
+ -- Private input loading is the domain seam. Use 41 existing employees with
+ -- no funds; production Busy must enter observation without recruiting.
+ local underlying_load=app.load
+ function app:load(file)
+  local ok=underlying_load(self,file)
+  if ok and file==root..'input.sav' then
+   populate(1,true);self.ui.hospital.balance=0
+   for i=1,24 do
+    local e=Staff();e.humanoid_class='Nurse';e.ticks=true;e.profile={wage=100}
+    e.action_queue={{name='idle'}};e.timer_time=2;e.timer_function=function()end
+    table.insert(self.world.entities,e);table.insert(self.ui.hospital.staff,e)
+   end
+  end
+  return ok
+ end
+end
 services();step(180000);services();step(180000)
 local busy=b.capacity.busy;assert(busy)
 app.world.tick_rate=3;app.world.hours_per_tick=1
 -- Explicit domain service used only by this controller test. Real hiring's
 -- normal UI/profile/placement implementation has its own full-module case.
 function busy:hire()
+ assert(b.run.capacity=='r74-v1','41-person input must not recruit')
  local e=Staff();e.humanoid_class='Nurse';e.ticks=true;e.profile={wage=100}
  e.action_queue={{name='idle'}};e.timer_time=2;e.timer_function=function()end
  table.insert(app.world.entities,e);table.insert(app.ui.hospital.staff,e)
  self.hires=self.hires+1;return true
 end
-for i=1,27 do step(250)end
-assert(b.capacity.phase=='busy_1' and busy.count==43)
+local target=b.run.capacity=='r75-v1' and 41 or 43
+if target==41 then step(1) else for i=1,27 do step(250)end end
+assert(b.capacity.phase=='busy_1' and busy.count==target)
+if target==41 then assert(busy.hires==0 and app.ui.hospital.balance==0) end
 local saves=0
 app._3ds.operations={guard=function()end}
 local function attach_save_service()
@@ -130,8 +150,13 @@ assert(b.phase=='done' and fields.outcome=='PASS')
 assert(checkpoints==15 and fields.capacity_level_outcome=='PASS' and fields.capacity_return_outcome=='PASS')
 assert(fields.capacity_busy_1_work:find('world_tick_rate=3',1,true))
 assert(fields.capacity_busy_2_work:find('failed_steps=0',1,true))
+assert(fields.capacity_busy_1_activity:find('count='..target..';updated='..target,1,true))
+assert(fields.capacity_busy_2_activity:find('count='..target..';updated='..target,1,true))
 assert(save_names[#save_names]==root..'save/completed.sav')
-''')
+'''
+        for protocol in ('r74-v1','r75-v1'):
+            with self.subTest(protocol=protocol):
+                self.run_lua(script+'\nb.run.capacity='+repr(protocol)+exercise)
 
     def hiring_script(self):
         # Infrastructure/strict and entire hire/place chunks are source-pinned.

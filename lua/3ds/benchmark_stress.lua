@@ -45,18 +45,28 @@ end
 
 local function fingerprint(app)
   local w,h=assert(app.world),assert(app.ui.hospital)
-  local rows={"date:"..w.game_date:tostring(),"balance:"..tostring(h.balance)}
+  local scalar=Health.scalar
+  local rows={"date:"..w.game_date:tostring(),"balance:"..scalar(h.balance)}
   for key,s in pairs(h.staff)do
-    rows[#rows+1]="staff:"..tostring(key)..":"..tostring(s.humanoid_class)..":"..tostring(s.profile.wage)
+    rows[#rows+1]="staff:"..scalar(key)..":"..tostring(s.humanoid_class)..":"..scalar(s.profile.wage)
   end
   for key,r in pairs(w.rooms)do if r.hospital==h then
-    rows[#rows+1]="room:"..tostring(key)..":"..r.room_info.id..":"..tostring(r.x)..":"..tostring(r.y)
-      ..":"..tostring(r.width)..":"..tostring(r.height)
+    rows[#rows+1]="room:"..scalar(key)..":"..r.room_info.id..":"..scalar(r.x)..":"..scalar(r.y)
+      ..":"..scalar(r.width)..":"..scalar(r.height)
   end end
-  for i=1,w.map.th:getPlotCount()do rows[#rows+1]="plot:"..i..":"..w.map.th:getPlotOwner(i) end
+  for i=1,w.map.th:getPlotCount()do rows[#rows+1]="plot:"..scalar(i)..":"..scalar(w.map.th:getPlotOwner(i)) end
   table.sort(rows);return table.concat(rows,"|").."\n"..Health.fingerprint(w)
 end
 Stress.fingerprint=fingerprint
+
+function Stress.assertFingerprint(app,before,message,native)
+  local after=fingerprint(app)
+  if after==before then return end
+  local line="benchmark-fingerprint: "..Health.fingerprintDifference(before,after)
+  if native and native.diagnostic_line then pcall(native.diagnostic_line,line:sub(1,230))
+  else pcall(print,line:sub(1,230)) end
+  error(message)
+end
 
 function Stress.new(app,native,duration,save_dir)
   save_dir=save_dir or root.."Saves/"
@@ -242,7 +252,7 @@ function Stress:saveReload()
   assert(app:load(self.save_dir.."r62-roundtrip.sav")==true,"private reload failed")
   app.config.autosave_frequency=0;app.world.autosave_next_tick=false
   Health.assertActive(app)
-  assert(fingerprint(app)==before,"private reload hospital fingerprint changed")
+  Stress.assertFingerprint(app,before,"private reload hospital fingerprint changed",self.native)
   self.save_reload_count=(self.save_reload_count or 0)+1
   if self.native.runner_checkpoint then
     local fields=self:annualFields()

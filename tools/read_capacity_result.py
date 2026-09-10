@@ -112,7 +112,16 @@ def _capacity(directory,canonical):
     except (ValueError,KeyError) as exc:missing.append('level evidence: '+str(exc))
     try:
         initial=packed(result['capacity_continuity_before']);back=packed(result['capacity_expanded_returned'])
-        if any(not initial.get(k) or initial[k]!=back.get(k) for k in ('level','difficulty','rooms')):
+        # Map:load's custom-file branch leaves self.difficulty nil. Lua's
+        # compact snapshot omits nil keys, so this bound .level workload has
+        # no difficulty field on either side. Campaign levels still require
+        # their explicit difficulty, and asymmetric/mutated fields fail.
+        level_id=initial.get('level','')
+        same_scene=all(initial.get(k) and initial[k]==back.get(k) for k in ('level','rooms'))
+        difficulty=initial.get('difficulty')
+        same_difficulty=difficulty==back.get('difficulty') and (
+            difficulty in ('easy','full','hard') or difficulty is None and level_id.endswith('.level'))
+        if not same_scene or not same_difficulty:
             errors.append('expanded return scene differs')
         if result.get('capacity_return_outcome')=='PASS' and work['return_run']:returned='PASS'
     except (ValueError,KeyError) as exc:missing.append('return evidence: '+str(exc))

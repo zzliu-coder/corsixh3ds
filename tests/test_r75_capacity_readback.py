@@ -114,6 +114,42 @@ class CapacityReadbackTests(unittest.TestCase):
         self.assertEqual(report['reception'],'PASS');self.assertEqual(report['busy_hospital'],'PASS')
         self.assertEqual(report['native_gpu_release'],'NOT_PROVEN');self.assertFalse(report['fps_acceptance_gate'])
         self.assertEqual(report['stages'],list(reader.IO_STAGES+reader.STAGES))
+        # Real custom Map:load leaves difficulty nil: both snapshots omit it.
+        # Keep all terminal/checkpoint copies coherent, so these mutations
+        # exercise scene semantics rather than unrelated hash/divergence gates.
+        custom='sdmc:/3ds/corsixth/Levels/example.level'
+        variants=[
+            ({'level':custom,'difficulty':None},{'level':custom,'difficulty':None},'PASS'),
+            ({'level':custom},{'level':custom},'PASS'),
+            ({'level':custom,'difficulty':None},{'level':custom},'FAIL'),
+            ({'level':custom},{'level':custom,'difficulty':None},'FAIL'),
+            ({'difficulty':None},{'difficulty':None},'FAIL'),
+            ({'level':custom,'difficulty':None},{'level':'other.level','difficulty':None},'FAIL'),
+            ({'level':custom,'difficulty':None},{'level':custom,'difficulty':None,'rooms':15},'FAIL'),
+            ({'difficulty':'hard'},{'difficulty':'easy'},'FAIL'),
+            ({'level':None},{'level':None},'FAIL'),
+            ({'rooms':None},{'rooms':None},'FAIL'),
+        ]
+        for i,(before,after,expected) in enumerate(variants):
+            with self.subTest(custom_return=i):
+                path=Path(self.temp.name)/('custom-'+str(i));result=fixture(path)
+                patches={'capacity_continuity_before':before,'capacity_expanded_returned':after}
+                def mutate(fields):
+                    for key,patch in patches.items():
+                        if key not in fields:continue
+                        row=reader.packed(fields[key])
+                        for name,value in patch.items():
+                            if value is None:row.pop(name,None)
+                            else:row[name]=value
+                        fields[key]=pack(**row)
+                mutate(result);write_result(path,result)
+                for file in (path/'artifacts').glob('progress-*.kv'):
+                    fields=reader.kv(file.read_bytes());mutate(fields);file.write_bytes(encode(fields))
+                actual=reader.consume(path)
+                self.assertEqual(actual['outcome'],expected,actual)
+                if expected=='PASS':
+                    self.assertEqual(actual['expanded_return'],'PASS')
+                    self.assertEqual(actual['level_load'],'PASS')
 
     def test_historical_r73_r74_capacity_stages_keep_original_scopes(self):
         for protocol in ('r73-v1','r74-v1'):

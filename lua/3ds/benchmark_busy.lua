@@ -128,6 +128,15 @@ function Busy:tick()
   assert(self.app.world:getCurrentSpeed()=="Normal","capacity busy speed changed")
   if c.phase=="busy_recruit"then
     if Health.assertActive(self.app).staff>=self.target then
+      -- Runtime may poll again after load before either the next world tick
+      -- or a frame has completed. Admission waits for actual work; elapsed
+      -- wall time alone cannot stand in for simulation or presentation.
+      local p,before=c.b:progress(),c.start_progress
+      if p.world<=before.world or p.hours<=before.hours or p.entities<=before.entities
+        or p.frames<=before.frames or p.at<=before.at then
+        assert(now<c.b.deadline,"capacity busy admission timed out without completed work")
+        return false
+      end
       c:advanced();c:snapshot("busy_loaded");self:observe(1);return false
     end
     if now>=c.b.deadline then

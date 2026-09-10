@@ -70,8 +70,13 @@ assert(b.results.capacity_reception_outcome=='NOT_PROVEN' and b.results.capacity
 assert(b.results.capacity_continuity_roundtrip=='PASS' and saved[root..'save/r73-continuity.sav'])
 assert(b.capacity.cohort==nil and not A.active)
 assert(private_loads==(b.run.capacity=='r75-v1' and 1 or 0))
-if b.run.capacity=='r75-v1' then assert(require('3ds.state_health').assertActive(app).staff==41) end
-b:cancel('lifecycle');assert(fields.outcome=='NOT_PROVEN')
+if b.run.capacity=='r75-v1' then
+ assert(require('3ds.state_health').assertActive(app).staff==41)
+ -- No completed work by the bounded admission deadline must still fail.
+ now=b.deadline;b:tick()
+ assert(b.phase=='done' and fields.outcome=='FAIL' and
+  fields.failure_detail:find('admission timed out without completed work',1,true))
+else b:cancel('lifecycle');assert(fields.outcome=='NOT_PROVEN') end
 ''')
 
         self.run_lua(configured+r'''
@@ -121,7 +126,17 @@ function busy:hire()
  self.hires=self.hires+1;return true
 end
 local target=b.run.capacity=='r75-v1' and 41 or 43
-if target==41 then step(1) else for i=1,27 do step(250)end end
+if target==41 then
+ local origin=b:progress();local runner_frames=native.runner_frames;local presented=origin.frames
+ native.runner_frames=function()return presented end
+ now=now+1;b:tick();assert(b.capacity.phase=='busy_recruit')
+ local p=app._3ds.simulation_progress
+ p.world_completed=p.world_completed+1;b:tick();assert(b.capacity.phase=='busy_recruit')
+ p.hours_completed=p.hours_completed+1;b:tick();assert(b.capacity.phase=='busy_recruit')
+ p.entity_completed=p.entity_completed+1;b:tick();assert(b.capacity.phase=='busy_recruit')
+ presented=presented+1;b:tick()
+ native.runner_frames=runner_frames
+else for i=1,27 do step(250)end end
 assert(b.capacity.phase=='busy_1' and busy.count==target)
 if target==41 then assert(busy.hires==0 and app.ui.hospital.balance==0) end
 local saves=0

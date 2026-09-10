@@ -33,3 +33,7 @@
 第一次 29 项组合验证有 1 项发现嵌入 Lua 头过期。随后按正式生成器更新并定向通过；头文件需在最终合并所有 Lua 更改后统一再生成。新版本整目标、ARM、装机、物理读屏和 HOME/合盖由主线程合批核验。
 
 本地视觉预览由实际 CPU 几何和固定 mask 生成，供检查排版；所有原游戏素材预览保留在私有工程证据目录，不进入仓库。这些结果不代替 Old 3DS LCD、系统生命周期和交互验收。
+
+## CPU 初始化调用链补充核验
+
+独立审查发现 App 的两次加载 `end_frame` 发生在 SDL 主循环之前，因此依赖 `after_frame` 才复制下屏会留下 BootText。调用级回归直接编译当前 `present_game`、`mirror_game_to_bottom`、`copy_artwork`、`after_frame`，使用真实 SDL 像素与 GameView；原码复现 `top=1 bottom=0`。修正后 CPU BootArtwork 在该次 `end_frame` 内提交两屏，以单个完成位让后续 tail 跳过重复下屏。下一次 end_frame 重新开始，普通 Game 保留原有 top→tail/bottom 顺序，Error 阻止 tail 覆盖。回归覆盖初始化无 tail、两次加载版权帧、后续 tail 去重、普通 Game、下屏提交失败和 Error。

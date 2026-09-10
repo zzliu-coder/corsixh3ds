@@ -1,5 +1,6 @@
 """Actual generated World and native presentation success paths, no device claims."""
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -156,6 +157,28 @@ int main(){
             result = subprocess.run([str(binary)],capture_output=True,text=True,
                 env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_actual_cpu_end_frame_publishes_startup_pair_once(self):
+        runtime=(ROOT/'src/3ds/runtime_3ds.cpp').read_text()
+        methods='\n'.join(function_body(runtime,name) for name in (
+            '  bool present_game(', '  bool mirror_game_to_bottom()',
+            '  bool copy_artwork(', '  void after_frame('))
+        code=(ROOT/'tests/runtime_support/r74_cpu_presentation_call_probe.cpp.in').read_text()
+        code=code.replace('// INSERT_ACTUAL_METHODS',methods)
+        flags=shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','sdl2'],text=True))
+        with tempfile.TemporaryDirectory(prefix='cth-r74-cpu-call-') as directory:
+            source=Path(directory)/'probe.cpp';source.write_text(code)
+            binary=Path(directory)/'probe'
+            compiled=subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-O1',
+                '-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-omit-frame-pointer',
+                '-I'+str(ROOT/'include'),'-I'+str(ROOT/'src/3ds'),str(source),
+                str(ROOT/'src/common/framebuffer_scaler.cpp'),str(ROOT/'src/3ds/runtime/game_view.cpp'),
+                *flags,'-o',str(binary)],capture_output=True,text=True)
+            self.assertEqual(compiled.returncode,0,compiled.stdout+compiled.stderr)
+            result=subprocess.run([str(binary)],capture_output=True,text=True,
+                env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            print(result.stdout,end='')
 
 
 if __name__ == '__main__':

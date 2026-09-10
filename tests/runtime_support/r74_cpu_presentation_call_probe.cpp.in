@@ -1,0 +1,81 @@
+// Actual Runtime present/mirror/tail functions and real SDL pixels. Only the
+// SDL window scanout and telemetry sinks are host boundaries.
+#include <SDL.h>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include "cth3ds/boot_presentation.hpp"
+#include "cth3ds/telemetry.hpp"
+#include "runtime/game_view.hpp"
+using namespace cth3ds;
+struct WindowBoundary { SDL_Surface* surface; unsigned submits=0; bool fail=false; };
+static SDL_Surface* window_surface(SDL_Window* w){return reinterpret_cast<WindowBoundary*>(w)->surface;}
+static int window_submit(SDL_Window* w){auto& v=*reinterpret_cast<WindowBoundary*>(w);++v.submits;return v.fail?-1:0;}
+#define SDL_GetWindowSurface window_surface
+#define SDL_UpdateWindowSurface window_submit
+static std::uint64_t now_us(){static std::uint64_t t=0;return ++t;}
+template<class... T> void boot_log(const char*,T...){}
+static int g_input_cursor_x=320,g_input_cursor_y=240;
+static bool g_top_present_seen=false,g_top_present_ok=false;
+static PresentResult last_result=PresentResult::Skipped;
+struct Observations {
+  struct Timing {void present_complete(std::uint64_t,PresentResult r){last_result=r;}} timing;
+  void sample_present(std::uint64_t,PresentResult){}
+} g_observations;
+struct RuntimeTimingScope { explicit RuntimeTimingScope(TimingStage){} void finish(bool){} };
+static void runner_present(bool){}
+enum class BottomScreenMode { Game, Panel };
+struct Probe {
+  SDL_Window* game_window_=nullptr;SDL_Window* bottom_window_=nullptr;
+  SDL_Surface* game_surface_=nullptr;SDL_Surface* bottom_surface_=nullptr;
+  GameView view_;BootPresentation presentation_;
+  bool initialized_=false,trace_next_present_=false,dirty_=true,cpu_bottom_presented_=false;
+  BottomScreenMode bottom_mode_=BottomScreenMode::Game;
+  const char* display_error_=nullptr;
+  unsigned overlays=0;
+  std::uint64_t top_attempts_=0,top_copy_us_=0,top_submit_us_=0;
+  std::uint64_t bottom_attempts_=0,bottom_copy_us_=0,bottom_submit_us_=0;
+  bool display_failure(const char*,const char*){presentation_.error();return false;}
+  bool valid_output_surface(const SDL_Surface* s,int w,int h)const{return GameView::valid_output(game_surface_,s,w,h);}
+  void draw_overlay_strip(){++overlays;}
+// INSERT_ACTUAL_METHODS
+};
+int main(){
+  WindowBoundary top{SDL_CreateRGBSurfaceWithFormat(0,400,240,32,SDL_PIXELFORMAT_RGBA8888)};
+  WindowBoundary bottom{SDL_CreateRGBSurfaceWithFormat(0,320,240,32,SDL_PIXELFORMAT_RGBA8888)};
+  auto* source=SDL_CreateRGBSurfaceWithFormat(0,640,480,32,SDL_PIXELFORMAT_ABGR8888);
+  assert(source&&top.surface&&bottom.surface);
+  auto* pixels=static_cast<std::uint32_t*>(source->pixels);
+  for(unsigned i=0;i<640*480;++i)pixels[i]=0xff000000U+i;
+  Probe p;p.game_window_=reinterpret_cast<SDL_Window*>(&top);p.bottom_window_=reinterpret_cast<SDL_Window*>(&bottom);p.game_surface_=source;
+  p.presentation_.artwork();
+  // The App loading frames run before initialized/main-loop after_frame.
+  assert(p.present_game(0,0));
+  if(top.submits!=1||bottom.submits!=1){std::fprintf(stderr,"FAIL startup end_frame: top=%u bottom=%u; bottom retained BootText\n",top.submits,bottom.submits);return 7;}
+  assert(static_cast<std::uint32_t*>(bottom.surface->pixels)[0]==__builtin_bswap32(pixels[240*640+144]));
+  assert(static_cast<std::uint32_t*>(bottom.surface->pixels)[184*320]==__builtin_bswap32(pixels[432*640]));
+  assert(p.overlays==0);
+  p.initialized_=true;g_top_present_seen=g_top_present_ok=true;p.after_frame(true);
+  assert(top.submits==1&&bottom.submits==1&&last_result==PresentResult::Success);
+  // A second boot frame includes changed source/notice and must publish anew.
+  pixels[432*640]=0xff998877U;assert(p.present_game(0,0));
+  assert(top.submits==2&&bottom.submits==2);
+  assert(static_cast<std::uint32_t*>(bottom.surface->pixels)[184*320]==0x778899ffU);
+  g_top_present_seen=g_top_present_ok=true;p.after_frame(true);assert(bottom.submits==2);
+  // Normal game retains its original top -> tail/bottom ownership.
+  p.presentation_.game();assert(p.present_game(0,0));assert(top.submits==3&&bottom.submits==2);
+  g_top_present_seen=g_top_present_ok=true;p.after_frame(true);assert(bottom.submits==3&&p.overlays==1);
+  assert(last_result==PresentResult::Success);
+  // A bottom submission failure is an engine end_frame failure; tail cannot
+  // convert it into success or submit a second copy.
+  p.presentation_.reset();p.presentation_.artwork();bottom.fail=true;
+  assert(!p.present_game(0,0));assert(top.submits==4&&bottom.submits==4);
+  g_top_present_seen=true;g_top_present_ok=false;p.after_frame(false);
+  assert(bottom.submits==4&&last_result==PresentResult::Failed);
+  p.presentation_.error();assert(!p.present_game(0,0));
+  g_top_present_seen=true;g_top_present_ok=true;p.after_frame(true);
+  assert(top.submits==4&&bottom.submits==4);
+  assert(last_result==PresentResult::Failed);
+  SDL_FreeSurface(source);SDL_FreeSurface(top.surface);SDL_FreeSurface(bottom.surface);
+  std::puts("PASS actual CPU end_frame initial pair, tail dedup, changed license frame, normal game, failure and Error");
+}

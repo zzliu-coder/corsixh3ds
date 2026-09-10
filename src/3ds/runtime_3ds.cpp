@@ -1365,6 +1365,7 @@ class Runtime {
   }
 
   bool present_game(int /*legacy_cursor_x*/, int /*legacy_cursor_y*/) {
+    cpu_bottom_presented_=false;
     if(presentation_.mode()==PresentationMode::Error) return false;
     const bool artwork=presentation_.mode()==PresentationMode::BootArtwork;
 #ifdef CORSIXTH_3DS_GPU
@@ -1405,6 +1406,15 @@ class Runtime {
     top_submit_us_ += now_us() - submitted_at;
     ++top_attempts_;
     if (!submitted) return display_failure("E-DISPLAY", "TOP PRESENT FAILED");
+    // App loading end_frame runs before the main-loop after_frame callback.
+    // Publish the CPU startup pair here, just as the GPU path does; a later
+    // tail callback observes this completion without submitting bottom twice.
+    if(artwork){
+      RuntimeTimingScope bottom(TimingStage::Bottom);
+      cpu_bottom_presented_=mirror_game_to_bottom();
+      bottom.finish(cpu_bottom_presented_);
+      return cpu_bottom_presented_;
+    }
     if (trace_next_present_) {
       boot_log("view-present: source=%dx%d origin=%d,%d cursor=%d,%d submitted=1",
         view_.bounds().w,view_.bounds().h,view_.bounds().x,view_.bounds().y,pointer.x,pointer.y);
@@ -1492,7 +1502,7 @@ class Runtime {
   //! the real interface - toolbar, dialogs and all - and can touch it.
   void after_frame(bool draw_success) {
     PresentResult result = PresentResult::Skipped;
-    if (!draw_success || (g_top_present_seen && !g_top_present_ok)) {
+    if (presentation_.mode()==PresentationMode::Error || !draw_success || (g_top_present_seen && !g_top_present_ok)) {
       result = PresentResult::Failed;
     } else if (initialized_ && bottom_mode_ == BottomScreenMode::Game && g_top_present_seen) {
 #ifdef CORSIXTH_3DS_GPU
@@ -1501,7 +1511,7 @@ class Runtime {
 #endif
       {
       RuntimeTimingScope bottom(TimingStage::Bottom);
-      const bool ok = mirror_game_to_bottom();
+      const bool ok = cpu_bottom_presented_ || mirror_game_to_bottom();
       bottom.finish(ok);
       result = ok ? PresentResult::Success : PresentResult::Failed;
       }
@@ -1511,6 +1521,7 @@ class Runtime {
     g_observations.sample_present(presented, result);
     runner_present(result==PresentResult::Success);
     g_top_present_seen = g_top_present_ok = false;
+    cpu_bottom_presented_=false;
   }
 
   [[nodiscard]] bool mirrors_game() const noexcept {
@@ -2200,6 +2211,7 @@ class Runtime {
   SDL_Surface* game_surface_{nullptr}; // borrowed; render_target owns the pixels
   GameView view_{};
   BootPresentation presentation_{};
+  bool cpu_bottom_presented_{false}; // completion of current engine end_frame only
   std::string overlay_text_{};
   bool overlay_error_{false};
   bool trace_next_present_{false};

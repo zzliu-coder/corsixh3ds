@@ -85,6 +85,11 @@ CLOSURE_SEAL_IDS = {
     "fixture-generator": "ci-fixture-generator",
     "host-python-runner": "ci-host-python-runner",
     "host-python-manifest": "ci-host-python-manifest",
+    "generated-view": "ci-generated-view",
+    "build-profile": "ci-build-profile",
+    "common-source-owners": "ci-common-source-owners",
+    "source-view-owner": "ci-source-view-owner",
+    "integrator": "ci-integrator",
 }
 
 
@@ -924,6 +929,8 @@ def consume(context: Any, args: argparse.Namespace) -> int:
         "evidence-manifest-schema", "observation-schema", "result-schema",
         "red-oracle", "adversarial-matrix-runner", "fixture-generator",
         "host-python-runner", "host-python-manifest",
+        "generated-view", "build-profile", "common-source-owners",
+        "source-view-owner", "integrator",
     }:
         fail("SEALED_INPUT_CLOSURE", "closure input role set mismatch")
     if sha_bytes(bootstrap_read(Path(__file__).resolve())) != \

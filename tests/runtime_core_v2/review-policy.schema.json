@@ -469,8 +469,8 @@
         },
         "additionalProperties": false
       },
-      "minItems": 118,
-      "maxItems": 118,
+      "minItems": 120,
+      "maxItems": 120,
       "uniqueItems": true
     },
     "environment_profiles": {
@@ -841,8 +841,8 @@
         },
         "additionalProperties": false
       },
-      "minItems": 17,
-      "maxItems": 17,
+      "minItems": 19,
+      "maxItems": 19,
       "uniqueItems": true
     },
     "host_regression": {

@@ -826,11 +826,96 @@ class AuthorityProjectionNegativeTests(unittest.TestCase):
                 policy["product_boundary"]["allowlist_exact"], authorized_paths)
             self.assertNotIn("authority", vars(self.producer))
             self.assertNotIn("args", vars(self.producer))
+            self._assert_closure_consumers(policy)
             policy_path.chmod(0o644)
             (reviewer_root / "CorsixTH.tar.gz").chmod(0o644)
             reviewer_root.chmod(0o755)
         self.assertIsNotNone(temporary_path)
         self.assertFalse(temporary_path.exists())
+
+    def _assert_closure_consumers(self, policy: dict) -> None:
+        # Exercise the actual bounded reader segment, including secure_read and
+        # hashing. Later build/ARM/evidence gates are outside this unit fixture.
+        consumer_path = ROOT / "scripts/consume_runtime_core_v2.py"
+        consumer = self._load("authority_closure_consumer", consumer_path)
+        function = next(node for node in ast.parse(consumer_path.read_text()).body
+                        if isinstance(node, ast.FunctionDef) and node.name == "consume")
+        start = next(i for i, node in enumerate(function.body)
+                     if isinstance(node, ast.Assign) and
+                     any(isinstance(t, ast.Name) and t.id == "closure_data"
+                         for t in node.targets))
+        stop = next(i for i, node in enumerate(function.body)
+                    if isinstance(node, ast.Assign) and
+                    any(isinstance(t, ast.Name) and t.id == "tool_policy"
+                        for t in node.targets))
+        code = compile(ast.fix_missing_locations(ast.Module(
+            body=function.body[start:stop], type_ignores=[])), str(consumer_path), "exec")
+        schema = json.loads((ROOT / "tests/runtime_core_v2/review-policy.schema.json").read_text())
+        validator = consumer.Draft202012Validator(schema["properties"]["closure_inputs"])
+        rows = policy["closure_inputs"]
+        self.assertEqual(len(rows), 19)
+        self.assertEqual(len(policy["role_registry"]), 101 + len(rows))
+        self.assertEqual(schema["properties"]["role_registry"]["minItems"], 120)
+        self.assertEqual(schema["properties"]["role_registry"]["maxItems"], 120)
+        self.assertEqual({r["role"]: r["relative_path"] for r in rows},
+                         self.producer.CLOSURE_INPUTS)
+        self.assertEqual(set(consumer.CLOSURE_SEAL_IDS) - {"policy"},
+                         set(self.producer.CLOSURE_INPUTS) - {"wrapper", "driver", "verifier-lock"})
+
+        def read(candidate_rows):
+            consumer.validate_schema(candidate_rows, schema["properties"]["closure_inputs"],
+                                     "POLICY_SCHEMA")
+            namespace = vars(consumer).copy()
+            namespace.update(candidate=ROOT, policy={**policy, "closure_inputs": candidate_rows})
+            exec(code, namespace)
+            return namespace["closure_data"]
+
+        self.assertFalse(list(validator.iter_errors(rows)))
+        self.assertEqual(set(read(rows)), set(self.producer.CLOSURE_INPUTS))
+        for role in self.producer.CLOSURE_INPUTS:
+            with self.subTest(closure_role=role):
+                index = next(i for i, row in enumerate(rows) if row["role"] == role)
+                for bad in (rows[:index] + rows[index+1:], rows + [rows[index]]):
+                    with self.assertRaises(consumer.EvidenceError) as error:
+                        read(bad)
+                    self.assertEqual(error.exception.code, "POLICY_SCHEMA")
+                bad = copy.deepcopy(rows)
+                bad[index]["role"] = "unrecognized-closure-role"
+                with self.assertRaises(consumer.EvidenceError) as error:
+                    read(bad)
+                self.assertEqual(error.exception.code, "SEALED_INPUT_CLOSURE")
+                bad = copy.deepcopy(rows)
+                bad[index]["sha256"] = "0" * 64
+                with self.assertRaises(consumer.EvidenceError):
+                    read(bad)
+        bad = copy.deepcopy(rows)
+        bad[-1] = copy.deepcopy(bad[0])
+        with self.assertRaises(consumer.EvidenceError) as error:
+            read(bad)
+        self.assertEqual(error.exception.code, "POLICY_SCHEMA")
+
+        # Run the real post-seal required-input check with checksummed JSON.
+        # This is a closure-only fixture, never a complete accepted evidence run.
+        with tempfile.TemporaryDirectory(prefix="cth3ds-closure-seal-") as temporary:
+            seal = Path(temporary).resolve(strict=True)
+            def write_seal(ids):
+                manifest = consumer.canonical({"inputs": [{"seal_id": value} for value in ids]})
+                result = consumer.canonical({"run_manifest_sha256": consumer.sha_bytes(manifest)})
+                (seal / "run-manifest.json").write_bytes(manifest)
+                (seal / "result.json").write_bytes(result)
+                (seal / "SHA256SUMS").write_text(
+                    consumer.sha_bytes(result) + "  result.json\n" +
+                    consumer.sha_bytes(manifest) + "  run-manifest.json\n")
+            ids = list(consumer.CLOSURE_SEAL_IDS.values())
+            write_seal(ids)
+            consumer.verify_checksums(seal)
+            for role in ("generated-view", "build-profile", "common-source-owners",
+                         "source-view-owner", "integrator"):
+                with self.subTest(unsealed_role=role):
+                    write_seal([item for item in ids if item != consumer.CLOSURE_SEAL_IDS[role]])
+                    with self.assertRaises(consumer.EvidenceError) as error:
+                        consumer.verify_checksums(seal)
+                    self.assertEqual(error.exception.code, "SCHEMA_NOT_SEALED")
 
 
 def authority_projection_suite() -> unittest.TestSuite:

@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include "cth3ds/build_profile.hpp"
+#include "cth3ds/boot_presentation.hpp"
 #include "cth3ds/events.hpp"
 #include "cth3ds/lifecycle.hpp"
 #include "cth3ds/interval_gate.hpp"
@@ -83,6 +84,7 @@ class Runtime {
  std::string asset_mode_;
  std::uint64_t epoch_=0,last_tick_us_=0;
  bool initialized_=false,ready_=false,dirty_=false,input_failed_=false;
+ cth3ds::BootPresentation presentation_{};
  bool apt_hooked_=false,ptmu_ready_=false,lifecycle_audio_suspended_=false;
  bool audio_paused_before_[32]{},music_paused_before_=false;
  SDL_Window *bottom_window_=nullptr,*game_window_=nullptr;

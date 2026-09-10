@@ -103,11 +103,9 @@ local bottom = {{
   dialogBuildRoom = function() calls.build = calls.build + 1 end,
   dialogTownMap = function(_,enable) assert(enable==true);calls.town = calls.town + 1 end,
 }}
-local world = {{
-  game_speed = 1,
-  setSpeed = function(self, value) self.game_speed = value end,
-  pauseOrUnpause = function(self) self.game_speed = self.game_speed == 0 and 1 or 0 end,
-}}
+dofile({str(Path(__file__).parents[1] / 'tests/fixtures/handheld_world.lua.pinned')!r})
+local world = setmetatable({{hours_per_tick = 1, tick_rate = 3,
+  ui={{anyMustPauseWindowOpen=function()return false end}}, user_actions_allowed=true}}, {{__index=World}})
 local hospital = {{balance = 12345, reputation = 678, patients = {{{{}}}}, staff = {{{{}}}}}}
 local app = {{
   savegame_dir = temp_root,

@@ -41,6 +41,8 @@ struct BottomUiState {
   int message_count{0};
   int game_speed{1};
   bool paused{false};
+  bool must_pause{false};
+  bool user_actions_allowed{false};
   int battery_level{-1};
   bool charging{false};
   int volume_slider{-1};
@@ -68,6 +70,7 @@ struct BottomUiState {
            queue_count == other.queue_count &&
            message_count == other.message_count &&
            game_speed == other.game_speed && paused == other.paused &&
+           must_pause == other.must_pause && user_actions_allowed == other.user_actions_allowed &&
            battery_level == other.battery_level &&
            charging == other.charging &&
            volume_slider == other.volume_slider &&

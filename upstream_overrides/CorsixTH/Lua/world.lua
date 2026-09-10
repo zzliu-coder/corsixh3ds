@@ -818,7 +818,8 @@ end
 
 --! Set the blue filter according to whether the user can build or not.
 function World:updateScreenBlueFilter()
-  TheApp.video:setBlueFilterActive(not self.user_actions_allowed and not self:mustPause())
+  -- CORSIXTH_3DS_PAUSE_PRESENTATION_R74: World retains speed and action permissions.
+  TheApp.video:setBlueFilterActive(not TheApp.is_3ds and not self.user_actions_allowed and not self:mustPause())
 end
 
 --! Dedicated function to allow unpausing by pressing 'p' again

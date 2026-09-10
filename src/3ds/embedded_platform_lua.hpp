@@ -631,8 +631,10 @@ function Platform:syncBottomState()
     end, 0) or 0,
     message_count = bottom and
       (count_table(bottom.message_queue) + count_table(bottom.message_windows)) or 0,
-    game_speed = world and math.floor(world.game_speed or 0) or 0,
-    paused = world and world.game_speed == 0 or false,
+    game_speed = world and math.floor(world.hours_per_tick or 0) or 0,
+    paused = world and type(world.isCurrentSpeed)=="function" and world:isCurrentSpeed("Pause") or false,
+    must_pause = world and type(world.mustPause)=="function" and world:mustPause() or false,
+    user_actions_allowed = world and world.user_actions_allowed == true or false,
     selected_name = entity_name(selected),
     selected_status = entity_status(selected),
     input_context = self:inputContext(),

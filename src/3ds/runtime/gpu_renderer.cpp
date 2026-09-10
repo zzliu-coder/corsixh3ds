@@ -1,4 +1,5 @@
 #include "cth3ds/gpu_api.hpp"
+#include "cth3ds/boot_presentation.hpp"
 #ifdef CORSIXTH_3DS_GPU
 #include <3ds.h>
 #include <citro2d.h>
@@ -176,11 +177,13 @@ bool draw_image(C3D_Tex& tex,const Tex3DS_SubTexture& sub,SDL_FRect dst,u32 tint
     flip_x?-dst.w:dst.w,flip_y?-dst.h:dst.h};
   return C2D_DrawImage({&tex,&sub},&params,&colours);
 }
-bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height) noexcept {
+bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height,
+                  int left=0,int top=0,bool clear=false) noexcept {
   if(!in_frame)return false;
   C2D_SceneBegin(target); C2D_ViewReset(); C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);
   canvas_clip_active=false;
   C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
+  if(clear) C2D_TargetClear(target,kArtworkBackground);
   // With C2D's offscreen projection, logical row y is memory row y (R54
   // device readback). Convert memory rows to bottom-origin texture V once.
   // Keep top >= bottom: Tex3DS uses top < bottom for atlas rotation.
@@ -189,7 +192,7 @@ bool screen_image(C3D_RenderTarget* target,RectI source,int width,int height) no
   // Reserve screen objects before switching target: room_for_draw must never
   // split after top is submitted and accidentally resume on the canvas.
   C2D_ImageTint tint;C2D_PlainImageTint(&tint,0xffffffffU,1.0f);
-  C2D_DrawParams params{};params.pos={0,0,static_cast<float>(width),static_cast<float>(height)};
+  C2D_DrawParams params{};params.pos={static_cast<float>(left),static_cast<float>(top),static_cast<float>(width),static_cast<float>(height)};
   return C2D_DrawImage({&canvas,&sub},&params,&tint);
 }
 // Independent stages verify clear, raster/clip, atlas/flips, and both LCDs.
@@ -655,6 +658,23 @@ bool gpu_bottom(RectI view,const std::uint32_t* rgba,int height) noexcept {
     C2D_ImageTint tint;C2D_PlainImageTint(&tint,0xffffffffU,1.0f);
     ok=C2D_DrawImage({&overlay,&sub},&params,&tint)&&ok;
   }
+  stats.frame_upload_peak=std::max(stats.frame_upload_peak,stats.upload_bytes-stats.frame_upload_start);
+  stats.frame_eviction_peak=std::max(stats.frame_eviction_peak,stats.evictions-stats.frame_eviction_start);
+  end_job();++stats.frames;return ok;
+}
+bool gpu_boot_artwork() noexcept {
+  if(!in_frame)return false;
+  // Reserve while the canvas is still current; no checkpoint between LCDs.
+  if(objects>=max_objects-32){if(!checkpoint())return false;}
+  else if(command_pressure()){if(!checkpoint())return false;}
+  const auto top=kArtworkTop, bottom=kArtworkBottom;
+  bool ok=screen_image(top_target,top.source,top.destination.w,top.destination.h,
+                       top.destination.x,top.destination.y,true);
+  ok=screen_image(bottom_target,bottom.source,bottom.destination.w,bottom.destination.h,
+                  bottom.destination.x,bottom.destination.y,true)&&ok;
+  const auto notice=kArtworkNotice;
+  ok=screen_image(bottom_target,notice.source,notice.destination.w,notice.destination.h,
+                  notice.destination.x,notice.destination.y)&&ok;
   stats.frame_upload_peak=std::max(stats.frame_upload_peak,stats.upload_bytes-stats.frame_upload_start);
   stats.frame_eviction_peak=std::max(stats.frame_eviction_peak,stats.evictions-stats.frame_eviction_start);
   end_job();++stats.frames;return ok;

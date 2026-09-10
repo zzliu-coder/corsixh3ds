@@ -35,6 +35,7 @@
 #include "cth3ds/action_codec.hpp"
 #include "cth3ds/atomic_save.hpp"
 #include "cth3ds/bottom_ui.hpp"
+#include "cth3ds/boot_presentation.hpp"
 #include "cth3ds/bounded_log.hpp"
 #include "cth3ds/crc32.hpp"
 #include "cth3ds/events.hpp"
@@ -1027,6 +1028,7 @@ class Runtime {
     }
     input_mapper_.reset();input_failed_=false;
     initialized_ = false; ready_ = false;
+    presentation_.reset();
     lua_state_ = nullptr;
     game_window_=nullptr;game_window_id_=0;game_surface_=nullptr;
 #if CTH3DS_RESOURCE_EXPERIMENT
@@ -1363,8 +1365,11 @@ class Runtime {
   }
 
   bool present_game(int /*legacy_cursor_x*/, int /*legacy_cursor_y*/) {
+    if(presentation_.mode()==PresentationMode::Error) return false;
+    const bool artwork=presentation_.mode()==PresentationMode::BootArtwork;
 #ifdef CORSIXTH_3DS_GPU
     if(gpu_active()){
+      if(artwork){++top_attempts_;++bottom_attempts_;return gpu_boot_artwork();}
       view_.follow({g_input_cursor_x,g_input_cursor_y});
       ++top_attempts_;
       const bool top_ok=gpu_top(view_.bounds());
@@ -1387,12 +1392,12 @@ class Runtime {
     if (!valid_output_surface(output, 400, 240))
       return display_failure("E-DISPLAY", "INVALID TOP CANVAS");
     const Vec2i pointer{g_input_cursor_x, g_input_cursor_y};
-    view_.follow(pointer);
+    if(!artwork) view_.follow(pointer);
     const bool lock = SDL_MUSTLOCK(output) != 0;
     if (lock && SDL_LockSurface(output) != 0)
       return display_failure("E-DISPLAY", "TOP LOCK FAILED");
     const auto before = now_us();
-    const bool copied = view_.copy_top(game_surface_, output);
+    const bool copied = artwork ? copy_artwork(output,true) : view_.copy_top(game_surface_, output);
     top_copy_us_ += now_us() - before;
     if (lock) SDL_UnlockSurface(output);
     const auto submitted_at = now_us();
@@ -1463,16 +1468,23 @@ class Runtime {
              static_cast<unsigned long long>(elapsed), startup_label_.c_str());
     boot_log_memory(startup_code_.c_str());
     boot_log_flush();
-    if (bottom_window_ != nullptr && !initialized_) {
+    if (bottom_window_ != nullptr && presentation_.mode()==PresentationMode::BootText) {
       render_boot_page(false);
     }
   }
 
   void show_fatal(const char* reason) {
+    presentation_.error();
     startup_code_ = "FATAL";
     startup_label_ = reason != nullptr ? reason : "UNKNOWN ERROR";
     (void)ensure_bottom_window();
     render_boot_page(true);
+  }
+
+  void set_presentation(bool artwork) {
+    if(artwork) presentation_.artwork(); else presentation_.game();
+    boot_log("presentation: mode=%s",presentation_.mode()==PresentationMode::BootArtwork?"boot-artwork":
+             presentation_.mode()==PresentationMode::Error?"error":"game");
   }
 
   //! Called straight after CorsixTH presents a frame. In game mode the lower
@@ -1929,8 +1941,9 @@ class Runtime {
     }
 
     const auto copy_started = now_us();
-    const bool scaled = view_.copy_bottom(source, bottom_surface_);
-    if (scaled) draw_overlay_strip();
+    const bool artwork=presentation_.mode()==PresentationMode::BootArtwork;
+    const bool scaled = artwork ? copy_artwork(bottom_surface_,false) : view_.copy_bottom(source, bottom_surface_);
+    if (scaled && !artwork) draw_overlay_strip();
 
     if (lock_destination) {
       SDL_UnlockSurface(bottom_surface_);
@@ -1955,16 +1968,29 @@ class Runtime {
     const bool has_error = state.notice_is_error && !state.notice.empty();
     const bool show_stamp = last_tick_us_ < overlay_until_us_;
     const bool show_notice = !state.notice.empty() && now_us() < notice_until_us_;
-    if (!has_error && !show_stamp && !show_notice) {
+    const bool paused=state.paused && !state.must_pause;
+    if (!has_error && !paused && !show_stamp && !show_notice) {
       return nullptr;
     }
-    const std::string text = has_error || show_notice ? state.notice : "R73 " + state.build_tag;
+    const std::string text = has_error ? state.notice : paused ?
+      (state.user_actions_allowed ? "pause-build" : "pause") : show_notice ? state.notice : "R73 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
+    if(text==overlay_text_ && has_error==overlay_error_)
+      return reinterpret_cast<const std::uint32_t*>(overlay_canvas_.rgba_bytes().data());
+    overlay_text_=text;overlay_error_=has_error;
     overlay_canvas_.clear(has_error ? Rgba{176, 46, 40, 255}
                                     : Rgba{18, 25, 32, 255});
-    overlay_canvas_.text(3, 3, text, Rgba{239, 242, 244, 255});
+    if(paused&&!has_error){
+      const auto& mask=state.user_actions_allowed?presentation_masks::paused_build:presentation_masks::paused;
+      paint_fixed_mask(mask,(320-mask.width)/2,(kOverlayHeight-mask.height)/2,
+        [this](int x,int y,unsigned alpha){
+          overlay_canvas_.pixel(x,y,{static_cast<std::uint8_t>(18+(239-18)*alpha/255),
+            static_cast<std::uint8_t>(25+(242-25)*alpha/255),
+            static_cast<std::uint8_t>(32+(244-32)*alpha/255),255});
+        });
+    } else overlay_canvas_.text(3, 3, text, Rgba{239, 242, 244, 255});
 
     const auto& bytes = overlay_canvas_.rgba_bytes();
     return reinterpret_cast<const std::uint32_t*>(bytes.data());
@@ -2036,6 +2062,9 @@ class Runtime {
   }
 
   void render_boot_page(bool error) {
+    if(error) presentation_.error();
+    else if(presentation_.mode()!=PresentationMode::BootText) return;
+    overlay_text_.clear(); // the boot page borrows the same strip storage
 #ifdef CORSIXTH_3DS_GPU
     gpu_quiesce();
 #endif
@@ -2050,6 +2079,14 @@ class Runtime {
     const HeapSnapshot memory = heap_snapshot();
     const bool must_lock = SDL_MUSTLOCK(bottom_surface_) != 0;
     if (must_lock && SDL_LockSurface(bottom_surface_) != 0) {
+      return;
+    }
+    if(!error){
+      draw_boot_mask(presentation_masks::loading,87);
+      draw_boot_mask(presentation_masks::credit,123);
+      draw_boot_mask(presentation_masks::based,146);
+      if(must_lock)SDL_UnlockSurface(bottom_surface_);
+      (void)SDL_UpdateWindowSurface(bottom_window_);
       return;
     }
     draw_boot_line(8, std::string("CORSIXTH R73 ") + kOverlayVersion,
@@ -2095,6 +2132,22 @@ class Runtime {
         row[x] = byte_swap32(source_row[x]);
       }
     }
+  }
+
+  void draw_boot_mask(const presentation_masks::Mask& mask,int y) {
+    if(bottom_surface_->format->format!=SDL_PIXELFORMAT_RGBA8888 || bottom_surface_->pitch%4) return;
+    paint_fixed_mask(mask,(320-mask.width)/2,y,[this](int x,int line,unsigned alpha){
+      if(x<0||x>=bottom_surface_->w||line<0||line>=bottom_surface_->h)return;
+      auto* row=reinterpret_cast<std::uint32_t*>(static_cast<std::uint8_t*>(bottom_surface_->pixels)+line*bottom_surface_->pitch);
+      row[x]=SDL_MapRGBA(bottom_surface_->format,static_cast<Uint8>(18+(239-18)*alpha/255),
+                        static_cast<Uint8>(25+(242-25)*alpha/255),static_cast<Uint8>(32+(244-32)*alpha/255),255);
+    });
+  }
+
+  bool copy_artwork(SDL_Surface* output,bool top) {
+    return copy_boot_artwork(static_cast<const std::uint32_t*>(game_surface_->pixels),game_surface_->pitch/4,
+      static_cast<std::uint32_t*>(output->pixels),output->w,output->pitch/4,top,
+      SDL_MapRGBA(output->format,0,0,0,255),game_surface_->format->format!=output->format->format);
   }
 
   void present_bottom_canvas() {
@@ -2146,6 +2199,9 @@ class Runtime {
   SDL_Window* game_window_{nullptr};
   SDL_Surface* game_surface_{nullptr}; // borrowed; render_target owns the pixels
   GameView view_{};
+  BootPresentation presentation_{};
+  std::string overlay_text_{};
+  bool overlay_error_{false};
   bool trace_next_present_{false};
   std::uint32_t traced_held_{0};
   const char* display_error_{nullptr};
@@ -2264,6 +2320,14 @@ int l_stage(lua_State* state) {
   update_lua_memory(state);
   runtime().stage(luaL_optstring(state, 1, "S??"),
                   luaL_optstring(state, 2, "STARTING"));
+  return 0;
+}
+
+int l_presentation(lua_State* state) {
+  const char* mode=luaL_checkstring(state,1);
+  if(std::strcmp(mode,"boot-artwork")!=0 && std::strcmp(mode,"game")!=0)
+    return luaL_error(state,"invalid presentation mode");
+  runtime().set_presentation(std::strcmp(mode,"boot-artwork")==0);
   return 0;
 }
 
@@ -2694,6 +2758,8 @@ int l_set_state(lua_State* state) {
   value.message_count = static_cast<int>(table_integer(state, 1, "message_count", value.message_count));
   value.game_speed = static_cast<int>(table_integer(state, 1, "game_speed", value.game_speed));
   value.paused = table_boolean(state, 1, "paused", value.paused);
+  value.must_pause = table_boolean(state, 1, "must_pause", value.must_pause);
+  value.user_actions_allowed = table_boolean(state, 1, "user_actions_allowed", value.user_actions_allowed);
   value.selected_name = table_string(state, 1, "selected_name", value.selected_name);
   value.selected_status = table_string(state, 1, "selected_status", value.selected_status);
   value.input_context = parse_context(table_string(state, 1, "input_context", context_name(value.input_context).data()));
@@ -2874,6 +2940,7 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "shutdown", l_shutdown);
   set_function(state, "version", l_version);
   set_function(state, "stage", l_stage);
+  set_function(state, "presentation", l_presentation);
   set_function(state, "memory", l_memory);
   set_function(state, "probe_regular_heap", l_probe);
   set_function(state, "resource_memory", l_resource_memory);

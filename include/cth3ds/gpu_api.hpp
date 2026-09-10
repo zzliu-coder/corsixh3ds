@@ -23,6 +23,8 @@ void gpu_images_release(SDL_Renderer*) noexcept;
 int gpu_image_draw(SDL_Texture*,const SDL_Rect*,const SDL_FRect*,SDL_RendererFlip) noexcept;
 bool gpu_top(RectI view) noexcept;
 bool gpu_bottom(RectI view,const std::uint32_t* rgba,int overlay_height) noexcept;
+// One startup canvas, two disjoint slices, exactly one completed GPU job.
+bool gpu_boot_artwork() noexcept;
 bool gpu_read_pixels(SDL_Surface*) noexcept;
 void gpu_log_statistics() noexcept;
 void gpu_submit_sample_begin(std::uint64_t boundary_us) noexcept;

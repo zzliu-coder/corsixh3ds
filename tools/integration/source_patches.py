@@ -619,6 +619,24 @@ endif()
     # In a dry run the previous insertion is intentionally not written, so its
     # end marker cannot be used as the next anchor. A real run, or an existing
     # integrated tree, has the anchor on disk.
+    if replace_once(
+        app_lua,
+        '  -- Put up the loading screen\n',
+        '  -- CORSIXTH_3DS_PRESENTATION_R74: explicit startup-only projection\n'
+        '  if IS_3DS and good_install_folder then TH3DS.presentation("boot-artwork") end\n'
+        '  -- Put up the loading screen\n',
+        'CORSIXTH_3DS_PRESENTATION_R74', dry_run=dry_run,
+    ):
+        changes.append(Change("CorsixTH/Lua/app.lua", "patch"))
+    if replace_once(
+        app_lua,
+        '  -- Load UI\n  corsixth.require("ui")\n  if good_install_folder then\n',
+        '  -- CORSIXTH_3DS_PRESENTATION_GAME_R74: before UI, intro or menu can render\n'
+        '  if IS_3DS then TH3DS.presentation("game") end\n'
+        '  -- Load UI\n  corsixth.require("ui")\n  if good_install_folder then\n',
+        'CORSIXTH_3DS_PRESENTATION_GAME_R74', dry_run=dry_run,
+    ):
+        changes.append(Change("CorsixTH/Lua/app.lua", "patch"))
     if not dry_run or APP_BOOT_MARKER in read_text(app_lua):
         if replace_once(
             app_lua,

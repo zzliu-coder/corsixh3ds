@@ -292,6 +292,29 @@ int main(){
     assert(match);
   }
   for(int y=0;y<12;++y)for(int x=0;x<320;++x)assert(pixel(bottom->tex,x,y)==overlay[y*320+x]);
+  // Startup only: source halves are disjoint and attach at the hinge. No
+  // white viewport or transient strip. The production delayed queue must
+  // complete one job, then a subsequent game frame restores normal outputs.
+  assert(gpu_begin());assert(gpu_clear(0xff000000U));draw(background,{0,0,640,480},full,0);
+  assert(gpu_boot_artwork());assert(!in_frame);assert(!gpu_boot_artwork());gpu_quiesce();
+  for(int y=0;y<240;++y)for(int x=0;x<400;++x){
+    // GPU samples pixel centres. Integer boundaries are evaluated in float,
+    // independently from CPU's retained top-left nearest-neighbour grid.
+    const int sy=int(64.0f+((y-80+0.5f)/160.0f)*176.0f),sx=int(144.0f+((x-40+0.5f)/320.0f)*352.0f);
+    const u32 expected=(y>=80&&x>=40&&x<360)?colours[sy*640+sx]:0xff000000U;
+    assert(pixel(top->tex,x,y)==expected);
+  }
+  for(int y=0;y<240;++y)for(int x=0;x<320;++x){
+    const int sy=int(240.0f+((y+0.5f)/160.0f)*176.0f),sx=int(144.0f+((x+0.5f)/320.0f)*352.0f);
+    const int ny=int(432.0f+((y-184+0.5f)/24.0f)*48.0f),nx=int(((x+0.5f)/320.0f)*640.0f);
+    const u32 expected=y<160?colours[sy*640+sx]:
+      (y>=184&&y<208?colours[ny*640+nx]:0xff000000U);
+    assert(pixel(bottom->tex,x,y)==expected);
+  }
+  assert(gpu_begin());assert(gpu_clear(0xff000000U));draw(background,{0,0,640,480},full,0);
+  assert(gpu_top({100,80,400,240}));assert(gpu_bottom({100,80,400,240},nullptr,0));gpu_quiesce();
+  assert(pixel(top->tex,0,0)==colours[80*640+100]);
+  std::puts("PASS startup two-slice GPU projection, blank margins, single job, game return");
   gpu_image_destroy(background);gpu_images_release(renderer);gpu_log_statistics();gpu_shutdown();assert(live==0);
   SDL_DestroyRenderer(renderer);SDL_FreeSurface(out);SDL_Quit();
   assert(source_live==0);

@@ -13,7 +13,7 @@ CAPACITY_ASSETS={
     'FULL12.SAM':'38beafde190313e57034bc8295a07660921c4d7c67568850a57a3f6c4cc27f0b'}
 
 def capacity_fields(args,base):
-    if not getattr(args,'capacity',False): return {}
+    if not (getattr(args,'capacity',False) or getattr(args,'busy_capacity',False)): return {}
     if args.profile!='expanded-zh-on' or args.recovery or not 0<args.stress_ms<=180000:
         raise ValueError('capacity requires expanded-zh-on, stress 1..180000, and no recovery')
     def bound(relative,expected):
@@ -24,7 +24,8 @@ def capacity_fields(args,base):
         if sha(path)!=expected: raise ValueError('capacity dependency identity mismatch: '+relative)
     bound('Benchmark/continuity.sav',CONTINUITY_SHA)
     bound('Benchmark/expanded.sav','f8a8039644a81a22b44fd1dfed6201c70782ae6bf4873bdb50b3ba7b2c63a0e7')
-    fields={'capacity':'r73-v1','continuity_sha256':CONTINUITY_SHA}
+    fields={'capacity':'r74-v1' if getattr(args,'busy_capacity',False) else 'r73-v1',
+            'continuity_sha256':CONTINUITY_SHA}
     for i,(name,digest) in enumerate(CAPACITY_ASSETS.items(),1):
         relative='game/LEVELS/'+name
         bound(relative,digest)
@@ -77,7 +78,8 @@ def prepare(args):
             '--artifact','CANDIDATE.3dsx','--config',str(config.resolve()),'--input',str(input_path),
             '--launcher-sha','VERIFIED_LAUNCHER_SHA256','--out',str(args.out.resolve()/'runs'),
             '--timeout',str(300+(args.warmup_ms+args.sample_ms)*(4 if args.profile=='matrix' else 1)//1000+args.stress_ms//1000
-                +(545 if getattr(args,'capacity',False) else 0))
+                +(545 if getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) else 0)
+                +(300 if getattr(args,'busy_capacity',False) else 0))
         ]},indent=2)+'\n')
     return receipt_path
 
@@ -92,6 +94,7 @@ def main():
     parser.add_argument('--stress-ms',type=int,default=0)
     parser.add_argument('--recovery',action='store_true')
     parser.add_argument('--capacity',action='store_true',help='R73 bounded continuity and normal level 12 loading; requires expanded profile and stress 1..180000')
+    parser.add_argument('--busy-capacity',action='store_true',help='R74 capacity: real hiring to 43 staff, two normal work windows and private save UI/reload, then R73 level/return checks')
     parser.add_argument('--out',type=Path,required=True)
     print(prepare(parser.parse_args()))
 

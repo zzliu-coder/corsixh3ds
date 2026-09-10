@@ -2389,6 +2389,19 @@ int l_cpu_profile(lua_State* state) {
   return lua_gettop(state);
 }
 int l_clock_ms(lua_State* state){lua_pushinteger(state,static_cast<lua_Integer>(now_us()/1000));return 1;}
+int l_simulation_clock(lua_State* state){
+  // Low-frequency acceptance boundaries only; this reads the existing owner.
+  const auto clock=g_simulation_clock.statistics();
+  lua_createtable(state,0,9);
+  const auto field=[state](const char* key,std::uint64_t value){
+    lua_pushinteger(state,static_cast<lua_Integer>(value));lua_setfield(state,-2,key);
+  };
+  field("at_us",now_us());field("nominal_timer_us",SimulationClock::step_us);
+  field("completed_steps",clock.completed_steps);field("failed_steps",clock.failed_steps);
+  field("dropped_us",clock.dropped_us);field("debt_us",clock.debt_us);
+  field("rebases",clock.rebases);field("budget_exits",clock.budget_exits);
+  return 1;
+}
 int l_music_state(lua_State* state) {
   lua_pushboolean(state,Mix_PlayingMusic()!=0);
   lua_pushboolean(state,Mix_PausedMusic()!=0);
@@ -2892,6 +2905,7 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "cpu_profile", l_cpu_profile);
   set_function(state, "music_state", l_music_state);
   set_function(state, "clock_ms", l_clock_ms);
+  set_function(state, "simulation_clock", l_simulation_clock);
   set_function(state, "cpu_phase", l_cpu_phase);
   lua_pushboolean(state,cpu_work.enabled);
   lua_setfield(state,-2,"profiling_enabled");

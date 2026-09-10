@@ -14,12 +14,16 @@ local function packed(t)
 end
 function C.new(benchmark)
   local run=assert(benchmark.run)
-  assert(run.capacity=="r73-v1" and run.continuity_sha256==C.sha,"unbound capacity input")
+  assert((run.capacity=="r73-v1" or run.capacity=="r74-v1") and run.continuity_sha256==C.sha,"unbound capacity input")
   assert(run.profile=="expanded-zh-on" and not run.recovery_sha256,"capacity profile conflict")
   assert(run.expanded_sha256=="f8a8039644a81a22b44fd1dfed6201c70782ae6bf4873bdb50b3ba7b2c63a0e7",
     "unbound capacity expanded input")
   local self=setmetatable({b=benchmark,app=benchmark.app,native=benchmark.native,
     guard=assert(benchmark.stress),phase="begin",services={[15]=0,[20]=0},patient_evidence={}},C)
+  self.busy_requested=run.capacity=="r74-v1"
+  if self.busy_requested then
+    assert(type(self.native.simulation_clock)=="function","capacity requires native simulation clock")
+  end
   local r=benchmark.results
   r.capacity_stage="pending";r.capacity_reception_outcome="NOT_PROVEN"
   r.capacity_level_outcome="NOT_PROVEN";r.capacity_return_outcome="NOT_PROVEN"
@@ -28,6 +32,7 @@ function C.new(benchmark)
   r.capacity_natural_promotion="NOT_PROVEN"
   r.capacity_input_sha256=C.sha
   r.capacity_annual_scope="original stress and capacity phases; stress work counters exclude capacity"
+  if self.busy_requested then r.capacity_protocol="r74-v1" end
   return self
 end
 function C:check()
@@ -84,6 +89,7 @@ function C:normal(phase,duration)
   assert(self.app.world:getCurrentSpeed()=="Normal","capacity speed changed")
   self.phase=phase;self.b.results.capacity_stage=phase
   self.start_progress=self.b:progress()
+  if self.busy_requested then self.start_clock=self.native.simulation_clock() end
   self.b.deadline=self.native.clock_ms()+duration
 end
 function C:advanced()
@@ -91,9 +97,24 @@ function C:advanced()
   assert(p.world>before.world and p.hours>before.hours and p.frames>before.frames,
     "capacity has no completed simulation or presentation")
   -- A freshly initialized level can have zero people; record actual entities.
-  self.b.results["capacity_"..self.phase.."_work"]=packed{world=p.world-before.world,
+  local work={world=p.world-before.world,
     hours=p.hours-before.hours,entities=p.entities-before.entities,frames=p.frames-before.frames,
     elapsed_ms=p.at-before.at}
+  if self.busy_requested then
+    local clock=self.native.simulation_clock();local start=assert(self.start_clock)
+    assert(clock.at_us>start.at_us and clock.nominal_timer_us==18000,"invalid capacity clock boundary")
+    work.elapsed_us=clock.at_us-start.at_us
+    work.nominal_timer_us=clock.nominal_timer_us
+    work.world_tick_rate=self.app.world.tick_rate
+    work.hours_per_tick=self.app.world.hours_per_tick
+    work.debt_before_us=start.debt_us;work.debt_after_us=clock.debt_us
+    for _,key in ipairs{"dropped_us","rebases","budget_exits","completed_steps","failed_steps"}do
+      assert(clock[key]>=start[key],"capacity clock reset inside window: "..key)
+      work[key]=clock[key]-start[key]
+    end
+    assert(work.failed_steps==0,"capacity timer callback failed")
+  end
+  self.b.results["capacity_"..self.phase.."_work"]=packed(work)
 end
 function C:roundtrip(name)
   self:check();self.app.world:setSpeed("Pause")
@@ -112,6 +133,7 @@ function C:observation(window)
   self:normal("reception_"..window,180000)
 end
 function C:report(partial)
+  if self.busy then return self.busy:report(partial) end
   local report=Activity.patientReport()
   local updated=report.updated
   local prefix="capacity_reception_"..self.window
@@ -154,6 +176,10 @@ function C:level()
 end
 function C:tick()
   self:check()
+  if self.busy then
+    if self.busy:tick() then self.busy:close();self.busy=nil;self:level() end
+    return false
+  end
   if self.phase=="begin" then
     self:snapshot("continuity_before")
     self:load(self.b.root.."continuity.sav")
@@ -183,7 +209,9 @@ function C:tick()
     self.b.results.capacity_reception_outcome=complete and self.first_complete
       and self.services[15]>0 and self.services[20]>0 and self.patient_evidence[15]
       and self.patient_evidence[20] and "PASS" or "NOT_PROVEN"
-    self:level()
+    if self.busy_requested then
+      self.busy=require("3ds.benchmark_busy").new(self)
+    else self:level() end
   elseif self.phase=="level_run" then
     self:snapshot("level_ran")
     self:roundtrip("r73-level12")
@@ -207,6 +235,7 @@ function C:tick()
   return false
 end
 function C:close()
+  if self.busy then self.busy:close();self.busy=nil end
   Activity.stop();self.cohort=nil;self.old=nil;self.level_old=nil;self.level_initial=nil
 end
 return C

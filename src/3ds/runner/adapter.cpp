@@ -111,7 +111,7 @@ int runner_start(int argc,char** argv) noexcept {
     const int duration=std::stoi(config.at("stress_ms"));
     require(std::to_string(duration)==config["stress_ms"]&&duration>=0&&duration<=22*60000,"invalid_stress_duration");
     if(config.count("capacity")){
-      require(config.at("capacity")=="r73-v1"&&config["profile"]=="expanded-zh-on"&&duration>0&&duration<=180000&&
+      require((config.at("capacity")=="r73-v1"||config.at("capacity")=="r74-v1")&&config["profile"]=="expanded-zh-on"&&duration>0&&duration<=180000&&
         !config.count("recovery_sha256"),"invalid_capacity_configuration");
       require(config["continuity_sha256"]=="17b74375444d153599873bf25255b0d6a817343382eed1ebab6d3d89dce3a808",
         "invalid_continuity_identity");

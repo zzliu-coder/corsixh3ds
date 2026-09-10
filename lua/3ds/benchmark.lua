@@ -55,7 +55,7 @@ function Benchmark.new(app,native)
     self.stress_duration=tonumber(run.stress_ms)
     self.warmup_ms=tonumber(run.warmup_ms);self.sample_ms=tonumber(run.sample_ms)
     if run.capacity then
-      assert(run.capacity=="r73-v1" and run.profile=="expanded-zh-on" and
+      assert((run.capacity=="r73-v1" or run.capacity=="r74-v1") and run.profile=="expanded-zh-on" and
         self.stress_duration>0 and self.stress_duration<=180000 and not run.recovery_sha256,
         "invalid capacity configuration")
       self.capacity_requested=true

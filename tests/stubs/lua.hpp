@@ -20,6 +20,10 @@ int lua_rawget(lua_State*,int);
 int lua_rawequal(lua_State*,int,int);
 int lua_isinteger(lua_State*,int);
 int lua_next(lua_State*,int);
+// Lua 5.4 public signatures used by the R74 clock/IO observation bridge.
+// This target only checks compilation; runtime probes use the real Lua library.
+void lua_createtable(lua_State*,int,int);
+lua_Integer luaL_optinteger(lua_State*,int,lua_Integer);
 #define luaL_typename(L,i) lua_typename(L, lua_type(L,(i)))
 #define lua_pushliteral(L,s) lua_pushstring(L, "" s)
 

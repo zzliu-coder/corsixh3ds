@@ -277,13 +277,17 @@ class U3GeneratedClockTests(unittest.TestCase):
                     self.assertEqual(value['exclusive'][stage], expected)
 
     def test_actual_loop_top_draw_and_bottom_failures_are_not_successes(self):
-        for failure in (1, 2, 3, 5):
+        for failure in (1, 2, 3, 5, 6):
             with self.subTest(failure=failure):
                 value = self.run_case(-1, failure)
                 self.assertEqual(value['success'], 0)
                 self.assertEqual(value['count'], 0)
                 self.assertGreater(value['failed'], 0)
                 self.assertEqual(value['failed'], value['work'][3])
+                if failure == 6:
+                    # A real latched presentation error must prevent bottom
+                    # publication even when render/top boundaries succeed.
+                    self.assertEqual(value['work'][5], 0)
 
     def test_actual_loop_missing_top_is_skipped(self):
         value = self.run_case(-1, 4)
@@ -366,6 +370,7 @@ HARNESS = r'''
 #include "cth3ds/telemetry.hpp"
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/presentation_clock.hpp"
+#include "cth3ds/boot_presentation.hpp"
 #include <array>
 #include <cassert>
 #include <cstring>
@@ -445,6 +450,11 @@ std::uint64_t now_us(){return clock_us;}
 enum class BottomScreenMode{Game,Panel};
 struct Runtime {
  bool initialized_=true;BottomScreenMode bottom_mode_=BottomScreenMode::Game;
+ BootPresentation presentation_;
+ bool cpu_bottom_presented_=false;
+ // This harness enters the SDL game loop after App startup. Keep the real
+ // presentation owner and state transition, matching that successful path.
+ Runtime(){presentation_.game();}
  bool mirror_game_to_bottom(){spend(5);return failure!=3;}
  bool present_game(int,int){spend(4);return failure!=1;}
  // INSERT_BOTTOM
@@ -452,7 +462,7 @@ struct Runtime {
 Runtime& runtime(){static Runtime value;return value;}
 void boot_log(const char*){}
 // INSERT_PRESENT
-void runtime_after_frame(bool ok){runtime().after_frame(ok);}
+void runtime_after_frame(bool ok){runtime().after_frame(ok);assert(!runtime().cpu_bottom_presented_);}
 }
 using cth3ds::now_us;
 constexpr int SDL_BLENDMODE_BLEND=1;
@@ -517,8 +527,12 @@ constexpr auto dispatch_keydown="keydown"sv,dispatch_keyup="keyup"sv,dispatch_te
 int main(int argc,char** argv){
  delayed=argc>1?std::atoi(argv[1]):-1;failure=argc>2?std::atoi(argv[2]):0;
  extra_timers=argc>3?std::atoi(argv[3]):0;
+ assert(cth3ds::runtime().presentation_.mode()==cth3ds::PresentationMode::Game);
+ if(failure==6)cth3ds::runtime().presentation_.error();
  g_observations.frame_tail.begin(clock_us);
  lua_State state;mainloop(&state);const auto s=g_timing.snapshot(clock_us);
+ assert(cth3ds::runtime().presentation_.mode()==
+   (failure==6?cth3ds::PresentationMode::Error:cth3ds::PresentationMode::Game));
  g_observations.frame_tail.close(clock_us);
  const auto& tail=g_observations.frame_tail.record();
  assert(tail.invalid==0 && tail.end_phase==cth3ds::FramePhase::Other);

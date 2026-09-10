@@ -32,7 +32,18 @@ FILE_METHODS = r'''
   // CORSIXTH_3DS_SAVE_STREAM_R65: the caller owns this standard Lua file.
   // Its userdata is rooted on the outer dump_file stack until we return.
   lua_persist_basic_writer(lua_State* state, luaL_Stream* stream, uint8_t* scratch)
-      : L(state), output(stream), buffer(scratch) {}
+      : L(state), output(stream), buffer(scratch),
+        file_clock(cth3ds::cpu_work.clock_us), file_started(file_tick()) {}
+
+  // CORSIXTH_3DS_SAVE_IO_R74: two clock reads per FILE call, never per graph object.
+  // This is the runtime's existing monotonic clock, independent of whether
+  // detailed entity profiling is enabled. Missing/backwards clocks stay unknown.
+  uint64_t file_tick() const { return file_clock ? file_clock() : 0; }
+  uint64_t file_elapsed(uint64_t start) {
+    const auto end = file_tick();
+    if (!file_clock || end < start) { file_timing_valid = false; return 0; }
+    return end - start;
+  }
 
   bool flush_buffer() {
     if (had_error) return false;
@@ -43,8 +54,12 @@ FILE_METHODS = r'''
     if (!buffered) return true;
     errno = 0;
     ++flushes;
+    const auto started = file_tick();
     const size_t count = std::fwrite(buffer, 1, buffered, output->f);
     const int saved_errno = errno;
+    const auto elapsed = file_elapsed(started);
+    file_write_us += elapsed;
+    if (elapsed > file_write_max_us) file_write_max_us = elapsed;
     written += count;
     if (count != buffered || std::ferror(output->f)) {
       char message[96];
@@ -59,8 +74,10 @@ FILE_METHODS = r'''
   int finish_file() {
     if (flush_buffer()) {
       errno = 0;
+      const auto started = file_tick();
       const int status = std::fflush(output->f);
       const int saved_errno = errno;
+      file_flush_us = file_elapsed(started);
       if (status != 0 || std::ferror(output->f)) {
         char message[96];
         std::snprintf(message, sizeof(message), "save stream flush failed (errno=%d)", saved_errno);
@@ -71,7 +88,12 @@ FILE_METHODS = r'''
     lua_pushboolean(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(written));
     lua_pushinteger(L, static_cast<lua_Integer>(flushes));
-    return 3;
+    const uint64_t total = file_elapsed(file_started);
+    for (const auto value : {total, file_write_us, file_write_max_us, file_flush_us}) {
+      if (file_timing_valid) lua_pushinteger(L, static_cast<lua_Integer>(value));
+      else lua_pushnil(L);
+    }
+    return 7; // first three values and all serialized bytes remain unchanged
   }
 #endif
 '''
@@ -133,6 +155,8 @@ int l_dump_file_toplevel(lua_State* L) {
 
 def stream_writer(text):
     if 'CORSIXTH_3DS_SAVE_STREAM_R65' in text:
+        if 'CORSIXTH_3DS_SAVE_IO_R74' not in text:
+            raise ValueError('save writer view predates R74; regenerate from pinned source')
         return text
     begin = text.index('class lua_persist_basic_writer :')
     end = text.index('class lua_persist_basic_reader', begin)
@@ -166,6 +190,9 @@ def stream_writer(text):
   size_t buffered{0};
   uint64_t written{0};
   uint64_t flushes{0};
+  uint64_t (*file_clock)() noexcept{nullptr};
+  uint64_t file_started{0}, file_write_us{0}, file_write_max_us{0}, file_flush_us{0};
+  bool file_timing_valid{true};
   char file_error[256]{};
 #endif''', 'bounded file writer fields')
     writer = writer.replace('luaL_error(L, get_error());', 'luaL_error(L, "%s", get_error());')
@@ -178,6 +205,9 @@ def stream_writer(text):
   luaT_pushcclosure(L, l_dump_file_toplevel, 1);
   lua_setfield(L, -6, "dump_file");
 #endif''', 'file dump registration with same prototype names')
+    if '#include "cth3ds/cpu_work.hpp"' not in text:
+        text = replace_exact(text, '#include <cstring>',
+            '#include <cstring>\n#include "cth3ds/cpu_work.hpp"', 'shared save monotonic clock')
     return text
 
 def transforms(root):

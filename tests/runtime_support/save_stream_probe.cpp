@@ -2,6 +2,7 @@
 #include "th_lua.h"
 #include "persist_lua.h"
 #include "cth3ds/atomic_save.hpp"
+#include "cth3ds/cpu_work.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -192,8 +193,11 @@ static int host_atomic_commit(lua_State* L) {
 static void run(lua_State* L,const char* source) {
   if(luaL_dostring(L,source)){std::fprintf(stderr,"Lua probe failed: %s\n",lua_tostring(L,-1));std::abort();}
 }
+static std::uint64_t timing_tick;
+static std::uint64_t timing_clock() noexcept { return ++timing_tick; }
 int main(int argc,char** argv) {
   assert(argc>=3);
+  cth3ds::cpu_work.clock_us=timing_clock;
   for(std::size_t i=0;i<payload.size();++i)payload[i]=static_cast<uint8_t>((i*31+i/257)%256);
   auto* L=lua_newstate(allocate,nullptr);assert(L);luaL_openlibs(L);
   lua_pushglobaltable(L);lua_pushcclosure(L,reference::luaopen_persist,1);lua_call(L,0,1);lua_setglobal(L,"reference");
@@ -218,10 +222,12 @@ int main(int argc,char** argv) {
     function collect()collectgarbage('restart');collectgarbage('collect');collectgarbage('collect')end
     function disk(graph)
       local f=assert(io.open(path,'wb'));assert(f:setvbuf('no'))
-      local called,ok,bytes,flushes=protected_dump(graph,permanent,f)
+      local called,ok,bytes,flushes,dump_us,write_us,write_max_us,flush_us=protected_dump(graph,permanent,f)
       assert(called and ok,tostring(ok)..' '..tostring(bytes));assert(f:close())
       local input=assert(io.open(path,'rb'));local data=assert(input:read('*a'));assert(input:close())
       assert(bytes==#data and flushes==math.ceil(bytes/16384))
+      assert(write_us==flushes and write_max_us==1 and flush_us==1)
+      assert(dump_us>=write_us+flush_us,'FILE subphase times belong to whole dump')
       return data
     end
     local shared={answer=42};local graph={a=shared,b=shared,fn=make_closure(shared),c=math.sin,

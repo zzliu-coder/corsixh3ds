@@ -29,7 +29,7 @@ function SaveGame(output_file)
   local function observe(phase,resource)
     if TH3DS then saveDiagnostic(owner,operation,phase,TH3DS.observe_memory,"save",phase,resource,"Operation") end
   end
-  local dumped, result, err, obj = xpcall(function()
+  local dumped, result, err, obj, dump_us, write_us, write_max_us, flush_us = xpcall(function()
     observe("prepare-before","map")
     state.map:prepareForSave()
     prepared = true
@@ -41,11 +41,11 @@ function SaveGame(output_file)
     local permanent = MakePermanentObjectsTable(false)
     observe("permanent-after","permanent")
     observe("writer-before","persist")
-    local result, err, obj
-    if output_file then result, err, obj = persist.dump_file(state, permanent, output_file)
+    local result, err, obj, dump_us, write_us, write_max_us, flush_us
+    if output_file then result, err, obj, dump_us, write_us, write_max_us, flush_us = persist.dump_file(state, permanent, output_file)
     else result, err, obj = persist.dump(state, permanent) end
     observe("writer-after","persist")
-    return result, err, obj
+    return result, err, obj, dump_us, write_us, write_max_us, flush_us
   end,saveError)
   -- A diagnostic failure must never bypass the one matching afterSave call.
   observe("dump-after","persist")
@@ -62,7 +62,7 @@ function SaveGame(output_file)
       "save dump_file: invalid success/byte count")
     assert(obj==nil or (type(obj)=="number" and obj>=0 and obj<math.huge and obj%1==0),
       "save dump_file: invalid flush count")
-    return true, err, obj
+    return true, err, obj, dump_us, write_us, write_max_us, flush_us
   end
   return result
 end
@@ -70,21 +70,26 @@ end
 
 FILE_PREFIX = '''function SaveGameFile(filename)
   if IS_3DS then
+    -- CORSIXTH_3DS_SAVE_IO_R74: bounded native IO and caller-owned close timings.
     -- CORSIXTH_3DS_SAVE_FILE_OWNER_R68
     local owner=TheApp._3ds and TheApp._3ds.operations
     local operation=owner and owner.current
     local timed,started=saveDiagnostic(owner,operation,"save_clock",TH3DS and TH3DS.clock_ms)
     local f, open_error = io.open(filename,"wb")
     assert(f,"save open: "..tostring(open_error))
-    local saved, result, bytes, flushes = xpcall(function()
+    local saved, result, bytes, flushes, dump_us, write_us, write_max_us, flush_us = xpcall(function()
       local buffered, buffer_error = f:setvbuf("no")
       assert(buffered,"save setvbuf: "..tostring(buffer_error))
       return SaveGame(f)
     end,saveError)
     if TH3DS then saveDiagnostic(owner,operation,"close-before",TH3DS.observe_memory,"save","close-before","state-file","Operation") end
+    local close_timed,close_started=saveDiagnostic(owner,operation,"save_clock",TH3DS and TH3DS.clock_ms)
     -- Caller owns the FILE; even prepare, writer, cleanup and observation
     -- exceptions reach this explicit close attempt exactly once.
     local closed, close_result, close_error = pcall(f.close,f)
+    local close_ended,close_finished=saveDiagnostic(owner,operation,"save_clock",TH3DS and TH3DS.clock_ms)
+    local close_ms=close_timed and close_ended and type(close_started)=="number" and type(close_finished)=="number"
+      and close_finished>=close_started and close_finished-close_started or "unknown"
     local close_failure
     if not closed then close_failure=close_result else close_failure=close_error end
     if not closed or not close_result then saveCleanup(owner,operation,"file.close",close_failure) end
@@ -111,12 +116,16 @@ NEW_REPORT = '''    -- CORSIXTH_3DS_SAVE_REPORT_R66: one bounded native boot.log
     -- atomic commit has not run; this is a closed temporary file observation.
     local report = "save-stream: mode=stream16k bytes="..tostring(bytes).." flush_count="..tostring(flushes or "unknown")
       .." elapsed_ms="..tostring(elapsed).." writer_includes_io=1 scope=save_file_including_close close_ok=1 commit_included=0"
+    saveDiagnostic(owner,operation,"file_timing_report",TH3DS and TH3DS.save_io_timing,
+      dump_us,write_us,write_max_us,flush_us,type(close_ms)=="number" and close_ms or nil)
     saveDiagnostic(owner,operation,"closed_file_report",TH3DS and TH3DS.diagnostic_line or print,report)'''
 
 
 def transforms(root):
     path = 'CorsixTH/Lua/persistance.lua'
     text = (root / path).read_text()
+    if 'CORSIXTH_3DS_SAVE_OWNER_R68' in text and 'CORSIXTH_3DS_SAVE_IO_R74' not in text:
+        raise ValueError('save Lua view predates R74; regenerate from pinned source')
     if 'CORSIXTH_3DS_SAVE_STREAM_R65' not in text:
         start = text.index('function SaveGame()\n')
         end = text.index('\n--! Save a game to disk.', start)

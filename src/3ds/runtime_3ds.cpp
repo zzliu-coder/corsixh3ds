@@ -2737,11 +2737,29 @@ int l_text_keyboard(lua_State* state) {
   return 2;
 }
 
+int l_save_io_timing(lua_State* state) {
+  const auto dump = luaL_optinteger(state, 1, -1);
+  const auto write = luaL_optinteger(state, 2, -1);
+  const auto maximum = luaL_optinteger(state, 3, -1);
+  const auto flush = luaL_optinteger(state, 4, -1);
+  const auto close = luaL_optinteger(state, 5, -1);
+  const bool known = dump >= 0 && write >= 0 && maximum >= 0 && flush >= 0 && close >= 0;
+  boot_log("save-io: known=%d dump_us=%lld write_us=%lld write_max_us=%lld flush_us=%lld close_ms=%lld io_in_dump=1 close_in_dump=0",
+      known ? 1 : 0, static_cast<long long>(dump), static_cast<long long>(write),
+      static_cast<long long>(maximum), static_cast<long long>(flush), static_cast<long long>(close));
+  return 0; // enclosing closed-file report owns the flush; no extra SD boundary
+}
+
 int l_atomic_commit(lua_State* state) {
   const char* temporary = luaL_checkstring(state, 1);
   const char* final_path = luaL_checkstring(state, 2);
   const bool keep_backup = lua_isnoneornil(state, 3) || lua_toboolean(state, 3) != 0;
+  const auto started = now_us();
   const AtomicSaveResult result = atomic_commit_existing(temporary, final_path, keep_backup);
+  const auto elapsed = now_us() - started;
+  // One buffered observation; the enclosing save owner flushes its completion.
+  boot_log("save-commit: elapsed_us=%llu ok=%d backup=%d scope=atomic_rename_transaction",
+      static_cast<unsigned long long>(elapsed), result.ok ? 1 : 0, keep_backup ? 1 : 0);
   lua_pushboolean(state, result.ok ? 1 : 0);
   if (result.ok) {
     lua_pushnil(state);
@@ -2856,6 +2874,7 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "text_keyboard", l_text_keyboard);
   set_function(state, "workload", l_workload);
   set_function(state, "atomic_commit", l_atomic_commit);
+  set_function(state, "save_io_timing", l_save_io_timing);
   set_function(state, "recover_atomic", l_recover_atomic);
   set_function(state, "begin_critical_io", l_begin_critical_io);
   set_function(state, "end_critical_io", l_end_critical_io);

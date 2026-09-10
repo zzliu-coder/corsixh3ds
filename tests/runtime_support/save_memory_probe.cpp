@@ -3,6 +3,7 @@
 #include "persist_lua.h"
 #include "cth3ds/allocation_watch.hpp"
 #include "cth3ds/memory_pressure.hpp"
+#include "cth3ds/cpu_work.hpp"
 #include <array>
 #include <cerrno>
 #include <climits>

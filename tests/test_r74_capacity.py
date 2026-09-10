@@ -97,6 +97,37 @@ b:cancel('lifecycle')
         script=script.replace("runner_context=function()", "simulation_clock=function()return {at_us=now*1000,nominal_timer_us=18000,completed_steps=now,failed_steps=0,dropped_us=now,debt_us=20,rebases=0,budget_exits=0}end,\n runner_context=function()")
         exercise=r'''
 if b.run.capacity=='r75-v1' then
+ -- Full R75 terminal pressure: actual-sized IO fields plus resource snapshots
+ -- and long-lived device clock. IO actions have their separate real controller
+ -- tests; these fields establish the shared 128-field/12000-byte envelope.
+ b.results.save_io_input_sha256=string.rep('a',64)
+ b.results.save_io_order='16384,65536,65536,16384'
+ b.results.save_io_outcome='HOST_READBACK_REQUIRED';b.results.save_io_bytes_outcome='NOT_PROVEN'
+ b.results.save_io_roundtrip='PASS'
+ b.results.save_io_activity='action_covered=40;count=41;outcome=NOT_PROVEN;partial=false;updated=41'
+ for i,bytes in ipairs{16384,65536,65536,16384}do
+  b.results['save_io_sample_'..i]='capacity='..bytes..';committed=1;elapsed_ms=99999;file=r75-io-'..i..
+   '.sav;frame=9999999;heap_after=30000000;heap_before=30000000;heap_low=20000000;linear_after=2199552;linear_before=2199552;ready=1;world_completed=9999999'
+ end
+ local memory=native.memory
+ native.memory=function()
+  return {heap_available_estimate=30000000,linear_free=2199552,lua_current=9000000,
+   stage='S100',heap_available_low_water=20000000,linear_low_water=2199552,
+   diagnostic_resources={}}
+ end
+ now=48000000
+ -- These real snapshot producers represent the earlier IO boundaries, before
+ -- the reception seam selected by this test; all remain in the terminal.
+ for _,stage in ipairs{'save_io_loaded','save_io_worked','save_io_reloaded'}do b.capacity:snapshot(stage)end
+ b.results.capacity_save_io_work_work=string.rep('w',330)
+ b.capacity:normal('reception_1',180000)
+ local finish=native.runner_finish
+ native.runner_finish=function(outcome,reason,f)
+  local count,total=0,0
+  for k,v in pairs(f)do count=count+1;total=total+#k+#v+2 end
+  assert(count<=128 and total<=12000,'full R75 terminal field budget')
+  finish(outcome,reason,f)
+ end
  -- Private input loading is the domain seam. Use 41 existing employees with
  -- no funds; production Busy must enter observation without recruiting.
  local underlying_load=app.load
@@ -162,7 +193,7 @@ assert(b.capacity.phase=='level_run' and b.results.capacity_busy_hospital=='PASS
 assert(b.results.capacity_busy_roundtrip=='PASS')
 step(60000);step(5000)
 assert(b.phase=='done' and fields.outcome=='PASS')
-assert(checkpoints==15 and fields.capacity_level_outcome=='PASS' and fields.capacity_return_outcome=='PASS')
+assert(checkpoints==(target==41 and 18 or 15) and fields.capacity_level_outcome=='PASS' and fields.capacity_return_outcome=='PASS')
 assert(fields.capacity_busy_1_work:find('world_tick_rate=3',1,true))
 assert(fields.capacity_busy_2_work:find('failed_steps=0',1,true))
 assert(fields.capacity_busy_1_activity:find('count='..target..';updated='..target,1,true))

@@ -75,8 +75,14 @@ function C:snapshot(stage)
     stage=m.stage,heap_low=m.heap_available_low_water,linear_low=m.linear_low_water}
   -- Keep the terminal payload bounded; complete native resources remain in
   -- the existing load/LevelStable diagnostics, outside this compact snapshot.
-  for _,key in ipairs{"texture","map","world","sound_decoded"}do
-    values["resource_"..key]=(m.diagnostic_resources or {})[key] or "NOT_PROVEN"
+  -- R75 adds IO and busy stages. Keep detailed resource observations in the
+  -- existing load/LevelStable log instead of repeating four unavailable
+  -- resource placeholders at every checkpoint. No resource proof is inferred
+  -- from their omission; the reader retains native_gpu_release=NOT_PROVEN.
+  if self.b.run.capacity~="r75-v1" then
+    for _,key in ipairs{"texture","map","world","sound_decoded"}do
+      values["resource_"..key]=(m.diagnostic_resources or {})[key] or "NOT_PROVEN"
+    end
   end
   self.b.results["capacity_"..stage.."_memory"]=packed(values)
   self.b.results.capacity_stage=stage

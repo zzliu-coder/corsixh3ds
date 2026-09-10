@@ -222,27 +222,83 @@ function Platform:showError(message)
   return noticed or shown
 end
 
--- Optional naming; save slots remain usable when the system applet is absent.
-function Platform:editText()
+-- The field owns its input policy. Keep byte-oriented upstream editing within
+-- verified ASCII; the applet's UTF-8 support does not imply a working CJK IME.
+local function keyboard_policy(box)
+  if type(box.text) ~= "string" then return nil end
+  if box._3ds_keyboard_kind == "filename" then return "filename" end
+  if box._3ds_keyboard_kind == "player" then return "player" end
+  local allowed = box.allowed_input
+  if allowed and allowed.numbers and not allowed.alpha and not allowed.misc then return "numbers" end
+end
+
+local function keyboard_owner(ui, box, focused)
+  if not ui or not box or not box.enabled or not box.visible or
+      (focused and not box.active) then return false end
+  local owner = box.panel and box.panel.window
+  if not owner or owner.ui ~= ui or owner.closed or owner.visible == false or
+      owner.enabled == false then return false end
+  local registered = false
+  for _, candidate in ipairs(ui.textboxes or {}) do
+    if candidate == box then registered = true; break end
+  end
+  if not registered then return false end
+  -- A newly opened modal invalidates the old focus even when its textbox is
+  -- still registered. Passive HUD windows are excluded by the shared helper.
+  local top = top_window(ui)
+  return top == nil or top == owner
+end
+
+-- Called only by the real Textbox click callback during a pen release. Program
+-- initialization and setActive() never enqueue an applet. One release owns one
+-- request; the queue is consumed after App:dispatch(buttonup) has unwound.
+function Platform:requestTextKeyboard(box)
   local ui = self.app.ui
-  local selected
-  for _, box in ipairs(ui.textboxes or {}) do
-    if box.enabled and box.visible and box.active and type(box.text) == "string" then selected = box; break end
+  if self.keyboard_release_ui ~= ui or not keyboard_policy(box) or
+      not keyboard_owner(ui, box, false) then return false end
+  self.keyboard_request = box
+  return true
+end
+
+function Platform:releasePointer(button, x, y, pen)
+  self.keyboard_request = nil
+  self.keyboard_release_ui = pen and button == 1 and self.app.ui or nil
+  local ok, err = pcall(self.app.dispatch, self.app, "buttonup", button, x, y)
+  self.keyboard_release_ui = nil
+  local requested = self.keyboard_request
+  self.keyboard_request = nil
+  if not ok then error(err, 0) end
+  if requested then return self:editText(requested) end
+end
+
+-- Optional naming; save slots remain usable when the system applet is absent.
+function Platform:editText(requested)
+  local ui = self.app.ui
+  local selected = requested
+  if not selected then
+    for _, box in ipairs(ui and ui.textboxes or {}) do
+      if keyboard_policy(box) and keyboard_owner(ui, box, true) then selected = box; break end
+    end
   end
   if not selected then return true, "noop:no-text-focus" end
+  if not keyboard_owner(ui, selected, true) then return true, "noop:text-owner-changed" end
+  local policy = keyboard_policy(selected)
+  if not policy then return true, "noop:no-text-focus" end
   if type(self.native.text_keyboard) ~= "function" then
     native_notice(self.native, "KEYBOARD UNAVAILABLE - USE SAVE SLOTS", false); return true, "unsupported:keyboard"
   end
-  local limit = math.min(selected.char_limit or 40, 40)
-  local ok, text = self.native.text_keyboard(selected.text, limit)
+  local limit = math.max(1, math.min(selected.char_limit or 40, 40))
+  local owner = selected.panel.window
+  local ok, text = self.native.text_keyboard(selected.text, limit, policy)
   if not ok then return true, "noop:keyboard-cancelled" end
-  if self.app.ui ~= ui or not selected.active or not selected.visible then return true, "noop:text-owner-changed" end
-  local registered = false
-  for _, box in ipairs(ui.textboxes or {}) do if box == selected then registered = true end end
-  if not registered then return true, "noop:text-owner-changed" end
-  -- English input until the measured Chinese font/input work is enabled.
-  if type(text) ~= "string" or #text > limit or text:find("[^A-Za-z0-9 _%-]") or not text:find("%S") then
-    native_notice(self.native, "USE ENGLISH LETTERS NUMBERS SPACE - _", false); return true, "noop:text-rejected"
+  if self.app.ui ~= ui or selected.panel.window ~= owner or
+      not keyboard_owner(ui, selected, true) then return true, "noop:text-owner-changed" end
+  local pattern = policy == "numbers" and "[^0-9]" or
+      (policy == "filename" and "[^A-Za-z0-9 _%-]" or "[^A-Za-z0-9 +%-]")
+  if type(text) ~= "string" or #text > limit or text:find(pattern) or
+      (policy == "filename" and not text:find("%S")) then
+    native_notice(self.native, policy == "numbers" and "USE DIGITS ONLY" or
+      "INPUT DOES NOT MATCH THIS FIELD", false); return true, "noop:text-rejected"
   end
   selected:setText(text)
   selected:setActive(true) -- refresh byte cursor after replacement
@@ -465,7 +521,8 @@ function Platform:handlePointer(event)
     if kind == "down" then
       self.app:dispatch("buttondown", button, x, y)
     elseif kind == "up" then
-      self.app:dispatch("buttonup", button, x, y)
+      local accepted, outcome = self:releasePointer(button, x, y, true)
+      if accepted then return accepted, outcome end
     elseif kind == "click" then
       local clicks = event.clicks or 1
       assert(clicks == 1 or clicks == 2, "invalid click count")
@@ -923,7 +980,7 @@ function Platform:handleAction(action)
       "PEN: CLICK / DRAG    A: CONFIRM", "B: BACK    X: MENU / ROTATE",
       "Y: WALLS    L: CLEAR / WIDE", "D-PAD: UNUSED; PEN OWNS CURSOR",
       "START: PAUSE    SELECT: SPEED", "R + START: SAVE SLOTS",
-      "TEXT FIELD + A: KEYBOARD", "R + SELECT: THIS HELP",
+      "TAP TEXT FIELD / A: KEYBOARD", "R + SELECT: THIS HELP",
     }))
     self:prepareInput()
   elseif kind == "text_keyboard" then

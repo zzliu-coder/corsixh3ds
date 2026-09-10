@@ -1514,25 +1514,29 @@ class Runtime {
     }
   }
 
-  bool text_keyboard(const char* initial, int limit, char* output, std::size_t capacity) {
+  bool text_keyboard(const char* initial, int limit, const char* policy, char* output, std::size_t capacity) {
 #ifdef CORSIXTH_3DS_GPU
     gpu_quiesce();
 #endif
 #ifndef CTH3DS_STUB_BUILD
     input_collector_.pause(true);
-    g_observations.window_has_operation = true;
+    runtime_operation_boundary(); // Applet wait is outside simulation time.
     bool channel_paused[32]{};
     for (int i=0;i<32;++i) { channel_paused[i]=Mix_Paused(i)!=0; Mix_Pause(i); }
     const bool music_paused=Mix_PausedMusic()!=0; Mix_PauseMusic();
     cth3ds_suspend_sound_callbacks(true, SDL_GetTicks());
     SwkbdState keyboard;
-    swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, limit);
+    const bool numeric = !std::strcmp(policy, "numbers");
+    swkbdInit(&keyboard, numeric ? SWKBD_TYPE_NUMPAD : SWKBD_TYPE_NORMAL, 2, limit);
     swkbdSetInitialText(&keyboard, initial);
-    swkbdSetHintText(&keyboard, "English letters / numbers / space / - / _");
+    swkbdSetHintText(&keyboard, numeric ? "Digits only; Apply keeps the field's range rules" :
+      (!std::strcmp(policy, "player") ? "English letters / numbers / space / + / -" :
+      "English letters / numbers / space / - / _"));
     swkbdSetButton(&keyboard, SWKBD_BUTTON_LEFT, "Cancel", false);
     swkbdSetButton(&keyboard, SWKBD_BUTTON_RIGHT, "OK", true);
-    boot_log("keyboard: begin"); boot_log_memory("KEYBOARD-BEGIN");
+    boot_log("keyboard: begin policy=%s limit=%d",policy,limit); boot_log_memory("KEYBOARD-BEGIN");
     const auto button=swkbdInputText(&keyboard, output, capacity);
+    runtime_operation_boundary();
     boot_log("keyboard: end button=%d result=%d",static_cast<int>(button),static_cast<int>(swkbdGetResult(&keyboard)));
     boot_log_memory("KEYBOARD-END");
     cth3ds_suspend_sound_callbacks(false, SDL_GetTicks());
@@ -1542,7 +1546,7 @@ class Runtime {
     if (button == SWKBD_BUTTON_NONE) set_notice("KEYBOARD UNAVAILABLE - USE SAVE SLOTS",false);
     return button==SWKBD_BUTTON_RIGHT && !(pending_lifecycle_.load() & kLifecycleExit);
 #else
-    (void)initial; (void)limit; (void)output; (void)capacity;
+    (void)initial; (void)limit; (void)policy; (void)output; (void)capacity;
     set_notice("KEYBOARD NOT PROVIDED BY HOST STUB", false); return false;
 #endif
   }
@@ -2730,8 +2734,11 @@ int l_text_keyboard(lua_State* state) {
   const char* initial=luaL_checkstring(state,1);
   const auto limit=luaL_checkinteger(state,2);
   if (limit<1 || limit>40) return luaL_error(state,"keyboard limit outside 1..40");
+  const char* policy=luaL_optstring(state,3,"filename");
+  if (std::strcmp(policy,"filename") && std::strcmp(policy,"player") && std::strcmp(policy,"numbers"))
+    return luaL_error(state,"unsupported keyboard field policy");
   char result[164]{}; // 40 Unicode characters plus terminator, bounded stack.
-  const bool accepted=runtime().text_keyboard(initial,static_cast<int>(limit),result,sizeof(result));
+  const bool accepted=runtime().text_keyboard(initial,static_cast<int>(limit),policy,result,sizeof(result));
   lua_pushboolean(state,accepted);
   if(accepted)lua_pushstring(state,result);else lua_pushnil(state);
   return 2;

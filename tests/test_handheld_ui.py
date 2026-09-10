@@ -34,10 +34,11 @@ end
     def test_keyboard_cancel_validation_and_replaced_owner(self):
         self.run_lua("local Platform=dofile("+repr(str(ROOT/'lua/3ds/platform.lua'))+")\n"+r'''
 local confirmations, notices, redraws=0,0,0
-local box={text='Previous',active=true,visible=true,enabled=true,char_limit=12,
+local box={text='Previous',active=true,visible=true,enabled=true,char_limit=12,_3ds_keyboard_kind='filename',
  setText=function(self,t)self.text=t end,setActive=function(self,a)self.active=a end,
  confirm=function(self)self.active=false;confirmations=confirmations+1 end}
 local ui={textboxes={box}}
+box.panel={window={ui=ui}}
 local p=attach({ui=ui},{set_notice=function()notices=notices+1 end,
  request_redraw=function()redraws=redraws+1 end})
 p.native.text_keyboard=function(initial,limit) assert(initial=='Previous' and limit==12);return false end

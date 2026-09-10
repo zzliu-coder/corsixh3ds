@@ -238,10 +238,11 @@ assert(not pcall(p.handleAction,p,{type='pan_camera',dx=0/0,dy=1}))
     def test_keyboard_and_lifecycle_noops(self):
         self.lua(r'''
 local p,app,ui,c=fresh()
-local box={text='old',active=true,enabled=true,visible=true,char_limit=20,
+local box={text='old',active=true,enabled=true,visible=true,char_limit=20,_3ds_keyboard_kind='filename',
  setText=function(self,v)self.text=v end,setActive=function()end,
  confirm=function()c.confirm=(c.confirm or 0)+1 end}
 ui.textboxes={box}
+box.panel={window={ui=ui}}
 action(p,'text_keyboard','unsupported:keyboard')
 p.native.text_keyboard=function()return false end
 action(p,'text_keyboard','noop:keyboard-cancelled');assert(box.text=='old')

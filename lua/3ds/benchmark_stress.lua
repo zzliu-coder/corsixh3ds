@@ -70,9 +70,54 @@ function Stress.new(app,native,duration,save_dir)
   self.button_class=button;self.button_click=button and button.handleClick
   self.watch_class=rawget(_G,"UIWatch")
   self.machine_class=rawget(_G,"UIMachine")
+  self.information_class=rawget(_G,"UIInformation")
   self.annual_attempts=setmetatable({},{__mode="k"});self.annual_count=0
   print("benchmark-stress: event=BEGIN duration_ms="..(duration or 22*60000).." saves=Benchmark/Saves user_saves_writable=0")
   return self
+end
+
+-- World:onTick opens GameUI:showBriefing on the first hour of a new level.
+-- Only capacity's explicitly armed level12 interval owns this exact text.
+-- Keep it visible: no close/confirm callback or tutorial transition is run.
+-- Scalars only; never retain a previous World/UI across load and collection.
+local function textValue(value)
+  if type(value)=="string" then return value end
+  -- The pinned native stringProxy stores its resolved value in this weak-key
+  -- registry. Read it without executing arbitrary __tostring metamethods.
+  if type(value)~="userdata" then return nil end
+  local api=rawget(_G,"debug")
+  local registry=api and api.getregistry and api.getregistry()
+  local values=registry and rawget(registry,"StringProxyValues")
+  local resolved=type(values)=="table" and rawget(values,value)
+  return type(resolved)=="string" and resolved or nil
+end
+function Stress:allowLevelBriefing(level)
+  assert(level==nil or level==12,"unsupported capacity briefing")
+  local strings=rawget(_G,"_S")
+  local texts=strings and strings.introduction_texts
+  local expected=textValue(level and texts and texts["level"..level])
+  self.briefing_level=type(expected)=="string" and level or nil
+  self.briefing_text=type(expected)=="string" and expected or nil
+  self.briefing_recorded=false
+end
+
+function Stress:isLevelBriefing(window)
+  local class=self.information_class
+  local map=self.app.map
+  local valid=self.briefing_level==12 and type(self.briefing_text)=="string"
+    and class and rawget(_G,"UIInformation")==class and exactClass(window,class)
+    and map and map.level_number==12 and map.difficulty=="full"
+    and self.app.world.map==map and window.modal_class=="information"
+    and not window:mustPause() and not window.black_background and not window.additional_text
+    and type(window.text)=="table" and getmetatable(window.text)==nil
+    and next(window.text)==1 and textValue(window.text[1])==self.briefing_text and next(window.text,1)==nil
+  if valid and not self.briefing_recorded then
+    self.briefing_recorded=true
+    if self.native.diagnostic_line then
+      self.native.diagnostic_line("benchmark-stress: event=KEEP_LEVEL_BRIEFING level=12 exact_text=1 clicked=0")
+    end
+  end
+  return valid
 end
 
 function Stress:annualFields()
@@ -119,7 +164,8 @@ function Stress:checkMandatory()
           and window.modal_class=="open_countdown")
         or (self.machine_class and rawget(_G,"UIMachine")==self.machine_class
           and exactClass(window,self.machine_class)
-          and window.modal_class=="humanoid_info" and not window:mustPause()))
+          and window.modal_class=="humanoid_info" and not window:mustPause())
+        or self:isLevelBriefing(window))
   end
   for _,window in pairs(ui.windows or {})do
     if window:mustPause() then annual=window;n=n+1 end

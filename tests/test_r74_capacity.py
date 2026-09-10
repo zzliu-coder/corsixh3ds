@@ -44,6 +44,48 @@ local work=b.results.capacity_reception_2_work
 assert(work:find('nominal_timer_us=18000',1,true) and work:find('dropped_us=180000',1,true))
 b:cancel('lifecycle');assert(fields.reason=='CANCEL' and fields.outcome=='NOT_PROVEN')
 ''')
+        clock="simulation_clock=function()return {at_us=now*1000,nominal_timer_us=18000,completed_steps=now,failed_steps=0,dropped_us=now,debt_us=20,rebases=0,budget_exits=0}end,\n runner_context=function()"
+        configured=script.replace("capacity='r73-v1'","capacity='r74-v1'").replace("runner_context=function()",clock)
+        for protocol in ('r74-v1','r75-v1'):
+            with self.subTest(departure_protocol=protocol):
+                self.run_lua(configured+"\nb.run.capacity="+repr(protocol)+r'''
+-- R75 IO construction/batch has its own tests. This case begins at the
+-- reception seam and supplies the private input's loaded 41-person world.
+local underlying_load=app.load;local private_loads=0
+function app:load(file)
+ local ok=underlying_load(self,file)
+ if ok and file==root..'input.sav' then
+  private_loads=private_loads+1;populate(1,true)
+  for i=1,24 do
+   local e=Staff();e.humanoid_class='Nurse';e.ticks=true;e.profile={wage=100}
+   e.action_queue={{name='idle'}};e.timer_time=2;e.timer_function=function()end
+   table.insert(self.world.entities,e);table.insert(self.ui.hospital.staff,e)
+  end
+ end
+ return ok
+end
+services();app.world.entities[20]={ticks=true};step(180000)
+assert(b.capacity.busy and b.capacity.phase=='busy_recruit')
+assert(b.results.capacity_reception_outcome=='NOT_PROVEN' and b.results.capacity_reception_2==nil)
+assert(b.results.capacity_continuity_roundtrip=='PASS' and saved[root..'save/r73-continuity.sav'])
+assert(b.capacity.cohort==nil and not A.active)
+assert(private_loads==(b.run.capacity=='r75-v1' and 1 or 0))
+if b.run.capacity=='r75-v1' then assert(require('3ds.state_health').assertActive(app).staff==41) end
+b:cancel('lifecycle');assert(fields.outcome=='NOT_PROVEN')
+''')
+
+        self.run_lua(configured+r'''
+-- Completed IO must restore expanded before continuity_before is captured.
+-- The actual IO controller's four atomic writes are covered separately.
+A.stop();b.capacity.cohort=nil;b.capacity.phase='begin'
+local completed=false
+b.capacity.save_io={tick=function()return true end,close=function()completed=true end}
+step(1)
+assert(completed and b.capacity.save_io==nil and load_names[#load_names]==root..'expanded.sav')
+step(1)
+assert(b.capacity.phase=='reception_1' and b.results.capacity_continuity_before:find('staff=0',1,true))
+b:cancel('lifecycle')
+''')
 
     def test_busy_complete_controller_and_boundaries_with_explicit_ui_services(self):
         script=previous.benchmark_script().replace("capacity='r73-v1'","capacity='r74-v1'")

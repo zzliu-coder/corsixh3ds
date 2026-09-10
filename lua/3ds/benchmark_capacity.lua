@@ -168,6 +168,7 @@ function C:level()
   self.old=setmetatable({self.app.world,self.app.map,self.app.ui},{__mode="v"})
   assert(self.app:loadLevel(12,"full",nil,nil,nil,nil,_S.errors.load_level_prefix,nil)==true,
     "capacity level load failed")
+  self.guard:allowLevelBriefing(12)
   self:loaded()
   assert(self.app.world~=self.old[1] and self.app.map~=self.old[2],"capacity level identity unchanged")
   assert(self.app.world.map==self.app.map and self.app.map.level_number==12
@@ -176,10 +177,24 @@ function C:level()
   self.level_initial=setmetatable({self.app.world,self.app.map,self.app.ui},{__mode="v"})
   self:normal("level_run",60000)
 end
+function C:startBusyOrLevel()
+  Activity.stop();self.cohort=nil
+  if self.busy_requested then
+    -- R75's busy workload has its own bound private input. A normal departure
+    -- from the historical cohort cannot suppress this independent workload.
+    if self.b.run.capacity=="r75-v1" then self:load(self.b.root.."input.sav") end
+    self.busy=require("3ds.benchmark_busy").new(self)
+  else self:level() end
+end
 function C:tick()
   self:check()
   if self.save_io then
-    if self.save_io:tick() then self.save_io:close();self.save_io=nil end
+    if self.save_io:tick() then
+      self.save_io:close();self.save_io=nil
+      -- IO observes the user's input, while continuity/return retain their
+      -- original expanded-hospital comparison baseline.
+      self:load(self.b.root.."expanded.sav")
+    end
     return false
   end
   if self.busy then
@@ -204,20 +219,20 @@ function C:tick()
   if self.phase=="reception_1" then
     self.first_complete=self:report(false)
     self:snapshot("reception_before_save")
+    -- Save/reload is useful even when an employee has legitimately left.
+    -- The original 17-person identity and dual-service gates stay unproven.
+    self:roundtrip("r73-continuity")
+    self.b.results.capacity_continuity_roundtrip="PASS"
+    self:snapshot("reception_reloaded")
     if self.cohort then
-      self:roundtrip("r73-continuity")
-      self.b.results.capacity_continuity_roundtrip="PASS"
-      self:snapshot("reception_reloaded")
       self:observation(2)
-    else self:level() end
+    else self:startBusyOrLevel() end
   elseif self.phase=="reception_2" then
     local complete=self:report(false)
     self.b.results.capacity_reception_outcome=complete and self.first_complete
       and self.services[15]>0 and self.services[20]>0 and self.patient_evidence[15]
       and self.patient_evidence[20] and "PASS" or "NOT_PROVEN"
-    if self.busy_requested then
-      self.busy=require("3ds.benchmark_busy").new(self)
-    else self:level() end
+    self:startBusyOrLevel()
   elseif self.phase=="level_run" then
     self:snapshot("level_ran")
     self:roundtrip("r73-level12")
@@ -225,6 +240,7 @@ function C:tick()
     self.b.results.capacity_level_outcome="PASS"
     self:snapshot("level_reloaded")
     self.level_old=setmetatable({self.app.world,self.app.map,self.app.ui},{__mode="v"})
+    self.guard:allowLevelBriefing(nil)
     self:load(self.b.root.."expanded.sav")
     self:snapshot("expanded_returned")
     self:normal("return_run",5000)
@@ -244,5 +260,6 @@ function C:close()
   if self.save_io then self.save_io:close();self.save_io=nil end
   if self.busy then self.busy:close();self.busy=nil end
   Activity.stop();self.cohort=nil;self.old=nil;self.level_old=nil;self.level_initial=nil
+  self.guard:allowLevelBriefing(nil)
 end
 return C

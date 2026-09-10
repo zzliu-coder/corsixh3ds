@@ -64,6 +64,11 @@ int main(int argc, char** argv) {
             self.assertEqual(hashlib.sha256(machine.encode()).hexdigest(), machine_sha)
             sources['dialogs/machine_dialog.lua'] = machine
             fixture['sha256']['dialogs/machine_dialog.lua'] = machine_sha
+            information = (ROOT/'tests/fixtures/information.lua.pinned').read_text()
+            information_sha = 'd2fcff8431335eb213a512075de6413bb90e2310b2950e0cdae3119017de820a'
+            self.assertEqual(hashlib.sha256(information.encode()).hexdigest(), information_sha)
+            sources['dialogs/information.lua'] = information
+            fixture['sha256']['dialogs/information.lua'] = information_sha
             paths = {}
             for filename, source in sources.items():
                 self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), fixture['sha256'][filename])
@@ -97,6 +102,7 @@ int main(int argc, char** argv) {
                            'PASS native refusal boundaries', 'PASS current owned window identity'):
                 self.assertIn(marker, run.stdout)
             self.assertIn('PASS restored machine information and native diagnostics', run.stdout)
+            self.assertIn('PASS scoped level briefing and error refusal', run.stdout)
             print(run.stdout, end='')
 
 

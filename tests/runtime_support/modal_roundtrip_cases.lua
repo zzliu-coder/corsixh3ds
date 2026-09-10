@@ -17,7 +17,7 @@ P.dofile(source['class.lua'])
 local make_permanent=P.dofile(registry)
 for _,name in ipairs{'window.lua','ui.lua','dialogs/fullscreen.lua',
   'dialogs/fullscreen/annual_report.lua','dialogs/confirm_dialog.lua','dialogs/watch.lua',
-  'dialogs/machine_dialog.lua'}do P.dofile(source[name])end
+  'dialogs/machine_dialog.lua','dialogs/information.lua'}do P.dofile(source[name])end
 assert(not pcall(function()return undeclared_modal_probe end))
 print('PASS strict initialization before and after optional classes')
 shallow_clone=function(t)local c={};for k,v in pairs(t)do c[k]=v end;return c end
@@ -25,8 +25,8 @@ list_to_set=function(t)local s={};for _,v in ipairs(t)do s[v]=true end;return s 
 -- The graphics fixture has no collectable native handles.
 pause_gc_and_use_weak_keys=function(callback,t)callback(t)end
 Date={hoursPerDay=function()return 24 end}
-_S={transactions={eoy_trophy_bonus='trophy',eoy_bonus_penalty='award'},
- tooltip={window_general={cancel='cancel',confirm='confirm'},
+_S={introduction_texts={level12='Level twelve goals'},transactions={eoy_trophy_bonus='trophy',eoy_bonus_penalty='award'},
+ tooltip={information={close='close'},window_general={cancel='cancel',confirm='confirm'},
  watch={hospital_opening='open',emergency='emergency',epidemic='epidemic'},
  machine_window={repair='repair',replace='replace',close='close',name='name',times_used='used',status='status'}}}
 class 'ModalFixtureHospital'
@@ -42,6 +42,7 @@ class 'DerivedModalWatch' (UIWatch)
 class 'DerivedModalAnnual' (UIAnnualReport)
 class 'DerivedModalButton' (Button)
 class 'DerivedModalMachine' (UIMachine)
+class 'DerivedModalInformation' (UIInformation)
 local resource=permanent('modal.fixture.resource',{sizeOf=function()return 10,11 end})
 local gfx=setmetatable({load_info={}}, {__index=function()return function()return resource end end})
 local function setup()
@@ -148,6 +149,56 @@ for _,mutate in ipairs{
  mutate(app,assert(app.ui:getWindow(UIMachine)));refused(s)
 end
 print('PASS restored machine information and native diagnostics')
+do
+ local app,s=setup()
+ app.map=app.world.map;app.map.level_number=12;app.map.difficulty='full'
+ local records={}
+ s.native.diagnostic_line=function(line)records[#records+1]=line end
+ local win=UIInformation(app.ui,{_S.introduction_texts.level12});app.ui:addWindow(win)
+ s:allowLevelBriefing(12);s:checkMandatory();s:checkMandatory()
+ assert(not win.closed and #records==1 and records[1]:find('KEEP_LEVEL_BRIEFING',1,true))
+ roundtrip(app);app.map=app.world.map
+ win=assert(app.ui:getWindow(UIInformation));restored(win,UIInformation)
+ s:checkMandatory();assert(not win.closed and #records==1)
+ s:allowLevelBriefing(nil)
+ local ok,err=pcall(s.checkMandatory,s);assert(not ok and err:match('TH3DS_NEEDS_INPUT$'))
+end
+for _,mutate in ipairs{
+ function(a,w,s)w.text={'save failed'}end,
+ function(a,w,s)w.text[2]='load failed'end,
+ function(a,w,s)w.additional_text={{'error'}}end,
+ function(a,w,s)w.black_background=true end,
+ function(a,w,s)a.map.level_number=1 end,
+ function(a,w,s)a.world.map={}end,
+ function(a,w,s)w.parent={}end,
+ function(a,w,s)a.ui.modal_windows.information={}end,
+ function(a,w,s)w.mustPause=function()return true end end,
+ function(a,w,s)setmetatable(w,DerivedModalInformation._metatable)end,
+ function(a,w,s)s:allowLevelBriefing(nil)end,
+}do
+ local app,s=setup();app.map=app.world.map
+ app.map.level_number=12;app.map.difficulty='full'
+ local win=UIInformation(app.ui,{_S.introduction_texts.level12});app.ui:addWindow(win)
+ s:allowLevelBriefing(12);mutate(app,win,s);refused(s)
+ assert(not win.closed)
+end
+print('PASS scoped level briefing and error refusal')
+do
+ -- Native userdata + the pinned stringProxy registry layout is an explicit
+ -- service seam. Full UI persistence above uses strings, not a fake TH loader.
+ local app,s=setup();app.map=app.world.map
+ app.map.level_number=12;app.map.difficulty='full'
+ local registry=debug.getregistry();local old_values=registry.StringProxyValues
+ local a,b=assert(io.tmpfile()),assert(io.tmpfile())
+ registry.StringProxyValues=setmetatable({[a]='Level twelve goals',[b]='Level twelve goals'},{__mode='k'})
+ local old_text=_S.introduction_texts.level12;_S.introduction_texts.level12=a
+ local win=UIInformation(app.ui,{b});app.ui:addWindow(win)
+ s:allowLevelBriefing(12);s:checkMandatory()
+ registry.StringProxyValues[b]='save failed';refused(s)
+ assert(not win.closed)
+ _S.introduction_texts.level12=old_text;registry.StringProxyValues=old_values
+ a:close();b:close()
+end
 for _,page in ipairs{2,3}do
  local app,s=setup();app.ui:addWindow(UIWatch(app.ui,'emergency'));add_annual(app,page)
  roundtrip(app)

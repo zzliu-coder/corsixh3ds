@@ -216,7 +216,7 @@ assert(save_names[#save_names]==root..'save/completed.sav')
     def test_capacity_missing_services_departure_fault_cancel_and_needs_input(self):
         cases=[
             "step(180000);step(180000);step(60000);step(5000);assert(fields.outcome=='PASS' and fields.capacity_reception_outcome=='NOT_PROVEN')",
-            "app.world.entities[20]={ticks=true};step(180000);assert(b.capacity.phase=='level_run' and b.results.capacity_reception_outcome=='NOT_PROVEN');b:cancel('test')",
+            "app.world.entities[20]={ticks=true};step(180000);assert(b.capacity.phase=='level_run' and b.results.capacity_reception_outcome=='NOT_PROVEN');assert(b.results.capacity_continuity_roundtrip=='PASS' and saved[root..'save/r73-continuity.sav']);assert(b.results.capacity_reception_2==nil and b.capacity.cohort==nil);b:cancel('test')",
             "save_fault=true;step(180000);assert(fields.outcome=='FAIL' and fields.capacity_failure_outcome=='FAIL')",
             "load_fault=true;step(180000);assert(fields.outcome=='FAIL')",
             "checkpoint_fault=true;step(180000);assert(fields.outcome=='FAIL')",

@@ -58,6 +58,7 @@ class SaveStreamNativeTests(unittest.TestCase):
                          UBSAN_OPTIONS='halt_on_error=1'))
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             for marker in ('PASS format cross-read', 'PASS native block boundaries',
+                           'PASS clock contract',
                            'PASS real FILE failures', 'PASS output memory bound',
                            'PASS failed writer GC and retry'):
                 self.assertIn(marker, result.stdout)

@@ -199,6 +199,16 @@ static void run(lua_State* L,const char* source) {
 }
 static std::uint64_t timing_tick;
 static std::uint64_t timing_clock() noexcept { return ++timing_tick; }
+static std::uint64_t backwards_clock() noexcept {
+  // The first FILE completion goes backwards; later calls recover normally.
+  ++timing_tick; return timing_tick == 3 ? 0 : timing_tick;
+}
+static int timing_mode(lua_State* L) {
+  timing_tick=0;
+  const auto mode=luaL_checkinteger(L,1);
+  cth3ds::cpu_work.clock_us=mode==0?nullptr:mode==2?backwards_clock:timing_clock;
+  return 0;
+}
 int main(int argc,char** argv) {
   assert(argc>=3);
   cth3ds::cpu_work.clock_us=timing_clock;
@@ -212,9 +222,9 @@ int main(int argc,char** argv) {
   lua_newtable(L);lua_pushinteger(L,sizeof(NativeBlock));lua_setfield(L,-2,"__depersist_size");
   lua_pushcfunction(L,native_write);lua_setfield(L,-2,"__persist");
   lua_pushcfunction(L,native_read);lua_setfield(L,-2,"__depersist");lua_setglobal(L,"NativeMeta");
-  for(const auto& binding:std::array<luaL_Reg,6>{{{"native_make",native_make},{"native_length",native_length},
+  for(const auto& binding:std::array<luaL_Reg,7>{{{"native_make",native_make},{"native_length",native_length},
       {"open_device",open_device},{"protected_dump",protected_dump},{"stats",stats},
-      {"host_atomic_commit",host_atomic_commit}}}){
+      {"host_atomic_commit",host_atomic_commit},{"timing_mode",timing_mode}}}){
     lua_pushcfunction(L,binding.func);lua_setglobal(L,binding.name);
   }
   run(L,R"(
@@ -224,14 +234,18 @@ int main(int argc,char** argv) {
     inverse={global=_G,sin=math.sin,native=NativeMeta}
     path=directory..'/stream.tmp'
     function collect()collectgarbage('restart');collectgarbage('collect');collectgarbage('collect')end
-    function disk(graph)
+    function disk(graph,unknown_clock)
       local f=assert(io.open(path,'wb'));assert(f:setvbuf('no'))
       local called,ok,bytes,flushes,dump_us,write_us,write_max_us,flush_us=protected_dump(graph,permanent,f)
       assert(called and ok,tostring(ok)..' '..tostring(bytes));assert(f:close())
       local input=assert(io.open(path,'rb'));local data=assert(input:read('*a'));assert(input:close())
       assert(bytes==#data and flushes==math.ceil(bytes/16384))
-      assert(write_us==flushes and write_max_us==1 and flush_us==1)
-      assert(dump_us>=write_us+flush_us,'FILE subphase times belong to whole dump')
+      if unknown_clock then
+        assert(dump_us==nil and write_us==nil and write_max_us==nil and flush_us==nil)
+      else
+        assert(write_us==flushes and write_max_us==1 and flush_us==1)
+        assert(dump_us>=write_us+flush_us,'FILE subphase times belong to whole dump')
+      end
       return data
     end
     local shared={answer=42};local graph={a=shared,b=shared,fn=make_closure(shared),c=math.sin,
@@ -241,6 +255,11 @@ int main(int argc,char** argv) {
     local original=assert(reference.dump(graph,permanent))
     local updated=assert(candidate.dump(graph,permanent))
     local file=disk(graph);assert(original==updated and updated==file)
+    for _,mode in ipairs{0,2}do
+      timing_mode(mode);assert(disk(graph,true)==file)
+    end
+    timing_mode(1)
+    print('PASS clock contract: missing/backwards measurements unknown, bytes/counts unchanged')
     for _,bytes in ipairs{original,updated,file}do
       for _,reader in ipairs{reference,candidate}do
         local restored=assert(reader.load(bytes,inverse))

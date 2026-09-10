@@ -246,8 +246,8 @@ class U3GeneratedClockTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def run_case(self, stage, failure=0, extra_timers=0):
-        result = subprocess.run([str(self.binary), str(stage), str(failure), str(extra_timers)],
+    def run_case(self, stage, failure=0, extra_timers=0, music=0):
+        result = subprocess.run([str(self.binary), str(stage), str(failure), str(extra_timers), str(music)],
             check=True, capture_output=True, text=True)
         return json.loads(result.stdout)
 
@@ -262,6 +262,15 @@ class U3GeneratedClockTests(unittest.TestCase):
         self.assertLess(coalesced['callbacks'], coalesced['timers'])
         self.assertEqual(coalesced['callbacks'], coalesced['steps'])
         self.assertEqual(coalesced['dropped'], 0)
+        # The full generated loop uses the real owner declaration. Exercise
+        # its WaitEvent -> runtime_tick -> music dispatch ordering as well as
+        # duplicate delivery; actual mixer/WAV behavior has its own probe.
+        for music, dispatches, phase in ((1, 1, 0), (2, 0, 1), (3, 1, 0)):
+            with self.subTest(music=music):
+                value = self.run_case(-1, music=music)
+                self.assertEqual(value['music_dispatches'], dispatches)
+                self.assertEqual(value['music_phase'], phase)
+                self.assertGreater(value['callbacks'], 0)
         for delayed in (2, 3, 4, 5, 7):
             with self.subTest(delayed=delayed):
                 value = self.run_case(delayed)
@@ -371,6 +380,7 @@ HARNESS = r'''
 #include "cth3ds/simulation_clock.hpp"
 #include "cth3ds/presentation_clock.hpp"
 #include "cth3ds/boot_presentation.hpp"
+#include "cth3ds/music_event_owner.hpp"
 #include <array>
 #include <cassert>
 #include <cstring>
@@ -414,6 +424,9 @@ void cth3ds_poll_sound_callbacks(Uint32){}
 bool cth3ds_consume_sound_callback(const SDL_Event&){return true;}
 void cth3ds_clear_sound_callbacks(){}
 int delayed=-1,failure=0,iterations=0,infinite_loop_counter=0;
+int wait_calls=0,music_mode=0,music_events=0,music_duplicates=0,music_dispatches=0;
+cth3ds::MusicEventOwner::Token music_token=0;
+bool replace_music_before_dispatch=false;
 bool g_top_present_seen=false,g_top_present_ok=false;
 std::string_view dispatch;
 std::uint64_t work[10]{},flushes=0;
@@ -438,7 +451,14 @@ bool runtime_initialize(lua_State*){return true;}
 bool runtime_assert_ready(lua_State*){return true;}
 void report_fatal(const char*){}
 void runtime_shutdown(lua_State*){}
-void runtime_tick(lua_State*){RuntimeTimingScope span(TimingStage::Runtime);spend(1);}
+void runtime_tick(lua_State*){
+ RuntimeTimingScope span(TimingStage::Runtime);spend(1);
+ if(replace_music_before_dispatch){
+   replace_music_before_dispatch=false;
+   music_event_owner.invalidate_all();
+   assert(music_event_owner.begin()>music_token);
+ }
+}
 bool runtime_consume_sdl_event(const SDL_Event&){spend(0);return false;}
 void runtime_begin_frame(){g_top_present_seen=g_top_present_ok=false;}
 void runtime_top_present_complete(bool ok){g_top_present_seen=true;g_top_present_ok=ok;}
@@ -487,9 +507,19 @@ int timer_frame_callback=0;
 int SDL_AddTimer(int,int,void*){return 1;}
 void SDL_RemoveTimer(int){}
 int extra_timers=0,remaining_timers=0;
-int SDL_WaitEvent(SDL_Event* e){clock_us+=1000;remaining_timers=extra_timers;e->type=iterations++<301?SDL_USEREVENT_TICK:SDL_QUIT;return 1;}
+int SDL_WaitEvent(SDL_Event* e){
+ clock_us+=1000;++wait_calls;remaining_timers=extra_timers;
+ if(music_events>0){
+   --music_events;e->type=SDL_USEREVENT_MUSIC_OVER;e->user.code=music_token;
+   replace_music_before_dispatch=music_mode==2;return 1;
+ }
+ e->type=iterations++<301?SDL_USEREVENT_TICK:SDL_QUIT;return 1;
+}
 int SDL_WaitEventTimeout(SDL_Event* e,int){return SDL_WaitEvent(e);}
-int SDL_PollEvent(SDL_Event* e){if(remaining_timers>0){--remaining_timers;e->type=SDL_USEREVENT_TICK;return 1;}return 0;}
+int SDL_PollEvent(SDL_Event* e){
+ if(music_duplicates>0){--music_duplicates;e->type=SDL_USEREVENT_MUSIC_OVER;e->user.code=music_token;return 1;}
+ if(remaining_timers>0){--remaining_timers;e->type=SDL_USEREVENT_TICK;return 1;}return 0;
+}
 const char* SDL_GetKeyName(int){return "key";}
 void l_push_modifiers_table(lua_State*,int){}
 void push_app_dispatch(lua_State*,std::string_view kind){dispatch=kind;}
@@ -514,7 +544,7 @@ int lua_pcall(lua_State*,int,int,int){
  } else if(dispatch=="frame") {
    spend(3); if(failure!=4) {render_target target;target.end_frame();}
    if(failure==2)return 1;
- }
+ } else if(dispatch=="music") {++music_dispatches;}
  return 0;
 }
 constexpr auto dispatch_keydown="keydown"sv,dispatch_keyup="keyup"sv,dispatch_textinput="textinput"sv,
@@ -527,6 +557,12 @@ constexpr auto dispatch_keydown="keydown"sv,dispatch_keyup="keyup"sv,dispatch_te
 int main(int argc,char** argv){
  delayed=argc>1?std::atoi(argv[1]):-1;failure=argc>2?std::atoi(argv[2]):0;
  extra_timers=argc>3?std::atoi(argv[3]):0;
+ music_mode=argc>4?std::atoi(argv[4]):0;
+ if(music_mode){
+   music_token=cth3ds::music_event_owner.begin();
+   assert(cth3ds::music_event_owner.completed()==music_token);
+   music_events=1;music_duplicates=music_mode==3?1:0;
+ }
  assert(cth3ds::runtime().presentation_.mode()==cth3ds::PresentationMode::Game);
  if(failure==6)cth3ds::runtime().presentation_.error();
  g_observations.frame_tail.begin(clock_us);
@@ -538,7 +574,7 @@ int main(int argc,char** argv){
  assert(tail.invalid==0 && tail.end_phase==cth3ds::FramePhase::Other);
  std::uint64_t whole=0;for(const auto value:tail.whole)whole+=value;
  assert(whole==clock_us);
- assert(tail.whole[static_cast<unsigned>(cth3ds::FramePhase::Wait)]==static_cast<std::uint64_t>(iterations)*1000);
+ assert(tail.whole[static_cast<unsigned>(cth3ds::FramePhase::Wait)]==static_cast<std::uint64_t>(wait_calls)*1000);
  assert(tail.whole[static_cast<unsigned>(cth3ds::FramePhase::GCStep)]==work[6]*(delayed==6?8000:1000));
  std::cout<<"{\"success\":"<<s.successful_presents<<",\"failed\":"<<s.failed_presents
  <<",\"skipped\":"<<s.skipped_presents<<",\"count\":"<<s.intervals.count
@@ -546,7 +582,9 @@ int main(int argc,char** argv){
  for(std::size_t i=0;i<10;++i){if(i)std::cout<<",";std::cout<<s.stages[i].exclusive_us;}
  const auto clock=cth3ds::g_simulation_clock.statistics();
  std::cout<<"],\"timers\":"<<cth3ds::g_timer_events<<",\"callbacks\":"<<cth3ds::g_logic_callbacks
- <<",\"steps\":"<<clock.steps<<",\"dropped\":"<<clock.dropped_us<<",\"flushes\":"<<flushes<<",\"work\":[";
+ <<",\"steps\":"<<clock.steps<<",\"dropped\":"<<clock.dropped_us<<",\"flushes\":"<<flushes
+ <<",\"music_dispatches\":"<<music_dispatches
+ <<",\"music_phase\":"<<static_cast<unsigned>(cth3ds::music_event_owner.snapshot().phase)<<",\"work\":[";
  for(int i=0;i<10;++i){if(i)std::cout<<",";std::cout<<work[i];}std::cout<<"]}";
 }
 '''

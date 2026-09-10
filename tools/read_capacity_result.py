@@ -286,9 +286,24 @@ def _identity(directory):
             if logs[0].stat().st_size>4*1024*1024:raise ValueError('boot log exceeds bound')
             lines=logs[0].read_text(errors='strict').splitlines()
         except (OSError,UnicodeError,ValueError) as exc:errors.append(str(exc))
+    # Benchmark:tick emits FAILED for both a genuine failure and a bounded
+    # NEEDS_INPUT stop. Only the latter, after successful cleanup, produces
+    # this exact terminal contract. Receipt/hash checks above still apply.
+    needs_input=(r.get('outcome')=='NOT_PROVEN' and r.get('reason')=='NEEDS_INPUT'
+        and r.get('errors')=='0' and r.get('failure_detail','').endswith('TH3DS_NEEDS_INPUT')
+        and r.get('failure_diagnostics','0')=='0'
+        and all(r.get(key,'NOT_PROVEN')!='FAIL' for key in
+                ('capacity_failure_outcome','save_io_outcome','recovery_behavior_outcome')))
+    failed_markers=[line for line in lines if re.search(r'event=FAILED(?:\s|$)',line)]
+    needs_input=needs_input and len(failed_markers)==1 and bool(re.match(
+        r'^benchmark: at_us=[0-9]+ event=FAILED(?:\s|$)',failed_markers[0]))
     failed=False
     for line in lines:
-        if re.search(r'\bFATAL\b|HANDLEACTION REJECTED|event=FAILED(?:\s|$)|event=ABORT\S*',line):failed=True
+        if re.search(r'\bFATAL\b|HANDLEACTION REJECTED|engine-error:|event=ABORT\S*',line):failed=True
+        if re.search(r'event=FAILED(?:\s|$)',line) and not needs_input:failed=True
+        if 'simulation-completion:' in line:
+            match=re.search(r'\bfailed=([0-9]+)(?:\s|$)',line)
+            if match and int(match[1])>0:failed=True
     if failed:errors.append('runtime failure/abort in bound log')
     log_status='PASS'
     for field in ('log_failed','log_truncated'):
@@ -299,7 +314,9 @@ def _identity(directory):
     identity='FAIL' if errors else 'NOT_PROVEN' if missing else 'PASS'
     canonical={'identity':identity,'launcher_roundtrip':'PASS' if returned and identity=='PASS' else 'NOT_PROVEN',
                'game_outcome':r.get('outcome','NOT_PROVEN') if identity=='PASS' else 'FAIL' if failed else 'NOT_PROVEN',
-               'log':{'runtime_write_status':log_status},'errors':errors,'missing':missing,'local_artifact_hashes':artifacts}
+               'log':{'runtime_write_status':log_status,
+                      'incomplete_reason':'NEEDS_INPUT' if needs_input and not failed else None},
+               'errors':errors,'missing':missing,'local_artifact_hashes':artifacts}
     canonical['assets_full_reverified']=r.get('assets_full_reverified')=='1'
     return canonical,config,r,lines
 

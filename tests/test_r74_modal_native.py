@@ -57,6 +57,13 @@ int main(int argc, char** argv) {
 
             fixture = json.loads((ROOT/'tests/fixtures/annual_upstream.json').read_text())
             sources = json.loads(zlib.decompress(base64.b64decode(fixture['sources_zlib_base64'])))
+            # Unmodified source from the same fixed upstream commit. Retain it
+            # independently so CI needs neither a download nor a complete tree.
+            machine = (ROOT/'tests/fixtures/machine_dialog.lua.pinned').read_text()
+            machine_sha = '25c4c28900cbfec1f5a81a5cf1bf0bc1ff0a2d1824c9cb460aab18b3b9f5d475'
+            self.assertEqual(hashlib.sha256(machine.encode()).hexdigest(), machine_sha)
+            sources['dialogs/machine_dialog.lua'] = machine
+            fixture['sha256']['dialogs/machine_dialog.lua'] = machine_sha
             paths = {}
             for filename, source in sources.items():
                 self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), fixture['sha256'][filename])
@@ -89,6 +96,7 @@ int main(int argc, char** argv) {
                            'PASS native annual and Button confirmation',
                            'PASS native refusal boundaries', 'PASS current owned window identity'):
                 self.assertIn(marker, run.stdout)
+            self.assertIn('PASS restored machine information and native diagnostics', run.stdout)
             print(run.stdout, end='')
 
 

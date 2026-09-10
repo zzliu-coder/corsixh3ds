@@ -31,7 +31,7 @@ def fixture(path,protocol='r75-v1'):
     for name in ('r73-continuity.sav','r74-busy.sav','r73-level12.sav'):(path/'save'/name).write_bytes(b'fixture-private-save')
     r=dict(mf,manifest_sha256=reader.sha(encode(mf)),phase='complete',outcome='PASS',reason='fixture',
            workload='capacity-fixture',simulation_ticks='100',frames='100',elapsed_us='1000000000',
-           log_failed='0',log_truncated='0',assets_full_reverified='0',assets_receipt_sha256='e'*64,
+           errors='0',log_failed='0',log_truncated='0',assets_full_reverified='0',assets_receipt_sha256='e'*64,
            capacity_stage='complete',capacity_input_sha256=reader.SHA,capacity_continuity_roundtrip='PASS',
            capacity_level_outcome='PASS',capacity_return_outcome='PASS',capacity_reception_outcome='PASS',
            capacity_lua_release_outcome='PASS')
@@ -161,6 +161,39 @@ class CapacityReadbackTests(unittest.TestCase):
         log=self.path/'artifacts/boot.log';log.write_text(log.read_text()+'FATAL: simulation failed\n')
         report=reader.consume(self.path)
         self.assertEqual(report['outcome'],'FAIL');self.assertEqual(report['busy_hospital'],'NOT_PROVEN')
+
+        # Actual producer contract: tick marks FAILED even when a saved modal
+        # stops automation normally with NEEDS_INPUT and clean runner return.
+        text=log.read_text().removesuffix('FATAL: simulation failed\n').replace(
+            'event=COMPLETE','event=FAILED')
+        stopped=dict(self.result,outcome='NOT_PROVEN',reason='NEEDS_INPUT',errors='0',
+                     failure_detail='sdmc:/3ds/corsixth/Lua/3ds/benchmark_stress.lua:40: TH3DS_NEEDS_INPUT',
+                     capacity_failure_outcome='NOT_PROVEN',save_io_outcome='NOT_PROVEN')
+        log.write_text(text);write_result(self.path,stopped)
+        report=reader.consume(self.path)
+        self.assertEqual(report['outcome'],'NOT_PROVEN',report)
+        self.assertEqual(report['identity']['identity'],'PASS')
+        self.assertEqual(report['identity']['launcher_roundtrip'],'PASS')
+        self.assertEqual(report['identity']['log']['incomplete_reason'],'NEEDS_INPUT')
+        self.assertEqual(report['busy_hospital'],'NOT_PROVEN')
+        self.assertEqual(report['save_io']['outcome'],'NOT_PROVEN')
+        for key,value in [('outcome','PASS'),('reason','CLEANUP_FAILED'),('errors','1'),
+                          ('failure_detail','unrelated error'),('failure_diagnostics','1'),
+                          ('capacity_failure_outcome','FAIL')]:
+            with self.subTest(terminal=(key,value)):
+                write_result(self.path,dict(stopped,**{key:value}))
+                self.assertEqual(reader.consume(self.path)['outcome'],'FAIL')
+        write_result(self.path,stopped)
+        for diagnostic in ('FATAL: failed\n','HANDLEACTION REJECTED\n','engine-error: sequence=1\n',
+                           'benchmark: event=ABORT\n','benchmark: at_us=2 event=FAILED\n',
+                           'simulation-completion: dispatched=4 completed=3 failed=1 cumulative=1\n'):
+            with self.subTest(diagnostic=diagnostic):
+                log.write_text(text+diagnostic)
+                self.assertEqual(reader.consume(self.path)['outcome'],'FAIL')
+        log.write_text(text)
+        receipt=reader.kv((self.path/'receipt.kv').read_bytes());receipt['outcome']='PASS'
+        (self.path/'receipt.kv').write_bytes(encode(receipt))
+        self.assertEqual(reader.consume(self.path)['outcome'],'FAIL')
 
     def test_paused_frame_world_work_or_roundtrip_divergence_rejected(self):
         for key,value in [('frame','501'),('world_completed','501'),('committed','0'),('capacity','65536')]:

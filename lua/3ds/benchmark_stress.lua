@@ -35,7 +35,10 @@ function Stress:needsInput(window,reason)
       .." ui="..tostring(window~=nil and window.ui==ui)
       .." registered="..tostring(window~=nil and ui.modal_windows~=nil and ui.modal_windows[modal]==window)
       .." closed="..tostring(window~=nil and not not window.closed)
-    print(line:sub(1,230))
+    -- Lua print is not retained by the runner. Use its existing bounded native
+    -- diagnostic route so a stopped run identifies the actual window.
+    if self.native.diagnostic_line then self.native.diagnostic_line(line:sub(1,230))
+    else print(line:sub(1,230)) end
   end
   error("TH3DS_NEEDS_INPUT")
 end
@@ -66,6 +69,7 @@ function Stress.new(app,native,duration,save_dir)
   self.annual_awards=annual and annual.updateAwards
   self.button_class=button;self.button_click=button and button.handleClick
   self.watch_class=rawget(_G,"UIWatch")
+  self.machine_class=rawget(_G,"UIMachine")
   self.annual_attempts=setmetatable({},{__mode="k"});self.annual_count=0
   print("benchmark-stress: event=BEGIN duration_ms="..(duration or 22*60000).." saves=Benchmark/Saves user_saves_writable=0")
   return self
@@ -96,8 +100,10 @@ function Stress:annualCheckpoint(event)
   end
 end
 
--- Only the original annual settlement confirmation is automatic. Scan before
--- every due action, including closing our window and either private save.
+-- Only the original annual settlement confirmation is automatic. The exact
+-- non-pausing machine information window can remain open after loading a user
+-- save: no repair/replace button is clicked. Its separate confirmation dialog
+-- still requires input. Scan before every action and either private save.
 function Stress:checkMandatory()
   assert(not self.annual_failed,"annual confirmation previously failed")
   local app=self.app;local ui,world=app.ui,app.world
@@ -110,7 +116,10 @@ function Stress:checkMandatory()
       and ((window==self.window and self.window_class
         and exactClass(window,self.window_class))
         or (self.watch_class and exactClass(window,self.watch_class)
-          and window.modal_class=="open_countdown"))
+          and window.modal_class=="open_countdown")
+        or (self.machine_class and rawget(_G,"UIMachine")==self.machine_class
+          and exactClass(window,self.machine_class)
+          and window.modal_class=="humanoid_info" and not window:mustPause()))
   end
   for _,window in pairs(ui.windows or {})do
     if window:mustPause() then annual=window;n=n+1 end

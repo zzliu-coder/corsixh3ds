@@ -16,7 +16,8 @@ assert(not pcall(function()return undeclared_modal_probe end))
 P.dofile(source['class.lua'])
 local make_permanent=P.dofile(registry)
 for _,name in ipairs{'window.lua','ui.lua','dialogs/fullscreen.lua',
-  'dialogs/fullscreen/annual_report.lua','dialogs/confirm_dialog.lua','dialogs/watch.lua'}do P.dofile(source[name])end
+  'dialogs/fullscreen/annual_report.lua','dialogs/confirm_dialog.lua','dialogs/watch.lua',
+  'dialogs/machine_dialog.lua'}do P.dofile(source[name])end
 assert(not pcall(function()return undeclared_modal_probe end))
 print('PASS strict initialization before and after optional classes')
 shallow_clone=function(t)local c={};for k,v in pairs(t)do c[k]=v end;return c end
@@ -26,7 +27,8 @@ pause_gc_and_use_weak_keys=function(callback,t)callback(t)end
 Date={hoursPerDay=function()return 24 end}
 _S={transactions={eoy_trophy_bonus='trophy',eoy_bonus_penalty='award'},
  tooltip={window_general={cancel='cancel',confirm='confirm'},
- watch={hospital_opening='open',emergency='emergency',epidemic='epidemic'}}}
+ watch={hospital_opening='open',emergency='emergency',epidemic='epidemic'},
+ machine_window={repair='repair',replace='replace',close='close',name='name',times_used='used',status='status'}}}
 class 'ModalFixtureHospital'
 function ModalFixtureHospital:receiveMoney(n)self.balance=self.balance+n;self.calls=self.calls+1 end
 function ModalFixtureHospital:changeReputation(kind,_,n)assert(kind=='year_end');self.rep=self.rep+n end
@@ -39,6 +41,7 @@ function ModalFixtureWorld:checkIfGameWon()self.won_checks=self.won_checks+1 end
 class 'DerivedModalWatch' (UIWatch)
 class 'DerivedModalAnnual' (UIAnnualReport)
 class 'DerivedModalButton' (Button)
+class 'DerivedModalMachine' (UIMachine)
 local resource=permanent('modal.fixture.resource',{sizeOf=function()return 10,11 end})
 local gfx=setmetatable({load_info={}}, {__index=function()return function()return resource end end})
 local function setup()
@@ -109,6 +112,42 @@ for _,kind in ipairs{'initial_opening','emergency','epidemic'}do
  s:checkMandatory();assert(not watch.closed)
 end
 print('PASS native restored countdowns: all three real constructors and UI afterLoad')
+do
+ local app,s=setup()
+ local machine={times_used=3,strength=10,total_usage=3,object_type={name='inflator'}}
+ local room={needs_repair=false}
+ app.world.machine=machine;app.world.room=room
+ app.ui:addWindow(UIMachine(app.ui,machine,room));s:checkMandatory()
+ roundtrip(app)
+ local win=assert(app.ui:getWindow(UIMachine));restored(win,UIMachine)
+ local balance=app.ui.hospital.balance
+ s:checkMandatory()
+ assert(not win.closed and win.machine==app.world.machine and win.room==app.world.room)
+ assert(win.machine.times_used==3 and app.ui.hospital.balance==balance)
+ -- Keeping an information panel never acknowledges its separate purchase
+ -- confirmation, and no mutation or paused/derived impostor is adopted.
+ local choice=UIConfirmDialog(app.ui,true,'purchase',function()error('must not purchase')end)
+ app.ui:addWindow(choice)
+ local records={}
+ s.native.diagnostic_line=function(line)assert(#line<=230);records[#records+1]=line end
+ for i=1,2 do
+  local ok,err=pcall(s.checkMandatory,s)
+  assert(not ok and err:match('TH3DS_NEEDS_INPUT$'))
+ end
+ assert(#records==1 and records[1]:find('class=UIConfirmDialog',1,true))
+ assert(not choice.closed and app.ui.hospital.balance==balance)
+end
+for _,mutate in ipairs{
+ function(a,w)w.parent={}end,
+ function(a,w)w.ui={}end,
+ function(a,w)a.ui.modal_windows.humanoid_info={}end,
+ function(a,w)w.mustPause=function()return true end end,
+ function(a,w)setmetatable(w,DerivedModalMachine._metatable)end,
+}do
+ local app,s=setup();app.ui:addWindow(UIMachine(app.ui,{},{}));roundtrip(app)
+ mutate(app,assert(app.ui:getWindow(UIMachine)));refused(s)
+end
+print('PASS restored machine information and native diagnostics')
 for _,page in ipairs{2,3}do
  local app,s=setup();app.ui:addWindow(UIWatch(app.ui,'emergency'));add_annual(app,page)
  roundtrip(app)

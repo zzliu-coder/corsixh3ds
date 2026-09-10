@@ -250,6 +250,7 @@ function Benchmark:cleanup()
 end
 
 function Benchmark:restore()
+  self.music_pending=nil
   Activity.stop()
   if self.capacity then self.capacity:close() end
   local closed=true
@@ -509,13 +510,16 @@ function Benchmark:advance()
     "engine error occurred; performance sample invalid")
   assert(self.app.eventHandlers and self.app.eventHandlers.timer,
     "simulation timer disconnected; performance sample invalid")
-  if self.native.clock_ms()-self.last_health_check>=5000 then
+  if self.music_pending or self.native.clock_ms()-self.last_health_check>=5000 then
     Health.assertActive(self.app);self.last_health_check=self.native.clock_ms()
     if (self.phase=="sample" and self.expected_music or self.phase=="recovery" and self.recovery_music
         or self.phase=="capacity" and self.expected_music)
         and self.native.music_state then
-      local playing,paused=self.native.music_state()
-      assert(playing and not paused,"benchmark music is not actually playing")
+      self.music_pending=require("3ds.benchmark_music").check(
+        self.native,self.app.audio,self.music_pending)
+      -- Let the normal SDL event dispatch run first. Pending never advances a
+      -- capacity/save/sample boundary and is checked on every subsequent loop.
+      if self.music_pending then return end
     end
   end
   if self.phase=="recovery" then self:advanceRecovery();return end

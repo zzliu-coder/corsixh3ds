@@ -77,7 +77,7 @@ persist.dump=function(state,permanent)
  return payload
 end
 persist.dump_file=function(state,permanent,f,capacity)
- assert(capacity==(selected_capacity or 16384))
+ assert(capacity==(selected_capacity or 65536))
  dumped=dumped+1
  assert(state.map==map and state.output_file==nil and permanent.sentinel)
  assert(live=='PREPARED' and f.unbuffered)

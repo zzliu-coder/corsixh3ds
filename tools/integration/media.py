@@ -2,6 +2,7 @@
 from pathlib import Path
 from sound_lifetime import replace_exact, SoundPatchError
 from .font_cache import transforms as font_transforms
+from .music_events import transforms as music_event_transforms
 
 NATIVE_FILE_MUSIC = r'''
 #ifdef CORSIXTH_3DS
@@ -123,6 +124,15 @@ def transforms(root):
     _f, _s, _v = pairs({}) -- optional music absent; never scan original MIDI
   elseif music_dir then
     _f, _s, _v = lfs.dir(music_dir)''', 'optional music directory')
+    old='''function Audio:onMusicOver()
+  if self.not_loaded or #self.background_playlist == 0 or self.background_music == nil then
+    return
+  end
+  self:playNextBackgroundTrack()
+end'''
+    new=old.replace('  self:playNextBackgroundTrack()',
+        '  if IS_3DS then return require("3ds.media").onMusicOver(self) end\n  self:playNextBackgroundTrack()')
+    if new not in text:text=replace_exact(text,old,new,'finished-event playback observation')
     yield path, text
 
     path = 'CorsixTH/Lua/dialogs/resizables/sound_setting.lua'
@@ -195,7 +205,7 @@ end
 
     path = 'CorsixTH/Src/sdl_audio.cpp'
     text = (root/path).read_text()
-    if NATIVE_FILE_MUSIC not in text:
+    if 'int l_load_music_file(lua_State* L)' not in text:
         text = replace_exact(text, 'int l_music_volume(lua_State* L) {',
                              NATIVE_FILE_MUSIC + '\nint l_music_volume(lua_State* L) {', 'file music native')
         text = replace_exact(text, '  music* pLMusic = luaT_testuserdata<music>(L, -1);',
@@ -225,6 +235,7 @@ constexpr std::array<struct luaL_Reg, 8> sdl_musiclib{
      {"freeMusic", l_free_music},
 #endif''', 'file music registration')
     yield path, text
+    yield from music_event_transforms(root)
 
 def patch_media(root: Path):
     changed = []

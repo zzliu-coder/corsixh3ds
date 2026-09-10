@@ -98,7 +98,7 @@ class SaveStreamNativeTests(unittest.TestCase):
                     CTH3DS_PLATFORM_SOURCE=str(ROOT/'lua/3ds/platform.lua')))
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             self.assertIn('native_persistence_cases=', result.stdout)
-            self.assertIn('save-stream: mode=stream16k', result.stdout)
+            self.assertIn('save-stream: mode=stream64k', result.stdout)
             self.assertIn('PASS native-persistence stream-native-faults-preserve-final-and-backup', result.stdout)
             self.assertIn('PASS native-persistence original-reader-loads-streamed-world', result.stdout)
             for line in result.stdout.splitlines():

@@ -55,6 +55,7 @@
 #include "cth3ds/interval_gate.hpp"
 #include "cth3ds/lifecycle.hpp"
 #include "cth3ds/memory_telemetry.hpp"
+#include "cth3ds/music_event_owner.hpp"
 #if CTH3DS_RESOURCE_EXPERIMENT
 #include "cth3ds/resource_manager.hpp"
 #include "cth3ds/runtime_session.hpp"
@@ -2502,7 +2503,10 @@ int l_simulation_clock(lua_State* state){
 int l_music_state(lua_State* state) {
   lua_pushboolean(state,Mix_PlayingMusic()!=0);
   lua_pushboolean(state,Mix_PausedMusic()!=0);
-  return 2;
+  const auto music=music_event_owner.snapshot();
+  lua_pushinteger(state,music.token);
+  lua_pushinteger(state,static_cast<unsigned>(music.phase));
+  return 4;
 }
 int l_cpu_phase(lua_State* state) {
   if(!cpu_work.enabled){lua_pushnil(state);return 1;}

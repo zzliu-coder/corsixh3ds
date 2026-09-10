@@ -127,9 +127,9 @@ int l_dump_file_toplevel(lua_State* L) {
   auto* stream = static_cast<luaL_Stream*>(luaL_checkudata(L, 3, LUA_FILEHANDLE));
   luaL_argcheck(L, stream->closef && stream->f, 3, "open file required");
   // CORSIXTH_3DS_SAVE_BUFFER_R75: explicit per-call experiment; no global state.
-  // Preserve the shipping default until hardware A/B demonstrates a benefit.
+  // Two device ABBA observations support a 64KiB default (+48KiB transient).
   luaL_argcheck(L, lua_isnoneornil(L, 4) || lua_type(L, 4) == LUA_TNUMBER, 4, "numeric buffer size required");
-  const lua_Integer requested = lua_isnoneornil(L, 4) ? 16384 : luaL_checkinteger(L, 4);
+  const lua_Integer requested = lua_isnoneornil(L, 4) ? 65536 : luaL_checkinteger(L, 4);
   luaL_argcheck(L, requested == 16384 || requested == 65536, 4, "16384 or 65536 required");
   const auto capacity = static_cast<size_t>(requested);
   lua_settop(L, 3);
@@ -163,6 +163,9 @@ def stream_writer(text):
     if 'CORSIXTH_3DS_SAVE_STREAM_R65' in text:
         if 'CORSIXTH_3DS_SAVE_BUFFER_R75' not in text:
             raise ValueError('save writer view predates R75; regenerate from pinned source')
+        # Upgrade the retained explicit R75 writer without changing its format.
+        text=text.replace('lua_isnoneornil(L, 4) ? 16384 :', 'lua_isnoneornil(L, 4) ? 65536 :')
+        text=text.replace('size_t buffer_capacity{16384};', 'size_t buffer_capacity{65536};')
         return text
     begin = text.index('class lua_persist_basic_writer :')
     end = text.index('class lua_persist_basic_reader', begin)
@@ -193,7 +196,7 @@ def stream_writer(text):
 #if LUA_VERSION_NUM >= 502
   luaL_Stream* output{nullptr};
   uint8_t* buffer{nullptr}; // trailing userdata bytes, never stack or new[]
-  size_t buffer_capacity{16384};
+  size_t buffer_capacity{65536};
   size_t buffered{0};
   uint64_t written{0};
   uint64_t flushes{0};

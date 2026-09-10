@@ -335,4 +335,13 @@ M.release(a,api);assert(live==0)
         self.assertIn('PASS real SDL_mixer',result.stdout)
         print(result.stdout,end='')
 
+    def test_actual_generated_music_completion_identity(self):
+        from media_runtime.music_events_probe import run_probe
+        audio = (self.upstream / 'CorsixTH/Src/sdl_audio.cpp').read_text()
+        core = (self.upstream / 'CorsixTH/Src/sdl_core.cpp').read_text()
+        result = run_probe(self.directory, audio, core)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count('PASS '), 3, result.stdout)
+        print(result.stdout, end='')
+
 if __name__=='__main__':unittest.main()

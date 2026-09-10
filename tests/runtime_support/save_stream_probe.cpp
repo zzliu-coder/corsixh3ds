@@ -239,7 +239,7 @@ int main(int argc,char** argv) {
       local called,ok,bytes,flushes,dump_us,write_us,write_max_us,flush_us=protected_dump(graph,permanent,f,capacity)
       assert(called and ok,tostring(ok)..' '..tostring(bytes));assert(f:close())
       local input=assert(io.open(path,'rb'));local data=assert(input:read('*a'));assert(input:close())
-      assert(bytes==#data and flushes==math.ceil(bytes/(capacity or 16384)))
+      assert(bytes==#data and flushes==math.ceil(bytes/(capacity or 65536)))
       if unknown_clock then
         assert(dump_us==nil and write_us==nil and write_max_us==nil and flush_us==nil)
       else
@@ -274,7 +274,7 @@ int main(int argc,char** argv) {
     local gc_graph={native=native_make(40000,8)}
     assert(disk(gc_graph)==reference.dump(gc_graph,permanent));collect()
     assert(next(writers)==nil)
-    for _,size in ipairs{0,1,16383,16384,16385,32768,32769,1048576}do
+    for _,size in ipairs{0,1,16383,16384,16385,32768,32769,65535,65536,65537,1048576}do
       local block=native_make(size);local graph={block=block,alias=block,text=string.rep('x\0',size//2)}
       local bytes=disk(graph);assert(bytes==reference.dump(graph,permanent))
       for _,reader in ipairs{reference,candidate}do
@@ -283,7 +283,7 @@ int main(int argc,char** argv) {
       end
       collect()
     end
-    print('PASS native block boundaries: 0/1/16383/16384/16385/32768/32769/1048576 and NUL strings')
+    print('PASS native block boundaries: 16KiB/32KiB/64KiB neighbors and 1MiB/NUL strings')
     -- Device faults exercise unchanged native fwrite and fflush through FILE.
     local cases={{0,'no','write'},{3,'no','write'},{16384+7,'no','write'},
                  {40000,'no','write'},{0,'full','flush'}}
@@ -304,7 +304,7 @@ int main(int argc,char** argv) {
     local called,ok=protected_dump({native=native_make(33000)},permanent,f);assert(called and ok)
     assert(not f:close(),'injected fclose failure must remain visible to owner')
     collect();assert(select(6,stats())==0)
-    assert(select(8,stats())<=16384,'sink write request exceeded its bound')
+    assert(select(8,stats())<=65536,'sink write request exceeded its bound')
     f=assert(io.open(path,'wb'));assert(f:close())
     assert(not pcall(candidate.dump_file,{},permanent,f))
     assert(not pcall(candidate.dump_file,{},permanent,{}))
@@ -333,8 +333,8 @@ int main(int argc,char** argv) {
       local f=assert(io.open(path,'wb'));assert(f:setvbuf('no'))
       local called,ok,bytes,flushes=protected_dump(input,permanent,f)
       assert(called and ok);local lp,ll,cp,cl,ct=stats()
-      assert(lp<65536 and ll<32768 and cp==0 and cl==0 and ct==0)
-      assert(bytes>size and flushes==math.ceil(bytes/16384))
+      assert(lp<114688 and ll<81920 and cp==0 and cl==0 and ct==0)
+      assert(bytes>size and flushes==math.ceil(bytes/65536))
       assert(next(writers)~=nil,'stopped GC should retain bounded writer until collection')
       assert(f:close());collect();assert(next(writers)==nil)
       peaks[#peaks+1]=lp
@@ -344,7 +344,7 @@ int main(int argc,char** argv) {
     assert(math.max(table.unpack(peaks))-math.min(table.unpack(peaks))<4096)
     for i=1,30 do assert(#disk({native=native_make(40000)})>40000);collect();assert(next(writers)==nil)end
     assert(select(6,stats())==0)
-    print('PASS output memory bound: 16KiB buffer, no payload C++ allocations, no output Lua string, 30 GC cycles')
+    print('PASS output memory bound: 64KiB buffer, no payload C++ allocations, no output Lua string, 30 GC cycles')
     -- Same graph, interleaved capacities: byte format, C++ allocation behavior
     -- and writer ownership stay identical. Call-local selection cannot leak.
     local repeated={native=native_make(410000),text='R75 fixed graph'}
@@ -361,7 +361,7 @@ int main(int argc,char** argv) {
       end
     end
     assert(memory_by_capacity[65536]-memory_by_capacity[16384]==49152)
-    assert(disk(repeated)==expected,'omitted option returns to shipping 16KiB')
+    assert(disk(repeated)==expected,'omitted option returns to shipping 64KiB')
     for _,capacity in ipairs{16384,65536}do
       for _,cut in ipairs{0,7,16391,65543}do
         local f=open_device(cut,false,enospc);assert(f:setvbuf('no'))

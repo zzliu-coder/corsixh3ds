@@ -124,6 +124,19 @@ function M.configure(config, root, attributes)
   config.play_music = config.play_music == true
 end
 
+-- Playback observations live outside the persisted Audio object. Revisions
+-- distinguish an actual finished-event handoff from manual Next/Stop/reload.
+local music_states=setmetatable({}, {__mode="k"})
+local function musicState(audio)
+  local state=music_states[audio]
+  if not state then state={revision=0};music_states[audio]=state end
+  return state
+end
+function M.musicStatus(audio)
+  local s=musicState(audio)
+  return s.revision,s.finished_from,s.finished_to,s.failed==true
+end
+
 local function observe(native, phase, path)
   if native and native.diagnostic_line then
     native.diagnostic_line("music-state: "..phase.." file="..tostring(path or "none"))
@@ -135,6 +148,9 @@ local function observe(native, phase, path)
 end
 
 function M.release(audio, api, native)
+  local state=musicState(audio)
+  state.revision=state.revision+1
+  state.finished_from=nil;state.finished_to=nil;state.failed=false
   -- Native stop suppresses the synthetic EOF callback and clears queued EOF
   -- events before another track starts. Otherwise a manual Next can skip twice.
   audio.load_music = false
@@ -172,6 +188,7 @@ function M.play(audio, index, api, native)
     if ok then
       info.music = music
       audio.background_music = music
+      musicState(audio).revision=musicState(audio).revision+1
       observe(native, "music-playing", path)
       audio:notifyJukebox()
       return true
@@ -179,10 +196,25 @@ function M.play(audio, index, api, native)
     api.freeMusic(music)
   end
   info.enabled = false
+  musicState(audio).failed=true
   observe(native, "music-file-failed", path)
   print("3DS music: " .. tostring(err))
   audio:notifyJukebox()
   return false, err
+end
+
+-- Called only by the original Audio:onMusicOver dispatch, after its original
+-- loaded/playlist/current-track guards. The playlist policy remains upstream's.
+-- SDL_mixer reports both completion and decoder termination via this callback;
+-- these counters prove successful continuation, not error-free decoding.
+function M.onMusicOver(audio)
+  local state=musicState(audio)
+  local before=state.revision
+  local result=audio:playNextBackgroundTrack()
+  if not state.failed and audio.background_music and state.revision>before then
+    state.finished_from=before;state.finished_to=state.revision
+  end
+  return result
 end
 
 return M

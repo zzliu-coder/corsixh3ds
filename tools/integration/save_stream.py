@@ -18,7 +18,7 @@ end
 -- CORSIXTH_3DS_SAVE_BUFFER_R75: call-local, never a persisted world/config flag.
 local function saveBufferBytes(value)
   assert(value==nil or value==16384 or value==65536,"save buffer: 16384 or 65536 required")
-  return value or 16384
+  return value or 65536
 end
 function SaveGame(output_file, buffer_bytes)
   buffer_bytes = saveBufferBytes(buffer_bytes)
@@ -156,6 +156,10 @@ def transforms(root):
         end=text.index('  local data = SaveGame()',start)
         prefix=FILE_PREFIX.replace(OLD_REPORT,NEW_REPORT)
         text=text[:start]+prefix+text[end:]
+    # Retained R75 generated view: the measured default is now 64KiB; explicit
+    # 16/64 comparison calls remain unchanged and the option never enters saves.
+    text=text.replace('  return value or 16384\nend\nfunction SaveGame(',
+                      '  return value or 65536\nend\nfunction SaveGame(')
     yield path, text
     # The ordinary caller passes no option. Only Operations' guarded private
     # route forwards a bounded size through this original writer reference.

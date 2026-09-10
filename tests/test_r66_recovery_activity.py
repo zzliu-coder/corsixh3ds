@@ -181,7 +181,7 @@ for _,mode in ipairs{'service','waiting','input','save_failure','media','music_f
    stopBackgroundTrack=function()playing=false end,
    playBackgroundTrack=function()playing=true;plays=plays+1;return true end}
   function app:initLanguage()return true end
-  native.music_state=function()return playing,false end
+  native.music_state=function()return playing,false,1,playing and 1 or 0 end
   b.media_profiles=true;b.profiles={{speed='Normal',language='Chinese (simplified)',music=true,label='zh-on'}}
  end
  b:tick()
@@ -195,7 +195,7 @@ for _,mode in ipairs{'service','waiting','input','save_failure','media','music_f
  if mode=='music_failure'then
   playing=false;now=5000;b:tick()
   assert(b.phase=='done' and not A.active and b.results.failure_phase=='observation_1')
-  assert(b.results.recovery_behavior_outcome=='FAIL' and b.results.failure_detail:find('music is not actually playing',1,true))
+  assert(b.results.recovery_behavior_outcome=='FAIL' and b.results.failure_detail:find('music stopped without a pending finished event',1,true))
  elseif mode=='input'then
   app.ui.anyMustPauseWindowOpen=function()return true end;b:tick()
   assert(b.phase=='done' and not A.active and saves==1 and #loads==2)

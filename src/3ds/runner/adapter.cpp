@@ -17,6 +17,13 @@ std::chrono::steady_clock::time_point session_started;
 unsigned long long frames=0;
 unsigned checkpoint_sequence=0;
 void require(bool ok,const char* reason){if(!ok)throw std::runtime_error(reason);}
+void validateSaveIoInput(const runner::Fields& fields,const std::string& input){
+  const auto protocol=fields.find("capacity"), identity=fields.find("save_io_input_sha256");
+  if(protocol!=fields.end()&&protocol->second=="r75-v1"){
+    require(identity!=fields.end()&&runner::validHash(identity->second)&&identity->second==input,
+      "invalid_save_io_input_identity");
+  }else require(identity==fields.end(),"save_io_identity_requires_r75");
+}
 void luaFiles(const std::string& base,const std::string& relative,std::vector<std::string>& rows){
   DIR* directory=opendir((base+relative).c_str());require(directory!=nullptr,"lua_directory_missing");
   std::vector<std::string> names;
@@ -137,7 +144,7 @@ int runner_start(int argc,char** argv) noexcept {
     const int duration=std::stoi(config.at("stress_ms"));
     require(std::to_string(duration)==config["stress_ms"]&&duration>=0&&duration<=22*60000,"invalid_stress_duration");
     if(config.count("capacity")){
-      require((config.at("capacity")=="r73-v1"||config.at("capacity")=="r74-v1")&&config["profile"]=="expanded-zh-on"&&duration>0&&duration<=180000&&
+      require((config.at("capacity")=="r73-v1"||config.at("capacity")=="r74-v1"||config.at("capacity")=="r75-v1")&&config["profile"]=="expanded-zh-on"&&duration>0&&duration<=180000&&
         !config.count("recovery_sha256"),"invalid_capacity_configuration");
       require(config["continuity_sha256"]=="17b74375444d153599873bf25255b0d6a817343382eed1ebab6d3d89dce3a808",
         "invalid_continuity_identity");
@@ -152,6 +159,7 @@ int runner_start(int argc,char** argv) noexcept {
         require(config["verify_"+std::to_string(++index)]==identity,"invalid_capacity_asset_identity");
       }
     }else require(!config.count("continuity_sha256"),"continuity_requires_capacity");
+    validateSaveIoInput(config,job.inputSha);
     for(const auto& key:{"warmup_ms","sample_ms"}){
       const int ms=std::stoi(config.at(key));
       require(std::to_string(ms)==config[key]&&ms>=1000&&ms<=60000,"invalid_sample_duration");

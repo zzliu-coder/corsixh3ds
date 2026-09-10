@@ -31,8 +31,8 @@ FILE_METHODS = r'''
 #if LUA_VERSION_NUM >= 502
   // CORSIXTH_3DS_SAVE_STREAM_R65: the caller owns this standard Lua file.
   // Its userdata is rooted on the outer dump_file stack until we return.
-  lua_persist_basic_writer(lua_State* state, luaL_Stream* stream, uint8_t* scratch)
-      : L(state), output(stream), buffer(scratch),
+  lua_persist_basic_writer(lua_State* state, luaL_Stream* stream, uint8_t* scratch, size_t capacity)
+      : L(state), output(stream), buffer(scratch), buffer_capacity(capacity),
         file_clock(cth3ds::cpu_work.clock_us), file_started(file_tick()) {}
 
   // CORSIXTH_3DS_SAVE_IO_R74: two clock reads per FILE call, never per graph object.
@@ -107,13 +107,13 @@ FILE_WRITE = r'''
         return;
       }
       while (iCount && !had_error) {
-        const size_t available = 16384 - buffered;
+        const size_t available = buffer_capacity - buffered;
         const size_t count = iCount < available ? iCount : available;
         std::memcpy(buffer + buffered, pBytes, count);
         buffered += count;
         pBytes += count;
         iCount -= count;
-        if (buffered == 16384 && !flush_buffer()) return;
+        if (buffered == buffer_capacity && !flush_buffer()) return;
       }
       return;
     }
@@ -126,11 +126,17 @@ int l_dump_file_toplevel(lua_State* L) {
   luaL_checktype(L, 2, LUA_TTABLE);
   auto* stream = static_cast<luaL_Stream*>(luaL_checkudata(L, 3, LUA_FILEHANDLE));
   luaL_argcheck(L, stream->closef && stream->f, 3, "open file required");
+  // CORSIXTH_3DS_SAVE_BUFFER_R75: explicit per-call experiment; no global state.
+  // Preserve the shipping default until hardware A/B demonstrates a benefit.
+  luaL_argcheck(L, lua_isnoneornil(L, 4) || lua_type(L, 4) == LUA_TNUMBER, 4, "numeric buffer size required");
+  const lua_Integer requested = lua_isnoneornil(L, 4) ? 16384 : luaL_checkinteger(L, 4);
+  luaL_argcheck(L, requested == 16384 || requested == 65536, 4, "16384 or 65536 required");
+  const auto capacity = static_cast<size_t>(requested);
   lua_settop(L, 3);
   lua_pushvalue(L, 1);
-  void* storage = lua_newuserdata(L, sizeof(lua_persist_basic_writer) + 16384);
+  void* storage = lua_newuserdata(L, sizeof(lua_persist_basic_writer) + capacity);
   auto* scratch = static_cast<uint8_t*>(storage) + sizeof(lua_persist_basic_writer);
-  auto* writer = new (storage) lua_persist_basic_writer(L, stream, scratch);
+  auto* writer = new (storage) lua_persist_basic_writer(L, stream, scratch, capacity);
   lua_replace(L, 1); // writer, permanents, strong file owner, root object
   const char* failure = nullptr;
   try {
@@ -155,8 +161,8 @@ int l_dump_file_toplevel(lua_State* L) {
 
 def stream_writer(text):
     if 'CORSIXTH_3DS_SAVE_STREAM_R65' in text:
-        if 'CORSIXTH_3DS_SAVE_IO_R74' not in text:
-            raise ValueError('save writer view predates R74; regenerate from pinned source')
+        if 'CORSIXTH_3DS_SAVE_BUFFER_R75' not in text:
+            raise ValueError('save writer view predates R75; regenerate from pinned source')
         return text
     begin = text.index('class lua_persist_basic_writer :')
     end = text.index('class lua_persist_basic_reader', begin)
@@ -187,6 +193,7 @@ def stream_writer(text):
 #if LUA_VERSION_NUM >= 502
   luaL_Stream* output{nullptr};
   uint8_t* buffer{nullptr}; // trailing userdata bytes, never stack or new[]
+  size_t buffer_capacity{16384};
   size_t buffered{0};
   uint64_t written{0};
   uint64_t flushes{0};

@@ -166,15 +166,15 @@ static int protected_dump(lua_State* L) {
   // All input graph, file and Lua source allocations precede measurement.
   luaL_checkstack(L,256,"probe stack");
   active_file=static_cast<luaL_Stream*>(luaL_checkudata(L,3,LUA_FILEHANDLE));
-  lua_settop(L,3);lua_getglobal(L,"candidate");lua_getfield(L,-1,"dump_file");lua_remove(L,-2);
-  for(int i=1;i<=3;++i)lua_pushvalue(L,i);
+  lua_settop(L,4);lua_getglobal(L,"candidate");lua_getfield(L,-1,"dump_file");lua_remove(L,-2);
+  for(int i=1;i<=4;++i)lua_pushvalue(L,i);
   const auto start=heap.live;heap.peak=start;heap.largest=0;heap.denied=0;heap.limit=128*1024;
   heap.measured=true;tracking_cpp=true;cpp_largest=cpp_total=cpp_peak=0;assert(cpp_live==0);
   lua_gc(L,LUA_GCSTOP,0);
-  const int status=lua_pcall(L,3,LUA_MULTRET,0);
+  const int status=lua_pcall(L,4,LUA_MULTRET,0);
   heap.measured=false;heap.block=false;heap.limit=0;tracking_cpp=false;active_file=nullptr;
   measurement={heap.peak-start,heap.largest,cpp_peak,cpp_largest,cpp_total};
-  lua_pushboolean(L,status==LUA_OK);lua_insert(L,4);return lua_gettop(L)-3;
+  lua_pushboolean(L,status==LUA_OK);lua_insert(L,5);return lua_gettop(L)-4;
 }
 static int stats(lua_State* L) {
   lua_pushinteger(L,static_cast<lua_Integer>(measurement.lua_peak));
@@ -234,12 +234,12 @@ int main(int argc,char** argv) {
     inverse={global=_G,sin=math.sin,native=NativeMeta}
     path=directory..'/stream.tmp'
     function collect()collectgarbage('restart');collectgarbage('collect');collectgarbage('collect')end
-    function disk(graph,unknown_clock)
+    function disk(graph,unknown_clock,capacity)
       local f=assert(io.open(path,'wb'));assert(f:setvbuf('no'))
-      local called,ok,bytes,flushes,dump_us,write_us,write_max_us,flush_us=protected_dump(graph,permanent,f)
+      local called,ok,bytes,flushes,dump_us,write_us,write_max_us,flush_us=protected_dump(graph,permanent,f,capacity)
       assert(called and ok,tostring(ok)..' '..tostring(bytes));assert(f:close())
       local input=assert(io.open(path,'rb'));local data=assert(input:read('*a'));assert(input:close())
-      assert(bytes==#data and flushes==math.ceil(bytes/16384))
+      assert(bytes==#data and flushes==math.ceil(bytes/(capacity or 16384)))
       if unknown_clock then
         assert(dump_us==nil and write_us==nil and write_max_us==nil and flush_us==nil)
       else
@@ -345,6 +345,66 @@ int main(int argc,char** argv) {
     for i=1,30 do assert(#disk({native=native_make(40000)})>40000);collect();assert(next(writers)==nil)end
     assert(select(6,stats())==0)
     print('PASS output memory bound: 16KiB buffer, no payload C++ allocations, no output Lua string, 30 GC cycles')
+    -- Same graph, interleaved capacities: byte format, C++ allocation behavior
+    -- and writer ownership stay identical. Call-local selection cannot leak.
+    local repeated={native=native_make(410000),text='R75 fixed graph'}
+    local expected=assert(reference.dump(repeated,permanent))
+    local memory_by_capacity={}
+    for _,capacity in ipairs{16384,65536,65536,16384,65536,16384}do
+      collect();assert(disk(repeated,false,capacity)==expected)
+      local lp,ll,cp,cl,ct=stats()
+      assert(lp<capacity+49152 and ll<capacity+16384 and cp==0 and cl==0 and ct==0)
+      memory_by_capacity[capacity]=lp
+      print(string.format('MEMORY_AB capacity=%d lua_delta_peak=%d lua_max_request=%d cpp_peak=%d',capacity,lp,ll,cp))
+      for _,reader in ipairs{reference,candidate}do
+        assert(native_length(assert(reader.load(expected,inverse)).native)==410000)
+      end
+    end
+    assert(memory_by_capacity[65536]-memory_by_capacity[16384]==49152)
+    assert(disk(repeated)==expected,'omitted option returns to shipping 16KiB')
+    for _,capacity in ipairs{16384,65536}do
+      for _,cut in ipairs{0,7,16391,65543}do
+        local f=open_device(cut,false,enospc);assert(f:setvbuf('no'))
+        local called,ok,err=protected_dump(repeated,permanent,f,capacity)
+        assert(not called or not ok)
+        assert(tostring(err or ok):find('write',1,true));f:close();collect()
+        assert(select(6,stats())==0)
+      end
+      local f=open_device(1000000,true);assert(f:setvbuf('no'))
+      local called,ok=protected_dump(repeated,permanent,f,capacity)
+      assert(called and ok);assert(not f:close());collect()
+      assert(select(6,stats())==0)
+      f=open_device(0,false,enospc);assert(f:setvbuf('full',65536))
+      local called,ok,err=protected_dump({native=native_make(100)},permanent,f,capacity)
+      assert(not called or not ok);assert(tostring(err or ok):find('flush',1,true))
+      f:close();collect();assert(select(6,stats())==0)
+      for _,mode in ipairs{1,2,3,7}do
+        f=assert(io.open(path,'wb'));assert(f:setvbuf('no'))
+        local called,ok=protected_dump({native=native_make(100,mode)},permanent,f,capacity)
+        assert(not called or not ok);assert(f:close());collect()
+        assert(next(writers)==nil)
+      end
+    end
+    local bounded_peaks={}
+    for _,size in ipairs{262144,1048576,4194304}do
+      collect();local input={native=native_make(size)}
+      local f=assert(io.open(path,'wb'));assert(f:setvbuf('no'))
+      local called,ok,bytes,flushes=protected_dump(input,permanent,f,65536)
+      assert(called and ok and flushes==math.ceil(bytes/65536))
+      local lp,ll,cp,cl,ct=stats()
+      assert(lp<114688 and ll<81920 and cp==0 and cl==0 and ct==0)
+      bounded_peaks[#bounded_peaks+1]=lp
+      assert(f:close());collect();assert(next(writers)==nil)
+    end
+    assert(math.max(table.unpack(bounded_peaks))-math.min(table.unpack(bounded_peaks))<4096)
+    for _,invalid in ipairs{0,-1,1,16385,65537,1.5,'65536',false,{}}do
+      local f=assert(io.open(path,'wb'));assert(f:write('UNTOUCHED'))
+      assert(not pcall(candidate.dump_file,repeated,permanent,f,invalid))
+      assert(f:close());local input=assert(io.open(path,'rb'))
+      assert(input:read('*a')=='UNTOUCHED');assert(input:close())
+    end
+    assert(select(8,stats())<=65536,'experimental sink requests remain bounded')
+    print('PASS capacity A/B: identical fixed graph bytes and old-reader reload; 16/64KiB call-local, +49152B peak, short-write/close faults')
   )");
   run(L,"collect();package.loaded.persist=candidate");
   for(int i=3;i<argc;++i){

@@ -134,7 +134,24 @@ function Operations:start(method, filename, preload)
   return result,begun and token or nil,ok,err
 end
 
-function Operations:save(instance, filename, preload)
+function Operations:save(instance, filename, preload, buffer_bytes)
+  if buffer_bytes~=nil then
+    -- R75: optional writer capacity belongs only to this verified private run.
+    -- Reject before start(), notifications, preparation or any filesystem IO.
+    local native=self.platform.native
+    assert(buffer_bytes==16384 or buffer_bytes==65536,"invalid private save capacity")
+    local run=native.runner_context and native.runner_context()
+    assert(not preload and native.benchmark_active and native.benchmark_active()==true
+      and type(run)=="table" and run.capacity=="r75-v1","save capacity requires R75 runner")
+    local root=run.root
+    assert(type(root)=="string" and #root<200 and
+      root:match("^sdmc:/3ds/ftpd%-runner/runs/[%w_-]+/$"),"invalid private runner root")
+    assert(instance==self.platform.app and instance.savegame_dir==root.."save/",
+      "private save owner mismatch")
+    local allowed=false
+    for i=1,4 do if filename==root.."save/r75-io-"..i..".sav" then allowed=true end end
+    assert(allowed,"save capacity requires fixed private filename")
+  end
   local result,token,boundary,boundary_error=self:start("save",filename,preload)
   local platform,native=self.platform,self.platform.native
   local critical,transaction=false,false
@@ -150,7 +167,7 @@ function Operations:save(instance, filename, preload)
     local gfx=instance.gfx
     if gfx and type(gfx.trimRawWarm)=="function" then gfx:trimRawWarm() end
     if native.prepare_save then native.prepare_save() end
-    assert(self.writer(instance,filename..".tmp")==true,"save writer did not confirm success")
+    assert(self.writer(instance,filename..".tmp",buffer_bytes)==true,"save writer did not confirm success")
     local committed,detail=native.atomic_commit(filename..".tmp",filename,true)
     if committed~=true then result.rejected=true;error("save commit: "..describe(detail),0) end
     result.committed=true;result.completed=true

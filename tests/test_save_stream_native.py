@@ -12,14 +12,25 @@ from test_save_memory import native_inputs
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_stream_probe(directory):
+def build_stream_probe(directory, *, native_only=False):
     """Build actual readers/writer once; optional argv[3:] are extra Lua cases.
 
     Returns (binary, closure_file, generated_upstream). Additional scripts see
     reference/candidate modules and package.loaded.persist == candidate.
     """
     compiler, flags, links = native_inputs()
-    generated = generated_sources(directory)
+    if native_only:
+        # Exercise only this writer transform against hash-verified pinned
+        # files. Avoid whole-repository snapshots during independent work.
+        from integration.save_memory import transforms
+        generated = original_sources(directory/'native-candidate')
+        first = dict(transforms(generated))
+        for name, source in first.items():
+            (generated/name).write_text(source)
+        if dict(transforms(generated)) != first:
+            raise RuntimeError('native save transform is not idempotent')
+    else:
+        generated = generated_sources(directory)
     reference = original_sources(directory/'reference')
     src = generated/'CorsixTH/Src'
     (src/'config.h').write_text('#pragma once\n')
@@ -51,7 +62,7 @@ class SaveStreamNativeTests(unittest.TestCase):
     def test_actual_file_writer_formats_failures_and_peak(self):
         with tempfile.TemporaryDirectory(prefix='cth-save-stream-') as name:
             directory = Path(name)
-            binary, closure, generated = build_stream_probe(directory)
+            binary, closure, generated = build_stream_probe(directory, native_only=True)
             result = subprocess.run([str(binary), str(closure), str(directory)],
                 capture_output=True, text=True, timeout=90,
                 env=dict(os.environ, ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',
@@ -60,7 +71,7 @@ class SaveStreamNativeTests(unittest.TestCase):
             for marker in ('PASS format cross-read', 'PASS native block boundaries',
                            'PASS clock contract',
                            'PASS real FILE failures', 'PASS output memory bound',
-                           'PASS failed writer GC and retry'):
+                           'PASS failed writer GC and retry', 'PASS capacity A/B'):
                 self.assertIn(marker, result.stdout)
             print(result.stdout, end='')
 

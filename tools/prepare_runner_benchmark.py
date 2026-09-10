@@ -13,7 +13,7 @@ CAPACITY_ASSETS={
     'FULL12.SAM':'38beafde190313e57034bc8295a07660921c4d7c67568850a57a3f6c4cc27f0b'}
 
 def capacity_fields(args,base):
-    if not (getattr(args,'capacity',False) or getattr(args,'busy_capacity',False)): return {}
+    if not (getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) or getattr(args,'save_io_capacity',False)): return {}
     if args.profile!='expanded-zh-on' or args.recovery or not 0<args.stress_ms<=180000:
         raise ValueError('capacity requires expanded-zh-on, stress 1..180000, and no recovery')
     def bound(relative,expected):
@@ -24,7 +24,7 @@ def capacity_fields(args,base):
         if sha(path)!=expected: raise ValueError('capacity dependency identity mismatch: '+relative)
     bound('Benchmark/continuity.sav',CONTINUITY_SHA)
     bound('Benchmark/expanded.sav','f8a8039644a81a22b44fd1dfed6201c70782ae6bf4873bdb50b3ba7b2c63a0e7')
-    fields={'capacity':'r74-v1' if getattr(args,'busy_capacity',False) else 'r73-v1',
+    fields={'capacity':'r75-v1' if getattr(args,'save_io_capacity',False) else 'r74-v1' if getattr(args,'busy_capacity',False) else 'r73-v1',
             'continuity_sha256':CONTINUITY_SHA}
     for i,(name,digest) in enumerate(CAPACITY_ASSETS.items(),1):
         relative='game/LEVELS/'+name
@@ -38,10 +38,36 @@ def sha(path):
         for block in iter(lambda:stream.read(65536),b''):digest.update(block)
     return digest.hexdigest()
 
+def compare_save_io_readback(save_directory):
+    """Read-only byte-equivalence receipt for this run's four private outputs.
+
+    No semantic normalization or selective sample exclusion. Unequal bytes
+    leave the fixed-byte timing comparison unproven even when reload succeeds.
+    """
+    rows=[]
+    for i,capacity in enumerate((16384,65536,65536,16384),1):
+        path=Path(save_directory)/f'r75-io-{i}.sav'
+        if path.is_symlink() or not path.is_file():
+            return {'outcome':'NOT_PROVEN','reason':'missing_or_nonregular_sample','sample':i,'rows':rows}
+        rows.append({'sample':i,'capacity':capacity,'bytes':path.stat().st_size,'sha256':sha(path)})
+    equal=rows[0]['bytes']>0 and len({(r['bytes'],r['sha256'])for r in rows})==1
+    return {'outcome':'PASS' if equal else 'NOT_PROVEN',
+            'reason':'identical_bytes' if equal else 'sample_bytes_differ',
+            'scope':'readback byte equivalence only; speed and device health are separate', 'rows':rows}
+
 def prepare(args):
     base=args.installed_tree.resolve()
     interactive=getattr(args,'interactive',False)
     interactive_input=getattr(args,'interactive_input',None)
+    save_io=getattr(args,'save_io_capacity',False)
+    capacity_input=getattr(args,'capacity_input',None)
+    if save_io:
+        if interactive or capacity_input is None or getattr(args,'capacity',False) or getattr(args,'busy_capacity',False):
+            raise ValueError('save IO capacity requires explicit input and no other capacity/interactive switch')
+        if not capacity_input.is_file() or capacity_input.is_symlink():
+            raise ValueError('capacity input must be a regular non-symlink save')
+    elif capacity_input is not None:
+        raise ValueError('capacity input requires save IO capacity')
     if interactive:
         if (args.profile!='zh-on' or args.stress_ms!=0 or args.recovery or
             getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) or
@@ -76,12 +102,13 @@ def prepare(args):
     if args.recovery:
         fields['recovery_sha256']=sha(base/'Benchmark/r62-recovery.sav')
     fields.update(capacity_fields(args,base))
+    if save_io: fields['save_io_input_sha256']=sha(capacity_input)
     if interactive: fields['interactive']='r74-v1'
     args.out.mkdir(parents=True,exist_ok=False)
     config=args.out/'config.bin'
     config.write_text(''.join(k+'='+v+'\n' for k,v in sorted(fields.items())))
     # Input remains a verified healthy save; copies are owned by runner.prepare.
-    input_path=interactive_input.resolve() if interactive else base/'Benchmark/input.sav'
+    input_path=capacity_input.resolve() if save_io else interactive_input.resolve() if interactive else base/'Benchmark/input.sav'
     receipt_path=args.out/'preparation.json'
     receipt_path.write_text(json.dumps({'config':str(config.resolve()),'config_sha256':sha(config),
         'input':str(input_path),'input_sha256':sha(input_path),'assets_full_reverified':False,
@@ -90,8 +117,9 @@ def prepare(args):
             '--artifact','CANDIDATE.3dsx','--config',str(config.resolve()),'--input',str(input_path),
             '--launcher-sha','VERIFIED_LAUNCHER_SHA256','--out',str(args.out.resolve()/'runs'),
             '--timeout',str(1800 if interactive else 300+(args.warmup_ms+args.sample_ms)*(4 if args.profile=='matrix' else 1)//1000+args.stress_ms//1000
-                +(545 if getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) else 0)
-                +(300 if getattr(args,'busy_capacity',False) else 0))
+                +(545 if getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) or save_io else 0)
+                +(300 if getattr(args,'busy_capacity',False) or save_io else 0)
+                +(150 if save_io else 0))
         ]},indent=2)+'\n')
     return receipt_path
 
@@ -107,6 +135,8 @@ def main():
     parser.add_argument('--recovery',action='store_true')
     parser.add_argument('--capacity',action='store_true',help='R73 bounded continuity and normal level 12 loading; requires expanded profile and stress 1..180000')
     parser.add_argument('--busy-capacity',action='store_true',help='R74 capacity: real hiring to 43 staff, two normal work windows and private save UI/reload, then R73 level/return checks')
+    parser.add_argument('--save-io-capacity',action='store_true',help='R75: private busy input, 30s work, atomic save 16/64/64/16 then R74 capacity; explicit opt-in')
+    parser.add_argument('--capacity-input',type=Path,help='Explicit save bound to runner input.bin; only with --save-io-capacity')
     parser.add_argument('--interactive',action='store_true',help='Prepare private ordinary play; result requires human confirmation, never PASS. Does not submit.')
     parser.add_argument('--interactive-input',type=Path,help='Explicit healthy save copied by runner into private save/Acceptance.sav')
     parser.add_argument('--out',type=Path,required=True)

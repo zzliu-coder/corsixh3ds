@@ -1999,7 +1999,7 @@ class Runtime {
       return nullptr;
     }
     const std::string text = has_error ? state.notice : paused ?
-      (state.user_actions_allowed ? "pause-build" : "pause") : show_notice ? state.notice : "R74 " + state.build_tag;
+      (state.user_actions_allowed ? "pause-build" : "pause") : show_notice ? state.notice : "R75 " + state.build_tag;
     if (text.empty()) {
       return nullptr;
     }
@@ -2120,7 +2120,7 @@ class Runtime {
       (void)SDL_UpdateWindowSurface(bottom_window_);
       return;
     }
-    draw_boot_line(8, std::string("CORSIXTH R74 ") + kOverlayVersion,
+    draw_boot_line(8, std::string("CORSIXTH R75 ") + kOverlayVersion,
                    Rgba{239, 242, 244, 255},
                    error ? Rgba{176, 46, 40, 255} : Rgba{37, 49, 61, 255});
     draw_boot_line(56, startup_code_,
@@ -3075,7 +3075,7 @@ void register_lua_module(lua_State* state) {
   g_adapter_crc = crc32(kEmbeddedPlatformLua, std::strlen(kEmbeddedPlatformLua));
   boot_log("CorsixTH 3DS overlay %s, embedded adapter crc %08lx",
            kOverlayVersion, static_cast<unsigned long>(g_adapter_crc));
-  boot_log("diagnostics: revision=R74 boundary_schema=1 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene save_io_timing=bounded_native_us capacity_busy=r74-v1");
+  boot_log("diagnostics: revision=R75 boundary_schema=1 max_log_bytes=2097152 retained_runs=3 summary_seconds=10 gpu_queue_timing=completed_jobs display_scanout_not_measured=1 gpu_utilization=unknown cpu_utilization=unknown lua_is_heap_subset=1 slow_event_capacity=32 slow_threshold_us=50000 observation_reset=in_place ordinary_observation_us=250000 entity_sample_period=16 staff_parts_sample_period=16 text_cache_limit=2097152 text_cache_ways=2 music=file_wav save_index_buckets=256 save_output=stream16k varint_scratch=stack lua_allocator_watch=1 recovery_reception=bound_callback raw=indexed128 warm_source_bytes=1572864 warm_max_entries=8 warm_trim=save_and_pressure atlas=skyline_lru benchmark_cpu=contained_scopes benchmark_health=humanoids_timer_errors benchmark_boundary=native_us clock_sample=same_window gpu_submit_stride=64 recovery_activity=two_natural_windows thermal_cooling=exact_uint16 sound_read_observation=known_paced warmup_comparability=recorded_work_scene save_io_timing=bounded_native_us capacity_busy=r74-v1 save_io_ab=r75-v1 staff_handoff=room_acceptance");
   boot_log("performance-policy: sparse_entity_index=1 litter_visitor=1 sound_pressure=skip_then_main_thread_gc gc_cooldown_us=2000000 strict_benchmark=1 save_phases=1 screen_layout=unchanged");
   boot_log("allocator: explicit linear heap = %lu bytes",
            static_cast<unsigned long>(__ctru_linear_heap_size));

@@ -55,10 +55,14 @@ function Benchmark.new(app,native)
     self.stress_duration=tonumber(run.stress_ms)
     self.warmup_ms=tonumber(run.warmup_ms);self.sample_ms=tonumber(run.sample_ms)
     if run.capacity then
-      assert((run.capacity=="r73-v1" or run.capacity=="r74-v1") and run.profile=="expanded-zh-on" and
+      assert((run.capacity=="r73-v1" or run.capacity=="r74-v1" or run.capacity=="r75-v1") and run.profile=="expanded-zh-on" and
         self.stress_duration>0 and self.stress_duration<=180000 and not run.recovery_sha256,
         "invalid capacity configuration")
       self.capacity_requested=true
+      if run.capacity=="r75-v1" then
+        assert(type(run.save_io_input_sha256)=="string" and #run.save_io_input_sha256==64
+          and not run.save_io_input_sha256:find("[^0-9a-f]"),"invalid save IO input identity")
+      end
     end
   end
   return self
@@ -632,6 +636,10 @@ function Benchmark:tick()
     if self.phase=="capacity" then
       local needs=type(err)=="string" and err:match(NEEDS_INPUT.."$")~=nil
       self.results.capacity_failure_outcome=needs and "NOT_PROVEN" or "FAIL"
+      if self.capacity.save_io then
+        self.capacity.save_io.failed=not needs
+        self.results.save_io_outcome=needs and "NOT_PROVEN" or "FAIL"
+      end
       if Activity.active then observe(self.capacity.report,self.capacity,true) end
     end
     if self.phase=="recovery" then

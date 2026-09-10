@@ -29,6 +29,7 @@ class SaveStreamLuaTests(unittest.TestCase):
 local IS_3DS=true
 local persist={}
 local failure,prepared,cleaned,closed,dumped,commits='',0,0,0,0,0
+local selected_capacity=nil
 local real_open,real_print=io.open,print
 local messages={}
 print=function(message)messages[#messages+1]=tostring(message)end
@@ -75,7 +76,8 @@ persist.dump=function(state,permanent)
  assert(state.map==map and state.output_file==nil and permanent.sentinel)
  return payload
 end
-persist.dump_file=function(state,permanent,f)
+persist.dump_file=function(state,permanent,f,capacity)
+ assert(capacity==(selected_capacity or 16384))
  dumped=dumped+1
  assert(state.map==map and state.output_file==nil and permanent.sentinel)
  assert(live=='PREPARED' and f.unbuffered)
@@ -112,12 +114,12 @@ io.open=function(path,mode)
 end
 '''
         suffix = r'''
-TheApp.save=function(_,path)return SaveGameFile(path)end
+TheApp.save=function(_,path)return SaveGameFile(path,selected_capacity)end
 TheApp.load=function()return true end
 local platform=dofile(PLATFORM_PATH)
 local function attach()
  TheApp._3ds=nil
- TheApp.save=function(_,path)return SaveGameFile(path)end
+ TheApp.save=function(_,path)return SaveGameFile(path,selected_capacity)end
  TheApp.load=function()return true end
  platform.attach(TheApp,native,{epoch=1,asset_mode='loose',resource_events=false})
 end
@@ -126,6 +128,8 @@ local diagnostic_stages={['prepare-before']=true,['prepare-after']=true,
  ['writer-before']=true,['writer-after']=true,['dump-after']=true,
  ['afterSave-before']=true,['afterSave-after']=true,['close-before']=true,['close-after']=true}
 local successful_reports=0
+for _,capacity in ipairs{16384,65536}do
+selected_capacity=capacity
 for _,stage in ipairs{'open','setvbuf','setvbuf_throw','prepare-before','prepare','prepare-after',
  'permanent','writer-before','serialize','serialize_result','write','writer-after',
  'dump-after','afterSave-before','afterSave','afterSave-after','close-before',
@@ -158,6 +162,14 @@ for _,stage in ipairs{'open','setvbuf','setvbuf_throw','prepare-before','prepare
  assert(read(final)==payload and read(final..'.bak')=='OLD')
  assert(prepared==1 and cleaned==1 and closed==1 and live=='LIVE')
 end
+end
+-- Rejected options never open/truncate the target, prepare the map or commit.
+for _,invalid in ipairs{0,-1,65537,1.5,'65536',false,{}}do
+ prepared=0;cleaned=0;closed=0;dumped=0;commits=0
+ assert(not pcall(SaveGameFile,final,invalid))
+ assert(prepared==0 and cleaned==0 and closed==0 and dumped==0 and commits==0)
+end
+selected_capacity=nil
 -- The original string API still performs exactly one paired transaction.
 prepared=0;cleaned=0
 assert(SaveGame()==payload and prepared==1 and cleaned==1)
@@ -165,7 +177,8 @@ local stream_reports=0
 for _,message in ipairs(messages)do
  if message:find('save-stream:',1,true) then
   stream_reports=stream_reports+1
-  assert(message:find('mode=stream16k bytes=16 flush_count=1',1,true))
+  assert(message:find('mode=stream16k bytes=16 flush_count=1',1,true) or
+    message:find('mode=stream64k bytes=16 flush_count=1',1,true))
   assert(message:find('writer_includes_io=1',1,true) and message:find('commit_included=0',1,true))
  end
 end

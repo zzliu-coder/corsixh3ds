@@ -18,12 +18,13 @@ class OperationsTests(unittest.TestCase):
         import hashlib
         import sys
         from support.pinned_upstream import generated_sources
-        markers={
-            'CorsixTH/Lua/app.lua':'CORSIXTH_3DS_LOAD_CALLER_R68',
-            'CorsixTH/Lua/persistance.lua':'CORSIXTH_3DS_LOAD_OWNER_R68',
-            'CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua':'CORSIXTH_3DS_SAVE_UI_R68',
-            'CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua':'CORSIXTH_3DS_LOAD_UI_R68',
-        }
+        markers=[
+            ('CorsixTH/Lua/app.lua','CORSIXTH_3DS_LOAD_CALLER_R68'),
+            ('CorsixTH/Lua/persistance.lua','CORSIXTH_3DS_LOAD_OWNER_R68'),
+            ('CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua','CORSIXTH_3DS_SAVE_UI_R68'),
+            ('CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua','CORSIXTH_3DS_LOAD_UI_R68'),
+            ('CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua','CORSIXTH_3DS_SAVE_OWNER_R74'),
+        ]
         def snapshot(tree):
             return {str(path.relative_to(tree)):
                     ('link:'+os.readlink(path) if path.is_symlink() else
@@ -37,7 +38,7 @@ class OperationsTests(unittest.TestCase):
             adapter.write_bytes(original_adapter+b'\n-- private preflight drift sentinel\n')
             command=[sys.executable,'-B',str(overlay/'tools/integrate_corsixth.py'),
                      str(tree),'--overlay-root',str(overlay),'--json']
-            for relative,marker in markers.items():
+            for relative,marker in markers:
                 path=tree/relative;original=path.read_bytes()
                 self.assertIn(marker.encode(),original)
                 path.write_bytes(original.replace(marker.encode(),b'MISSING_R68_MARKER',1))
@@ -46,7 +47,8 @@ class OperationsTests(unittest.TestCase):
                         before_tree,before_overlay=snapshot(tree),snapshot(overlay)
                         result=subprocess.run(command+list(mode),capture_output=True,text=True,timeout=60)
                         self.assertEqual(result.returncode,2,result.stdout+result.stderr)
-                        self.assertIn('R68 requires fresh pinned assembly',result.stdout)
+                        revision='R74' if marker.endswith('R74') else 'R68'
+                        self.assertIn(revision+' requires fresh pinned assembly',result.stdout)
                         self.assertIn(marker,result.stdout)
                         self.assertEqual(snapshot(tree),before_tree,'CLI changed upstream contents or paths')
                         self.assertEqual(snapshot(overlay),before_overlay,'CLI changed overlay contents or paths')
@@ -209,16 +211,17 @@ assert(not pcall(p.benchmarkTick,p))
             start=source.index('function native.atomic_commit(')
             end=source.index('\nend',start)+4
             source=source[:start]+'function native.atomic_commit(a,b)return host_atomic_commit(a,b)end'+source[end:]
-            ui=(generated/'CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua').read_text()
-            ui='UISaveGame={}\n'+re.search(r'(?ms)^function UISaveGame:doSave\(.*?^end',ui).group()
-            load_ui=(generated/'CorsixTH/Lua/dialogs/resizables/file_browsers/load_game.lua').read_text()
-            ui+='\nUILoadGame={}\n'+re.search(r'(?ms)^function UILoadGame:choiceMade\(.*?^end',load_ui).group()
+            from support.save_ui import loader_source
+            ui=loader_source(generated)+'\nUISaveGame=saveUi.save\nUILoadGame=saveUi.load\n'
             app_source=(generated/'CorsixTH/Lua/app.lua').read_text()
             commandline=re.search(r'(?ms)^      local previous=self\._3ds.*?^    end',app_source).group().rsplit('\n',1)[0]
-            ui+='\nfunction R68CommandlineLoad(self)\n'+commandline+'\nend\n'
+            bootstrap=re.search(r'(?ms)^local th3ds_ok, TH3DS =.*?^if not IS_3DS then TH3DS=nil end',app_source).group()
+            # The command-line fragment retains its actual App lexical binding.
+            # It cannot create a global platform flag for the full UI modules.
+            ui+='\ndo\n'+bootstrap+'\nfunction R68CommandlineLoad(self)\n'+commandline+'\nend\nend\n'
             # Existing real reader/short-write/close/30-cycle cases remain.
             extra=(ROOT/'tests/runtime_support/save_stream_glue_cases.lua').read_text()
-            extra+='\nIS_3DS=true\n'+ui+'\n'+(ROOT/'tests/runtime_support/r68_operation_cases.lua').read_text()
+            extra+='\n'+ui+'\n'+(ROOT/'tests/runtime_support/r68_operation_cases.lua').read_text()
             script=directory/'operations.lua'
             script.write_text(source.replace('assert(prepared == cleaned)',extra+'\nassert(prepared == cleaned)'))
             result=subprocess.run([str(binary),str(closure),str(directory),str(script)],
@@ -227,7 +230,9 @@ assert(not pcall(p.benchmarkTick,p))
                 CTH3DS_PERSIST_SOURCE=str(generated/'CorsixTH/Lua/persistance.lua'),
                 CTH3DS_PLATFORM_SOURCE=str(generated/'CorsixTH/Lua/3ds/platform.lua')))
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-            self.assertIn('native_persistence_cases=27 ',result.stdout)
+            self.assertIn('native_persistence_cases=28 ',result.stdout)
+            for entry in ('named','selected','slot1','slot2','slot3','overwrite'):
+                self.assertIn('PASS R74 strict-native save entry='+entry+' committed reloaded continuity',result.stdout)
             self.assertEqual((generated/'CorsixTH/Lua/3ds/operations.lua').read_bytes(),
                              (ROOT/'lua/3ds/operations.lua').read_bytes())
             for line in result.stdout.splitlines():

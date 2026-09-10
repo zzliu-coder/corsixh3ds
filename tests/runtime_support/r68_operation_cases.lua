@@ -1,4 +1,37 @@
 -- Inserted into the real serializer / FILE / atomic-commit fixture.
+scenario("r74-full-strict-six-save-entries-native-commit-and-reload",function()
+  local pending
+  R74AddWindow=function(_,window)pending=window end
+  saveUi.services.attributes=function(path)if exists(path)then return #read(path)end end
+  for _,entry in ipairs({'named','selected','slot1','slot2','slot3','overwrite'})do
+    local app=fresh();app.ui.app=app;app.ui.addWindow=R74AddWindow
+    local window,panels=saveUi.create(app.ui)
+    local destination=directory..'/R74-'..entry..'.sav'
+    if entry:find('slot',1,true)then destination=directory..'/Slot'..entry:sub(-1)..'.sav'end
+    os.remove(destination);os.remove(destination..'.bak')
+    if entry=='overwrite' then assert(app:save(destination));app.world.money=901 end
+    local previous=app._3ds.operations.last;pending=nil
+    if entry=='named' then
+      window.new_savegame_textbox:setText('R74-named');window:confirmName()
+    elseif entry:find('slot',1,true)then panels[tonumber(entry:sub(-1))+1].callback()
+    else window:choiceMade(destination)end
+    if entry=='overwrite' then
+      assert(pending and not window.closed and app._3ds.operations.last==previous)
+      pending:cancel();assert(not window.closed and app._3ds.operations.last==previous)
+      window:choiceMade(destination);pending:ok()
+    end
+    local result=app._3ds.operations.last
+    assert(window.closed and result~=previous and result.committed and result.completed and result.ready)
+    assert(exists(destination))
+    local expected=app.world.money;app.world.money=-1
+    assert(app:load(destination) and app.world.money==expected)
+    assert(app.map==app.world.map and app.world.last_cured==app.world.patients[1])
+    assert(rawget(saveUi.environment,'IS_3DS')==nil)
+    print('PASS R74 strict-native save entry='..entry..' committed reloaded continuity')
+  end
+  saveUi.services.attributes=nil
+end)
+
 scenario("r68-generated-stream-diagnostics-own-current-record",function()
   -- The actual pinned helper collects twice, pauses within callback and always restarts.
   local weak=setmetatable({},{__mode="k"});local finalized=0
@@ -229,7 +262,9 @@ scenario("r68-real-load-ui-and-commandline-no-second-menu",function()
       if consumer=="ui" then return UILoadGame.choiceMade({ui=app.ui},target)end
       return R68CommandlineLoad(app)
     end
-    assert(pcall(invoke) and windows==1 and menus==0 and app._3ds.operations.last.reported)
+    local invoked,problem=pcall(invoke)
+    assert(invoked and windows==1 and menus==0 and app._3ds.operations.last.reported,
+      consumer..': '..tostring(problem)..' windows='..windows..' menus='..menus)
     -- A later implementation throwing the same object cannot borrow old reported=true.
     app.load=function()error(token,0)end
     assert(pcall(invoke) and windows==2 and menus==0)

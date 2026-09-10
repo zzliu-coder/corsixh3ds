@@ -117,16 +117,19 @@ static int native_length(lua_State* L) {
 
 // A genuine stdio FILE with an injectable backing-device boundary. Product
 // fwrite/fflush code is compiled unchanged; only this host device can fail.
-struct Device {FILE* backing;std::size_t accepted{},cut{},largest{};unsigned calls{};bool fail_close{};};
+struct Device {FILE* backing;std::size_t accepted{},cut{},largest{};unsigned calls{};bool fail_close{};int failure_errno{ENOSPC};};
 static unsigned device_open,device_closed;
 static std::size_t device_max_request;
 static int device_write(void* context,const char* data,int count) {
   auto* device=static_cast<Device*>(context);++device->calls;
   device->largest=std::max(device->largest,static_cast<std::size_t>(count));
   device_max_request=std::max(device_max_request,static_cast<std::size_t>(count));
-  if(device->accepted>=device->cut){errno=ENOSPC;return -1;}
+  if(device->accepted>=device->cut){errno=device->failure_errno;return -1;}
   const auto accepted=std::min<std::size_t>(count,device->cut-device->accepted);
   const auto written=std::fwrite(data,1,accepted,device->backing);device->accepted+=written;
+  // FILE implementations may stop at this first positive short write. The
+  // injected device owns its errno contract; no later callback is required.
+  if(written<static_cast<std::size_t>(count))errno=device->failure_errno;
   return static_cast<int>(written);
 }
 static int device_close(void* context) {
@@ -144,9 +147,10 @@ static int stream_close(lua_State* L) {
 static int open_device(lua_State* L) {
   const auto cut=static_cast<std::size_t>(luaL_checkinteger(L,1));
   const bool fail_close=lua_toboolean(L,2)!=0;
+  const int failure_errno=static_cast<int>(luaL_optinteger(L,3,ENOSPC));
   auto* stream=static_cast<luaL_Stream*>(lua_newuserdata(L,sizeof(luaL_Stream)));
   stream->f=nullptr;stream->closef=nullptr;luaL_setmetatable(L,LUA_FILEHANDLE);
-  auto* device=new Device{std::tmpfile(),0,cut,0,0,fail_close};assert(device->backing);
+  auto* device=new Device{std::tmpfile(),0,cut,0,0,fail_close,failure_errno};assert(device->backing);
 #if defined(__APPLE__)
   stream->f=funopen(device,nullptr,device_write,nullptr,device_close);
 #else
@@ -264,13 +268,18 @@ int main(int argc,char** argv) {
     -- Device faults exercise unchanged native fwrite and fflush through FILE.
     local cases={{0,'no','write'},{3,'no','write'},{16384+7,'no','write'},
                  {40000,'no','write'},{0,'full','flush'}}
-    for _,case in ipairs(cases)do
-      local f=open_device(case[1]);assert(f:setvbuf(case[2],65536))
+    for _,failure_errno in ipairs({0,enospc})do
+     for _,case in ipairs(cases)do
+      local f=open_device(case[1],false,failure_errno);assert(f:setvbuf(case[2],65536))
       local called,ok,err=protected_dump({native=native_make(case[2]=='full' and 100 or 45000)},permanent,f)
       assert(not called or not ok)
       assert(tostring(err or ok):find(case[3],1,true),tostring(err or ok))
-      assert(tostring(err or ok):find('errno='..enospc,1,true))
+      if failure_errno~=0 then
+        assert(tostring(err or ok):find('errno='..failure_errno,1,true),tostring(err or ok))
+      end
       f:close();collect();assert(select(6,stats())==0)
+     end
+     print('PASS FILE fault contract: supplied_errno='..failure_errno..' rejected_short_zero_flush=5')
     end
     local f=open_device(1000000,true);assert(f:setvbuf('no'))
     local called,ok=protected_dump({native=native_make(33000)},permanent,f);assert(called and ok)

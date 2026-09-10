@@ -41,6 +41,11 @@ def validate_product_upgrade(root: Path) -> None:
             previous=read_text(path)
             if 'CORSIXTH_3DS_PRODUCT_U1' in previous and required not in previous:
                 raise IntegrationError('R68 requires fresh pinned assembly: '+relative+' missing '+required)
+    save_path=root/'CorsixTH/Lua/dialogs/resizables/file_browsers/save_game.lua'
+    if save_path.exists():
+        previous=read_text(save_path)
+        if 'CORSIXTH_3DS_PRODUCT_U1' in previous and 'CORSIXTH_3DS_SAVE_OWNER_R74' not in previous:
+            raise IntegrationError('R74 requires fresh pinned assembly: save UI missing CORSIXTH_3DS_SAVE_OWNER_R74')
 
 
 def patch_product_sources(root: Path, dry_run: bool) -> list[Change]:
@@ -657,12 +662,14 @@ end'''),
         ('''  local status, err = pcall(app.save, app, filename)
   if not status then''',
          '''  -- CORSIXTH_3DS_SAVE_UI_R68
-  local previous = IS_3DS and app._3ds and app._3ds.operations.last
+  -- CORSIXTH_3DS_SAVE_OWNER_R74: the current App owns this operation.
+  local operations = app._3ds and app._3ds.operations
+  local previous = operations and operations.last
   local status, err = pcall(app.save, app, filename)
-  if not status and IS_3DS and app._3ds then
+  if not status and operations then
     -- R68: the operation owns the original error and committed-file fact.
     -- Suppress duplicates only when this request actually displayed a notice.
-    local result = app._3ds.operations.last
+    local result = operations.last
     if result ~= previous and result and result.reported then return end
     local message = type(err)=="string" and err or ("non-string Lua error ("..type(err)..")")
     message = (message:match("^[^\\n]+") or message):sub(1,150)

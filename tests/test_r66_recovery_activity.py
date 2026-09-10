@@ -110,6 +110,9 @@ print('PASS actual native private file roundtrip, both readers, cohort compactio
                                     env=dict(os.environ, ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',
                                              UBSAN_OPTIONS='halt_on_error=1'))
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            marker='PASS actual native private file roundtrip, both readers, cohort compaction/rebind and graph isolation'
+            self.assertIn(marker,result.stdout)
+            print(marker)
 
     def test_all_seventeen_original_staff_require_their_own_work(self):
         test_lua_runtime.LuaRuntimeTests().run_lua(script() + r'''

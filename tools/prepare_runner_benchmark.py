@@ -40,6 +40,17 @@ def sha(path):
 
 def prepare(args):
     base=args.installed_tree.resolve()
+    interactive=getattr(args,'interactive',False)
+    interactive_input=getattr(args,'interactive_input',None)
+    if interactive:
+        if (args.profile!='zh-on' or args.stress_ms!=0 or args.recovery or
+            getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) or
+            interactive_input is None):
+            raise ValueError('interactive requires zh-on, explicit healthy input, zero stress and no capacity/recovery')
+        if not interactive_input.is_file() or interactive_input.is_symlink():
+            raise ValueError('interactive input must be a regular non-symlink save')
+    elif interactive_input is not None:
+        raise ValueError('interactive input requires interactive mode')
     rows=[]
     for path in sorted((base/'Lua').rglob('*.lua')):
         if path.is_symlink(): raise ValueError('Lua symlink forbidden')
@@ -65,11 +76,12 @@ def prepare(args):
     if args.recovery:
         fields['recovery_sha256']=sha(base/'Benchmark/r62-recovery.sav')
     fields.update(capacity_fields(args,base))
+    if interactive: fields['interactive']='r74-v1'
     args.out.mkdir(parents=True,exist_ok=False)
     config=args.out/'config.bin'
     config.write_text(''.join(k+'='+v+'\n' for k,v in sorted(fields.items())))
     # Input remains a verified healthy save; copies are owned by runner.prepare.
-    input_path=base/'Benchmark/input.sav'
+    input_path=interactive_input.resolve() if interactive else base/'Benchmark/input.sav'
     receipt_path=args.out/'preparation.json'
     receipt_path.write_text(json.dumps({'config':str(config.resolve()),'config_sha256':sha(config),
         'input':str(input_path),'input_sha256':sha(input_path),'assets_full_reverified':False,
@@ -77,7 +89,7 @@ def prepare(args):
             'python3','PATH/TO/old3ds-runner/host/runner.py','--host','DEVICE_IP','run',
             '--artifact','CANDIDATE.3dsx','--config',str(config.resolve()),'--input',str(input_path),
             '--launcher-sha','VERIFIED_LAUNCHER_SHA256','--out',str(args.out.resolve()/'runs'),
-            '--timeout',str(300+(args.warmup_ms+args.sample_ms)*(4 if args.profile=='matrix' else 1)//1000+args.stress_ms//1000
+            '--timeout',str(1800 if interactive else 300+(args.warmup_ms+args.sample_ms)*(4 if args.profile=='matrix' else 1)//1000+args.stress_ms//1000
                 +(545 if getattr(args,'capacity',False) or getattr(args,'busy_capacity',False) else 0)
                 +(300 if getattr(args,'busy_capacity',False) else 0))
         ]},indent=2)+'\n')
@@ -95,6 +107,8 @@ def main():
     parser.add_argument('--recovery',action='store_true')
     parser.add_argument('--capacity',action='store_true',help='R73 bounded continuity and normal level 12 loading; requires expanded profile and stress 1..180000')
     parser.add_argument('--busy-capacity',action='store_true',help='R74 capacity: real hiring to 43 staff, two normal work windows and private save UI/reload, then R73 level/return checks')
+    parser.add_argument('--interactive',action='store_true',help='Prepare private ordinary play; result requires human confirmation, never PASS. Does not submit.')
+    parser.add_argument('--interactive-input',type=Path,help='Explicit healthy save copied by runner into private save/Acceptance.sav')
     parser.add_argument('--out',type=Path,required=True)
     print(prepare(parser.parse_args()))
 

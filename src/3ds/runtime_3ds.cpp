@@ -2520,7 +2520,7 @@ int l_window_identity(lua_State* state) {
 int l_benchmark_state(lua_State* state){g_benchmark_active=lua_toboolean(state,1)!=0;return 0;}
 int l_benchmark_active(lua_State* state){lua_pushboolean(state,g_benchmark_active);return 1;}
 int l_benchmark_enabled(lua_State* state){
-  if(runner_active()){lua_pushboolean(state,true);return 1;}
+  if(runner_active()){lua_pushboolean(state,!runner_interactive());return 1;}
   constexpr const char* marker="sdmc:/3ds/corsixth/benchmark-run.txt";
   bool enabled=false;
   if(auto* file=std::fopen(marker,"rb")){

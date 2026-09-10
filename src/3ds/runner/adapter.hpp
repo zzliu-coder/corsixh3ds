@@ -3,6 +3,8 @@
 namespace cth3ds {
 int runner_start(int argc, char** argv) noexcept;
 bool runner_active() noexcept;
+bool runner_interactive() noexcept;
+void runner_process_exit() noexcept;
 const runner::Fields& runner_config();
 std::string runner_directory();
 void runner_checkpoint(const runner::Fields& metrics);

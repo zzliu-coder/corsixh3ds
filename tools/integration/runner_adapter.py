@@ -36,7 +36,14 @@ def patch_runner_adapter(root):
   const int runner_mode=cth3ds::runner_start(argc,argv);
   if(runner_mode<0)return 1;
   if(runner_mode>0)argc=1;
-#endif''')],
+#endif'''),
+            ('#ifdef WITH_UPDATE_CHECK\n  curl_global_cleanup();\n#endif\n  return 0;', '''#ifdef WITH_UPDATE_CHECK
+  curl_global_cleanup();
+#endif
+#ifdef CORSIXTH_3DS
+  cth3ds::runner_process_exit();
+#endif
+  return 0;''')],
         'CorsixTH/Lua/app.lua': [
             ('function App:getConfigPath()', '''function App:getConfigPath()
   local run=IS_3DS and TH3DS.runner_context()

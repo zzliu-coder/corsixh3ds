@@ -6,11 +6,14 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <algorithm>
+#include <chrono>
 namespace cth3ds {
 namespace {
 runner::Job job;
 runner::Fields config;
 bool active=false, finished=false;
+bool interactive=false;
+std::chrono::steady_clock::time_point session_started;
 unsigned long long frames=0;
 unsigned checkpoint_sequence=0;
 void require(bool ok,const char* reason){if(!ok)throw std::runtime_error(reason);}
@@ -40,6 +43,7 @@ void copy(const std::string& from,const std::string& to){
 }
 }
 bool runner_active() noexcept{return active;}
+bool runner_interactive() noexcept{return active&&interactive;}
 const runner::Fields& runner_config(){return config;}
 std::string runner_directory(){return active?job.dir(runner::SDROOT):"";}
 void runner_present(bool success) noexcept {if(active&&success)++frames;}
@@ -64,13 +68,14 @@ void runner_checkpoint(const runner::Fields& metrics){
 void runner_finish(const std::string& outcome,const std::string& reason,const runner::Fields& metrics){
   if(!active||finished)return;
   require(outcome=="PASS"||outcome=="FAIL"||outcome=="NOT_PROVEN","invalid_outcome");
+  require(!runner_interactive()||outcome!="PASS","interactive_requires_human_confirmation");
   std::string safe_reason=reason.substr(0,240);
   std::replace(safe_reason.begin(),safe_reason.end(),'\n',' ');
   std::replace(safe_reason.begin(),safe_reason.end(),'\r',' ');
   runner::Fields result={{"version","1"},{"run_id",job.id},{"artifact_sha256",job.sha},
     {"config_sha256",job.configSha},{"input_sha256",job.inputSha},{"manifest_sha256",job.manifestSha},
     {"phase","complete"},{"outcome",outcome},{"reason",safe_reason},
-    {"workload","corsixth-r63-fixed-wall-v1"},{"simulation_ticks","0"},{"frames","0"},{"elapsed_us","0"},
+    {"workload",runner_interactive()?"corsixth-r74-interactive-v1":"corsixth-r63-fixed-wall-v1"},{"simulation_ticks","0"},{"frames","0"},{"elapsed_us","0"},
     {"assets_full_reverified","0"},{"assets_receipt_sha256",config["assets_receipt_sha256"]}};
   for(const auto& field:metrics){
     require(field.first!="version"&&field.first!="run_id"&&field.first!="artifact_sha256"&&
@@ -85,6 +90,18 @@ void runner_finish(const std::string& outcome,const std::string& reason,const ru
   require(bytes.size()<=16384,"result_exceeds_protocol_limit");
   runner::atomicWrite(job.dir(runner::SDROOT)+"/result.kv",bytes);finished=true;
 }
+void runner_process_exit() noexcept {
+  // main calls this only after its Lua restart loop has ended. Runtime shutdown
+  // also occurs inside that loop and cannot complete an interactive session.
+  if(!runner_interactive()||finished)return;
+  try {
+    const auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::steady_clock::now()-session_started).count();
+    runner_finish("NOT_PROVEN","needs_human_confirmation",{
+      {"frames",std::to_string(frames)},{"elapsed_us",std::to_string(elapsed)},
+      {"simulation_ticks_available","0"},{"human_confirmation","required"}});
+  }catch(const std::exception& e){std::fprintf(stderr,"runner exit: %s\n",e.what());}
+}
 int runner_start(int argc,char** argv) noexcept {
   // Ordinary hbmenu launches carry no run tuple. Malformed automation never
   // falls through to the player's configuration or one-shot marker.
@@ -98,6 +115,15 @@ int runner_start(int argc,char** argv) noexcept {
     require(!runner::exists(dir+"/started.kv")&&!runner::exists(dir+"/result.kv"),"run_id_already_started");
     active=true;
     config=runner::parse(runner::read(dir+"/config.bin",1024*1024));
+    if(config.count("interactive")){
+      require(config.at("interactive")=="r74-v1","unknown_interactive_version");
+      require(config["profile"]=="zh-on"&&config["stress_ms"]=="0"&&
+        !config.count("capacity")&&!config.count("recovery_sha256")&&
+        !config.count("expanded_sha256")&&!config.count("continuity_sha256"),
+        "invalid_interactive_configuration");
+      interactive=true;
+      session_started=std::chrono::steady_clock::now();
+    }
     require(config["adapter"]=="corsixth-r63-v1","unknown_adapter");
     require(config["profile"]=="zh-on"||config["profile"]=="expanded-zh-on"||config["profile"]=="matrix","unknown_profile");
     require(runner::validHash(config["assets_receipt_sha256"]),"missing_asset_receipt_identity");
@@ -143,6 +169,7 @@ int runner_start(int argc,char** argv) noexcept {
     mkdir((dir+"/artifacts").c_str(),0777);
     copy("sdmc:/3ds/corsixth/config.txt",dir+"/save/config.txt");
     copy(dir+"/input.bin",dir+"/input.sav");
+    if(runner_interactive())copy(dir+"/input.bin",dir+"/save/Acceptance.sav");
     for(const auto& name:{"expanded","r62-recovery","continuity"}){
       auto it=config.find(std::string(name)=="expanded"?"expanded_sha256":
         std::string(name)=="continuity"?"continuity_sha256":"recovery_sha256");

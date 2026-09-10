@@ -11,7 +11,8 @@ closed, but are not a filesystem snapshot against arbitrary concurrent writers.
 delta.json: {candidate: {commit: ...}, files: [{path, size, sha256, previous?}]}.
 previous, if supplied, is null for an expected new target or {sha256: ...}.
 Omitting it captures the current product file as this transaction's rollback
-baseline. Payloads are package/files/<path>. The executable must be last.
+baseline. Payloads are package/files/<path>. The delta must be nonempty; when
+the executable changes it must be last. Lua/metadata-only deltas omit it.
 deploy() never resumes a journal. inspect() is read-only. rollback() requires an
 explicit caller invocation and only moves recognized product bytes; Saves and
 configuration are never overwritten, deleted, or rolled back.
@@ -239,7 +240,9 @@ def _rows(package, candidate):
     require(data["candidate"] == candidate and isinstance(candidate.get("commit"), str)
             and re.fullmatch("[0-9a-f]{40}", candidate["commit"]), "candidate mismatch")
     rows, names, components = data["files"], set(), {}
-    require(rows and rows[-1]["path"] == "CorsixTH-3DS.3dsx", "executable must be last")
+    require(isinstance(rows, list) and rows, "delta must be nonempty")
+    require(not any(row["path"] == "CorsixTH-3DS.3dsx" for row in rows[:-1]),
+            "executable must be last when present")
     for row in rows:
         name = _product(row["path"])
         require(name.casefold() not in names, "duplicate or case-colliding target")

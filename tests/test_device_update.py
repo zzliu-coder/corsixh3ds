@@ -133,6 +133,23 @@ class DeviceUpdateTests(unittest.TestCase):
     def recover_args(self):
         return dict(state_dir=self.root / "state", owner_lock=self.root / "device.lock")
 
+    def lua_only_fixture(self):
+        case = DeviceUpdateTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.rows = [row for row in case.rows if row["path"] in
+                     ("Lua/old.lua", "loose-assets.json", "private-media.json")]
+        for row in case.rows:
+            row["previous"] = {"sha256": update.digest(case.original[LIVE + "/" + row["path"]])}
+        case.write_delta()
+        return case
+
+    def assert_executable_untouched(self):
+        executable = LIVE + "/CorsixTH-3DS.3dsx"
+        self.assertEqual(self.ftp.files[executable], self.original[executable])
+        self.assertFalse(any(path.endswith("/CorsixTH-3DS.3dsx")
+                             for operation in self.ftp.writes for path in operation[1:]))
+
     def assert_user_untouched(self):
         for path, value in self.original.items():
             if "/Saves/" in path or path.endswith(("config.txt", "hotkeys.txt", "settings.ini", "unrelated.dat")):
@@ -159,6 +176,19 @@ class DeviceUpdateTests(unittest.TestCase):
             self.assertEqual(update.digest((self.root / "state/protected-blobs" / row["blob"]).read_bytes()), row["sha256"])
         self.assert_user_untouched()
         self.assertEqual(self.remote.opened, 0)
+        # A genuine three-file Lua/metadata delta has no executable payload.
+        case = self.lua_only_fixture()
+        result = case.deploy()
+        self.assertEqual(result["phase"], "DEPLOYED_HASH_VERIFIED_NOT_RUN")
+        self.assertEqual(len(result["files"]), 3)
+        self.assertEqual(len(result["protection"]["files"]), 5)
+        for row in case.rows:
+            self.assertEqual(update.digest(case.ftp.files[LIVE + "/" + row["path"]]), row["sha256"])
+        case.assert_user_untouched(); case.assert_executable_untouched()
+        update.rollback(case.remote, json.loads, **case.recover_args())
+        for row in case.rows:
+            self.assertEqual(case.ftp.files[LIVE + "/" + row["path"]], case.original[LIVE + "/" + row["path"]])
+        case.assert_user_untouched(); case.assert_executable_untouched()
 
     def test_new_save_appears_during_stage_aborts_before_switch(self):
         def hook(event, path):
@@ -209,6 +239,15 @@ class DeviceUpdateTests(unittest.TestCase):
         update.rollback(self.remote, json.loads, **self.recover_args())
         self.assertEqual(self.ftp.files[LIVE + "/Lua/old.lua"], b"old-lua")
         self.assert_user_untouched()
+        case = self.lua_only_fixture()
+        case.ftp.hook = hook
+        with self.assertRaises(ConnectionError):
+            case.deploy()
+        case.ftp.hook = lambda event, path: None
+        update.inspect(case.remote, json.loads, **case.recover_args())
+        update.rollback(case.remote, json.loads, **case.recover_args())
+        self.assertEqual(case.ftp.files[LIVE + "/Lua/old.lua"], b"old-lua")
+        case.assert_user_untouched(); case.assert_executable_untouched()
 
     def test_full_rollback_removes_new_font_preserves_backups_and_no_user_writes(self):
         self.deploy()
@@ -276,6 +315,38 @@ class DeviceUpdateTests(unittest.TestCase):
         self.write_delta()
         with self.assertRaisesRegex(update.UpdateError, "case-colliding parent"):
             update._rows(self.package, self.candidate)
+        for mutation in ("foreign-before", "changed-during-stage", "unchanged-payload"):
+            with self.subTest(lua_only=mutation):
+                case = self.lua_only_fixture()
+                if mutation == "foreign-before":
+                    case.ftp.files[LIVE + "/Lua/old.lua"] = b"foreign"
+                    expected = "old product differs"
+                elif mutation == "changed-during-stage":
+                    def change_old(event, path):
+                        if event == "after_store":
+                            case.ftp.files[LIVE + "/Lua/old.lua"] = b"foreign-after-stage"
+                    case.ftp.hook = change_old
+                    expected = "old product changed"
+                else:
+                    case.ftp.files[LIVE + "/Lua/old.lua"] = b"new-lua"
+                    case.rows[0]["previous"] = {"sha256": update.digest(b"new-lua")}
+                    case.write_delta()
+                    expected = "unchanged payload must be omitted"
+                with self.assertRaisesRegex(update.UpdateError, expected):
+                    case.deploy()
+                self.assertFalse(any(op[0] == "rename" for op in case.ftp.writes))
+                if mutation != "changed-during-stage":self.assertEqual(case.ftp.writes, [])
+                case.assert_user_untouched(); case.assert_executable_untouched()
+        case = self.lua_only_fixture()
+        case.rows = []; case.write_delta()
+        with self.assertRaisesRegex(update.UpdateError, "nonempty"):
+            case.deploy()
+        executable = self.rows[-1]
+        case.rows = [executable, {"path": "Lua/old.lua", "size": 7, "sha256": update.digest(b"new-lua")}]
+        case.write_delta()
+        with self.assertRaisesRegex(update.UpdateError, "executable must be last"):
+            case.deploy()
+        self.assertEqual(case.ftp.writes, [])
 
     def test_case_alias_and_midtransaction_owner_change_fail_closed(self):
         self.ftp.files[LIVE + "/Saves/slot1.sav"] = b"alias"

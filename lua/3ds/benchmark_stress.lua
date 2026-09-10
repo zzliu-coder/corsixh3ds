@@ -6,6 +6,40 @@ local root="sdmc:/3ds/corsixth/Benchmark/"
 local windows={"UIPolicy","UIProgressReport","UIResearch","UIStaffManagement"}
 local Health=require("3ds.state_health")
 
+-- Native load can reconstruct instance metatables; the direct methods table is
+-- permanent. Require this exact class, never an inherited class.is match.
+local function exactClass(instance,expected)
+  local mt=type(instance)=="table" and getmetatable(instance)
+  return type(expected)=="table" and type(mt)=="table" and rawget(mt,"__index")==expected
+end
+
+local function className(instance)
+  local mt=type(instance)=="table" and getmetatable(instance)
+  local methods=type(mt)=="table" and rawget(mt,"__index")
+  local class_mt=type(methods)=="table" and getmetatable(methods)
+  local name=type(class_mt)=="table" and rawget(class_mt,"__class_name")
+  return type(name)=="string" and name:gsub("[^%w_]","_"):sub(1,32) or "unknown"
+end
+
+function Stress:needsInput(window,reason)
+  -- One bounded record for this run, even if a caller catches and retries.
+  -- The terminal consumer matches the error suffix, so keep it unchanged.
+  if not self.input_diagnostic_written then
+    self.input_diagnostic_written=true
+    local ui=self.app.ui
+    local modal=window and window.modal_class
+    local line="benchmark-stress: event=NEEDS_INPUT reason="..reason
+      .." class="..className(window)
+      .." modal="..(type(modal)=="string" and modal:gsub("[^%w_]","_"):sub(1,32) or "none")
+      .." parent="..tostring(window~=nil and window.parent==ui)
+      .." ui="..tostring(window~=nil and window.ui==ui)
+      .." registered="..tostring(window~=nil and ui.modal_windows~=nil and ui.modal_windows[modal]==window)
+      .." closed="..tostring(window~=nil and not not window.closed)
+    print(line:sub(1,230))
+  end
+  error("TH3DS_NEEDS_INPUT")
+end
+
 local function fingerprint(app)
   local w,h=assert(app.world),assert(app.ui.hospital)
   local rows={"date:"..w.game_date:tostring(),"balance:"..tostring(h.balance)}
@@ -74,15 +108,15 @@ function Stress:checkMandatory()
     return not window.closed and window.parent==ui and window.ui==ui
       and ui.modal_windows and ui.modal_windows[window.modal_class]==window
       and ((window==self.window and self.window_class
-        and getmetatable(window)==self.window_class._metatable)
-        or (self.watch_class and getmetatable(window)==self.watch_class._metatable
+        and exactClass(window,self.window_class))
+        or (self.watch_class and exactClass(window,self.watch_class)
           and window.modal_class=="open_countdown"))
   end
   for _,window in pairs(ui.windows or {})do
     if window:mustPause() then annual=window;n=n+1 end
     if window.modal_class and not owned(window)
-      and not (class and getmetatable(window)==class._metatable) then
-      error("TH3DS_NEEDS_INPUT")
+      and not exactClass(window,class) then
+      self:needsInput(window,"modal_contract")
     end
   end
   if not paused and n==0 then return end
@@ -96,10 +130,11 @@ function Stress:checkMandatory()
     and type(self.button_click)=="function"
     and app.savegame_dir==self.save_dir and app.config.autosave_frequency==0
     and ui.app==app and annual.parent==ui and annual.ui==ui and not annual.closed and annual.visible==true
-    and getmetatable(annual)==class._metatable and rawget(_G,"UIAnnualReport")==class
+    and exactClass(annual,class) and rawget(_G,"UIAnnualReport")==class
+    and annual.modal_class=="fullscreen" and ui.modal_windows and ui.modal_windows.fullscreen==annual
     and annual.close==self.annual_close and class.close==self.annual_close
     and annual.updateAwards==self.annual_awards and class.updateAwards==self.annual_awards
-    and button and getmetatable(button)==button_class._metatable
+    and button and exactClass(button,button_class)
     and rawget(_G,"Button")==button_class and button.handleClick==self.button_click
     and button_class.handleClick==self.button_click and button.ui==ui
     and button.on_click_self==annual and button.on_click==self.annual_close
@@ -107,7 +142,7 @@ function Stress:checkMandatory()
     and panel and panel.window==annual and panel.visible==true and attached_button==1 and attached_panel==1
     and (annual.state==2 or annual.state==3)
     and not self.annual_attempts[annual] and self.annual_count<32
-  if not valid then error("TH3DS_NEEDS_INPUT") end
+  if not valid then self:needsInput(annual,"annual_contract") end
   self.annual_attempts[annual]=true;self.annual_failed=true
   self.annual_attempt_count=(self.annual_attempt_count or 0)+1
   self:annualCheckpoint("ATTEMPT")
@@ -130,7 +165,7 @@ function Stress:checkMandatory()
   print("benchmark-stress: event=ANNUAL-CONFIRM status=PASS count="..self.annual_count.." cycle="..self.cycle)
   for _,window in pairs(ui.windows or {})do
     if window:mustPause() or (window.modal_class and not owned(window)) then
-      error("TH3DS_NEEDS_INPUT")
+      self:needsInput(window,"after_annual")
     end
   end
 end
@@ -185,7 +220,7 @@ function Stress:tick()
   else
     local app=self.app;local ui=app.ui
     if ui:anyMustPauseWindowOpen() then
-      error("TH3DS_NEEDS_INPUT")
+      self:needsInput(nil,"before_open")
     end
     self.cycle=self.cycle+1
     local name=windows[(self.cycle-1)%#windows+1]

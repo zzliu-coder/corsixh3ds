@@ -290,6 +290,20 @@ class BuildScriptTests(unittest.TestCase):
         ):
             self.assertIn(f"name: {matrix}", workflow)
         self.assertGreaterEqual(workflow.count("if: always()"), 2)
+        # Every final binary/diagnostic object named by the build manifest must
+        # survive the upload; a path inside the manifest alone is insufficient.
+        cross_upload = workflow.split("- name: Upload cross-build diagnostics and outputs", 1)[1].split(
+            "  fresh-chain-final-seal:", 1)[0]
+        for artifact in (
+            "build-3ds/CorsixTH/CorsixTH-3DS.3dsx",
+            "build-3ds/CorsixTH/CorsixTH-3DS.3dsx.sha256",
+            "build-3ds/CorsixTH/CorsixTH/CorsixTH-3DS.elf",
+            "build-3ds/CorsixTH/heap-budget.json",
+            "build-3ds/CorsixTH/runtime-core-link-proof.json",
+            "build-3ds/CorsixTH/runtime-stack-proof.json",
+            "external/CorsixTH/CorsixTH/Src/3ds/integration-manifest.json",
+        ):
+            self.assertIn(artifact, cross_upload)
         self.assertIn("apt-get install", workflow)
         self.assertIn("dkp-pacman -S --needed", workflow)
         self.assertNotIn("dkp-pacman -Syu", workflow)

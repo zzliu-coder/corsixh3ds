@@ -50,6 +50,8 @@ struct BottomUiState {
   std::uint64_t free_memory_bytes{0};
   std::string notice{};
   bool notice_is_error{false};
+  bool chinese_ui{false};
+  std::string notice_hint{};
   std::string selected_name{};
   std::string selected_status{};
   // Overlay version plus where the Lua adapter came from, e.g. "0.5.0 LUA".
@@ -77,6 +79,7 @@ struct BottomUiState {
            wifi_strength == other.wifi_strength &&
            free_memory_bytes == other.free_memory_bytes &&
            notice == other.notice && notice_is_error == other.notice_is_error &&
+           chinese_ui == other.chinese_ui && notice_hint == other.notice_hint &&
            selected_name == other.selected_name &&
            selected_status == other.selected_status &&
            build_tag == other.build_tag;

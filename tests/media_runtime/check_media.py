@@ -106,7 +106,7 @@ UIDropdown=function(...)return {close=function(self)self.closed=true end}end
 local installed=false
 package.loaded.lfs={attributes=function(path)if installed and path=="ROOT/Voices/Sound-CN.dat"then return "file"end end}
 local app={is_3ds=true,config={audio=true,play_sounds=true,play_announcements=true,play_music=true,
- sound_volume=.5,announcement_volume=.5,music_volume=.5,language="Chinese (simplified)"},
+ sound_volume=.5,announcement_volume=.5,music_volume=.5,language="chinese (simplified)"},
  gfx={loadMenuFont=function()return {}end},
  getFullPath=function()return "ROOT/"end,
  fs={_getFilePath=function(_,path)if path=="Sound/Data/Sound-0.dat"then return path end end},
@@ -123,10 +123,15 @@ local function create(mode)
  return w
 end
 local missing=create("menu");assert(not missing.voice_panel.button.enabled)
-assert(missing.voice_panel.label:find("missing"))
+assert(missing.voice_panel.label=="英语（未安装中文语音）")
+app.config.language='English'
+assert(create('menu').voice_panel.label=='English (Chinese data missing)')
+app.config.language='chinese (simplified)'
 installed=true;local available=create("game");assert(available.voice_panel.button.enabled)
 available:buttonVoiceLanguage();assert(app.config.speech_language=="zh")
+assert(available.voice_panel.label=='中文')
 available:buttonVoiceLanguage();assert(app.config.speech_language=="en")
+assert(available.voice_panel.label=='英语')
 -- Hidden MIDI callbacks are harmless on handheld; the desktop path still
 -- constructs and opens the original controls without a platform global.
 available:dropdownMidiApi(true);available:dropdownMidiPort(true)
@@ -290,6 +295,14 @@ M.release(a,api);assert(live==0)
             language.write_text(language.read_text()+'\nmissing="龘"\n')
             with self.assertRaisesRegex(ValueError,'missing required'):prepare(source,root/'missing-font',runtime)
             language.write_text(language.read_text().replace('\nmissing="龘"\n',''))
+            platform_text=runtime/'Lua/3ds/font_coverage_probe.lua'
+            platform_text.parent.mkdir(parents=True,exist_ok=True)
+            platform_text.write_text('return "龘"\n')
+            with self.assertRaisesRegex(ValueError,'missing required'):
+                prepare(source,root/'missing-platform-font',runtime)
+            # Keep the fixture file, replacing its probe text with covered text.
+            platform_text.write_text('return "医生"\n')
+            self.assertEqual(prepare(source,root/'covered-platform-font',runtime)['missing_characters'],0)
             # Final synthetic bilingual inputs have now been prepared. Seal this
             # packaging fixture explicitly; the binary remains a test header.
             fixture.seal_packaging_fixture(root)

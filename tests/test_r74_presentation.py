@@ -72,6 +72,29 @@ TheApp.is_3ds=false;TheApp.config.allow_user_actions_while_paused=false
 w:pauseOrUnpause();assert(blue==true) -- desktop keeps its original presentation
 TheApp.is_3ds=true;w:updateScreenBlueFilter();assert(not blue)
 assert(resumes==7)
+-- Real generated World rates, not independently invented multipliers.
+w:pauseOrUnpause();mandatory=false
+local hints, notices={},{}
+native.notice_hint=function(id)hints[#hints+1]=id;return true end
+native.set_notice=function(text)notices[#notices+1]=text end
+for _,language in ipairs({'chinese (simplified)','Chinese (simplified)','English'})do
+ TheApp.config.language=language;p:syncBottomState()
+ assert(states[#states].chinese_ui==(language~='English'))
+end
+w:setSpeed('Normal')
+for _,entry in ipairs({{'Max speed','speed_4'},{'And then some more','speed_5'},
+ {'Slowest','speed_1'},{'Slower','speed_2'},{'Normal','speed_3'}})do
+ p:cycleSpeed();assert(w:getCurrentSpeed()==entry[1] and hints[#hints]==entry[2])
+end
+w:pauseOrUnpause();p:cycleSpeed();assert(hints[#hints]=='resume_speed')
+assert(w:isCurrentSpeed('Pause'))
+p:adjustZoom(1);assert(hints[#hints]=='zoom_locked')
+native.notice_hint=nil;p:adjustZoom(1);assert(notices[#notices]=='ZOOM LOCKED ON 3DS')
+native.notice_hint=function()return false end
+p:adjustZoom(1);assert(notices[#notices]=='ZOOM LOCKED ON 3DS')
+native.notice_hint=function()error('old backend')end
+p:adjustZoom(1);assert(notices[#notices]=='ZOOM LOCKED ON 3DS')
+assert(#notices==3)
 '''
         # Load the whole generated module. Only unrelated constructors/services
         # above are seams; every speed, permission and filter method is real.
@@ -114,6 +137,7 @@ assert(resumes==7)
         method = function_body(runtime, '  const std::uint32_t* overlay_pixels()')
         code = r'''
 #include "cth3ds/boot_presentation.hpp"
+#include "cth3ds/notice_hints.hpp"
 #include "cth3ds/software_canvas.hpp"
 #include <cassert>
 #include <cstring>
@@ -125,6 +149,7 @@ struct Harness {
  UI bottom_ui_;SoftwareCanvas overlay_canvas_{320,kOverlayHeight};
  std::uint64_t last_tick_us_{1000},overlay_until_us_{0},notice_until_us_{0};
  std::string overlay_text_;bool overlay_error_{false};
+ const presentation_masks::Mask* overlay_mask_{nullptr};
 '''+method+r'''
 };
 int main(){
@@ -143,6 +168,28 @@ int main(){
  assert(!h.overlay_pixels()); // a forced dialog cannot advertise Start to resume
  s.must_pause=false;assert(h.overlay_pixels()&&h.overlay_text_=="pause-build");
  s.paused=false;assert(!h.overlay_pixels());
+ // One shared cached strip feeds CPU copying and GPU submission. Language
+ // changes invalidate it even while an ordinary hint or pause stays visible.
+ s.notice="SPEED: NORMAL";s.notice_hint="speed_3";h.notice_until_us_=2000;
+ assert(h.overlay_pixels());auto english=h.overlay_canvas_.rgba_bytes();
+ s.chinese_ui=true;assert(h.overlay_pixels());
+ assert(english!=h.overlay_canvas_.rgba_bytes());
+ auto chinese=h.overlay_canvas_.rgba_bytes();assert(h.overlay_pixels());
+ assert(chinese==h.overlay_canvas_.rgba_bytes());
+ s.chinese_ui=false;assert(h.overlay_pixels());assert(english==h.overlay_canvas_.rgba_bytes());
+ s.chinese_ui=true;s.notice_is_error=true;assert(h.overlay_pixels());
+ assert(h.overlay_text_=="SPEED: NORMAL"); // diagnostic original wins over mask
+ s.notice_is_error=false;s.paused=true;assert(h.overlay_pixels());
+ assert(h.overlay_text_=="pause-build"&&h.overlay_mask_==&presentation_masks::paused_build);
+ s.paused=false;h.notice_until_us_=0;assert(!h.overlay_pixels());
+ assert(!notice_hint("unknown")&&!notice_hint("SPEED: NORMAL"));
+ unsigned mask_bytes=0;
+ for(const auto& hint:kNoticeHints){
+  assert(hint.chinese->width<=320&&hint.chinese->height<=13);
+  assert(notice_hint(hint.id)==&hint);
+  mask_bytes+=(hint.chinese->width*hint.chinese->height+1)/2;
+ }
+ assert(mask_bytes<24000); // fixed read-only bytes, no font/texture/cache owner
 }
 '''
         with tempfile.TemporaryDirectory(prefix='cth-r74-strip-') as temp:

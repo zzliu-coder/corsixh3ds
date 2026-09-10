@@ -13,6 +13,7 @@ from .picture_lifetime import transforms as picture_transforms
 from .staff_hotspots import transforms as staff_transforms
 from .litter_presence import transforms as litter_transforms
 from .resource_read import transforms as resource_read_transforms
+from .handyman_queue import transforms as handyman_queue_transforms
 
 def transforms(root, overlay):
     yield from final_transforms(root, overlay)
@@ -123,6 +124,7 @@ class level_map {
     yield from stream_transforms(root)
     yield from picture_transforms(root)
     yield from staff_transforms(root)
+    yield from handyman_queue_transforms(root)
 
 def patch_cpu_hotspots(root: Path, overlay: Path, dry_run=False):
     changes=[]

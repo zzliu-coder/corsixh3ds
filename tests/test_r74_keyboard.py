@@ -50,6 +50,7 @@ local function fresh()
   native[name]=function()return true end
  end
  native.request_redraw=function()count.redraw=count.redraw+1 end
+ native.notice_hint=function(id)count.hint=id;return true end
  local p=module.attach(app,native,{epoch=74,resource_events=false})
  native.text_keyboard=function(initial,limit,policy)
   assert(not count.in_release,'applet must run after real mouse-up method returns')
@@ -144,7 +145,7 @@ assert(c.keyboard==1 and c.initial=='中文旧值' and b.text=='中文旧值' an
 p:handlePointer{kind='up'};assert(c.keyboard==1,'duplicate release must not reopen')
 c.accept=true
 for _,invalid in ipairs({'','  ','../bad','a/b','a\\b','a.b','a\n','a\0','中文',string.rep('x',41)})do
- c.value=invalid;tap(b);assert(b.text=='中文旧值' and c.saves==0)
+ c.value=invalid;tap(b);assert(b.text=='中文旧值' and c.saves==0 and c.hint=='input_rejected')
 end
 c.value='SlotA';c.during=function()b.enabled=false end;tap(b)
 assert(b.text=='中文旧值' and c.saves==0)
@@ -167,6 +168,7 @@ end
 p,app,ui,c,make,tap=fresh();p.save_prefix='R62-Recovered-';w,b=make('save')
 c.accept=false;tap(b);assert(b.text=='R62-Recovered-Slot1' and c.saves==0)
 p.native.text_keyboard=nil;tap(b);assert(c.saves==0 and b.text=='R62-Recovered-Slot1')
+assert(c.hint=='keyboard_unavailable')
 ''')
 
     def test_actual_native_applet_audio_input_clock_and_exit_contract(self):
@@ -218,6 +220,7 @@ struct Runtime{
  std::uint64_t last_input_us_=123;
  std::atomic<std::uint32_t>pending_lifecycle_{0};
  void set_notice(const char*,bool){++notices;}
+ void set_hint(const char*){++notices;}
 // ACTUAL_FUNCTION
 };
 int main(){
@@ -269,7 +272,7 @@ c.value=string.rep('A',16);tap(b);assert(c.config==1)
 c.value='Alice';b:setActive(true);p:editText();assert(w.player_name=='Alice' and c.config==2,'A fallback')
 w:close();w,b=make('numeric');c.value='9999';tap(b)
 assert(c.policy=='numbers' and c.limit==4 and b.text=='9999' and app.config.scroll_speed==2 and not b.active)
-c.value='2x';tap(b);assert(b.text=='9999' and app.config.scroll_speed==2)
+c.value='2x';tap(b);assert(b.text=='9999' and app.config.scroll_speed==2 and c.hint=='digits_only')
 w:ok();assert(app.config.scroll_speed==10 and c.applied==10,'original Apply clamps only at apply')
 assert(rawget(env,'IS_3DS')==nil)
 ''')

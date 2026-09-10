@@ -17,6 +17,9 @@ void* operator new(std::size_t n) {
 void* operator new[](std::size_t n){return ::operator new(n);}
 void operator delete(void* p) noexcept {std::free(p);}
 void operator delete[](void* p) noexcept {std::free(p);}
+// GCC and sized-deallocation Clang must release through the same allocator.
+void operator delete(void* p, std::size_t) noexcept {std::free(p);}
+void operator delete[](void* p, std::size_t) noexcept {std::free(p);}
 struct Sink final:lua_persist_writer {
   uint8_t bytes[10]{};std::size_t size{};
   lua_State* get_stack()override{return nullptr;}

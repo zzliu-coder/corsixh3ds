@@ -3,7 +3,7 @@
 
 Usage: python3 tools/generate_presentation_masks.py --font FONT --output HEADER
 Pillow, FreeType and the font SHA are recorded in the header.
-The raster output contains only these five phrases, no embedded font program.
+The raster output contains only fixed phrases, no embedded font program.
 """
 import argparse
 import hashlib
@@ -17,6 +17,25 @@ PHRASES = (
     ("based", "Based on CorsixTH", 13),
     ("paused", "已暂停 · Start继续", 12),
     ("paused_build", "已暂停 · 可建造 · Start继续", 12),
+    ("hint_keyboard_unavailable", "键盘不可用，请使用存档槽", 12),
+    ("hint_digits_only", "此处只能输入数字", 12),
+    ("hint_input_rejected", "输入内容不符合此项要求", 12),
+    ("hint_resume_speed", "请先解除暂停，再调整速度", 12),
+    ("hint_speed_unchanged", "游戏速度未改变", 12),
+    ("hint_speed_1", "速度：最慢", 12),
+    ("hint_speed_2", "速度：较慢", 12),
+    ("hint_speed_3", "速度：正常", 12),
+    ("hint_speed_4", "速度：最快", 12),
+    ("hint_speed_5", "速度：再快一些", 12),
+    ("hint_zoom_locked", "3DS 已固定游戏缩放比例", 12),
+    ("hint_save_no_world", "请先开始或载入医院，再保存", 12),
+    ("hint_place", "A 放置 · X 旋转 · B 取消", 12),
+    ("hint_room", "拖动建房 · B 取消 · Y 墙体", 12),
+    ("hint_keyboard", "A 打开键盘 · B 取消", 12),
+    ("hint_wide", "广角 480×288 · L 切换清晰视野", 12),
+    ("hint_clear", "清晰 400×240 · L 切换广角视野", 12),
+    ("hint_target", "已显示目标，请再次按下", 12),
+    ("hint_input_reset", "长时间停顿后已重置输入", 12),
 )
 
 
@@ -36,7 +55,7 @@ def generate(font_path):
         width, height = box[2] - box[0], box[3] - box[1]
         image = Image.new("L", (width, height))
         ImageDraw.Draw(image).text((-box[0], -box[1]), phrase, font=font, fill=255)
-        # Four-bit alpha preserves the small font's antialiasing below 5 KiB.
+        # Four-bit alpha preserves the small font's antialiasing in read-only data.
         pixels = [(value + 8) // 17 for value in image.getdata()]
         packed = [(pixels[i] << 4) | (pixels[i + 1] if i + 1 < len(pixels) else 0)
                   for i in range(0, len(pixels), 2)]

@@ -37,7 +37,7 @@ class SaveMemoryTests(unittest.TestCase):
                 src=tree/'CorsixTH/Src';(src/'config.h').write_text('#pragma once\n')
                 binary=directory/label
                 if label=='reference':binary=directory/'reference-probe'
-                subprocess.run([*compiler,'-std=c++17','-O2','-fsanitize=address,undefined',
+                subprocess.run([*compiler,'-std=c++17','-O2','-fsized-deallocation','-fsanitize=address,undefined',
                     '-I'+str(src),*flags,
                     str(ROOT/'tests/runtime_support/varint_probe.cpp'),'-o',str(binary)],check=True)
                 result=subprocess.run([str(binary)],capture_output=True,

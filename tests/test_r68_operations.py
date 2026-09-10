@@ -315,10 +315,22 @@ local exported=require('3ds.operations');local count=0
 for key,value in pairs(exported)do assert(key=='new' and type(value)=='function');count=count+1 end
 assert(count==1 and p.operations.last.committed)
 assert(debug.getinfo(exported.new).source=='@builtin/3ds/operations.lua')
+local media=require('3ds.media')
+assert(debug.getinfo(media.isChinese).source=='@builtin/3ds/media.lua')
+assert(package.loaded.lfs==nil)
+local selected_language='chinese (simplified)'
+app.config={language=selected_language,play_music=true,speech_language='zh'}
+app.ui={windows={}}
+local snapshot
+p.native.set_state=function(value)snapshot=value end
+p:syncBottomState()
+assert(snapshot.chinese_ui and app.config.language==selected_language)
+assert(app.config.play_music and app.config.speech_language=='zh' and package.loaded.lfs==nil)
+assert(require('3ds.media')==media)
 '''
         runtime=(ROOT/'src/3ds/runtime_3ds.cpp').read_text()
         actual='\n'.join(re.search(pattern,runtime).group() for pattern in (
-            r'(?ms)^int load_embedded_operations\(.*?^\}',r'(?ms)^int ensure_adapter\(.*?^\}'))
+            r'(?ms)^int load_embedded_operations\(.*?^\}',r'(?ms)^int load_embedded_media\(.*?^\}',r'(?ms)^int ensure_adapter\(.*?^\}'))
         code=r'''
 extern "C" {
 #include <lua.h>

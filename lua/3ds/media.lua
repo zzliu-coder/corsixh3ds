@@ -2,6 +2,33 @@
 -- and lifetime are platform-specific. No game/music/font payload lives here.
 local M = {}
 
+-- Menu text only. Audio-bank names, event keys and diagnostic protocols stay
+-- language-independent. Resolve on opening/clicking a menu, never per sample.
+local labels = {
+  voice_language={"播报语音", "Voice language"},
+  missing_chinese={"（未安装中文语音）", " (Chinese data missing)"},
+  music_transport={"流式音乐；仅驻留当前语音", "Music: PCM stream / one active voice bank"},
+  missing_voice={"未安装此语音，已保留当前设置。", "Voice data is not installed; current voice kept."},
+  no_voice={"未安装语音素材", "Voice data is not installed"},
+  save_name_rule={"名称须为 1—40 个英文字母、数字、空格、- 或 _。", "Use 1-40 English letters, numbers, spaces, - or _."},
+  zh={"中文", "Chinese"}, en={"英语", "English"}, fr={"法语", "French"},
+  de={"德语", "German"}, it={"意大利语", "Italian"}, es={"西班牙语", "Spanish"},
+  sv={"瑞典语", "Swedish"}, unknown={"未知", "Unknown"},
+}
+function M.isChinese(app)
+  local language = app.config and app.config.language
+  if type(language) ~= "string" then return false end
+  language = language:lower()
+  -- Strings resolves language declarations case-insensitively. Config files
+  -- may retain the lowercase spelling returned by the actual language menu.
+  return language == "chinese (simplified)" or language == "简体中文" or
+    language == "zh(s)" or language == "chi(s)" or language == "zho(s)"
+end
+function M.uiText(app, key)
+  local values = assert(labels[key], "unknown media UI label")
+  return values[M.isChinese(app) and 1 or 2]
+end
+
 function M.fontOptions(options)
   local result={}
   for key,value in pairs(options)do result[key]=value end
@@ -49,9 +76,9 @@ function M.voiceOptions(app)
 end
 function M.voiceLabel(app)
   for _,voice in ipairs(M.voices)do
-    if voice.code==(app.config.speech_language or "en") then return voice.label end
+    if voice.code==(app.config.speech_language or "en") then return M.uiText(app, voice.code) end
   end
-  return "Unknown"
+  return M.uiText(app, "unknown")
 end
 function M.hasChineseSpeech(app)
   return M.speechPath(app,"Sound-CN.dat")~=nil
@@ -60,7 +87,7 @@ end
 function M.setSpeech(app,choice)
   local available=false
   for _,voice in ipairs(M.voiceOptions(app))do if voice.code==choice then available=true;break end end
-  if not available then return false,"Voice data is not installed; current voice kept." end
+  if not available then return false,M.uiText(app,"missing_voice") end
   local previous=app.config.speech_language
   app.config.speech_language=choice
   local ok,result=pcall(app.audio.initSpeech,app.audio)
@@ -71,7 +98,7 @@ end
 function M.cycleSpeech(app)
   local choices=M.voiceOptions(app);local index=0
   for i,voice in ipairs(choices)do if voice.code==(app.config.speech_language or "en") then index=i;break end end
-  if #choices==0 then return false,"Voice data is not installed" end
+  if #choices==0 then return false,M.uiText(app,"no_voice") end
   return M.setSpeech(app,choices[index%#choices+1].code)
 end
 

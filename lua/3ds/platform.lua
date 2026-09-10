@@ -4,6 +4,7 @@
 local Platform = {}
 Platform.__index = Platform
 local Operations = require("3ds.operations")
+local Media = require("3ds.media")
 -- The five ordinary entries in CorsixTH 0.70.1's Options / Game speed menu.
 -- World:setSpeed owns their timing; this list contains no platform rates.
 local game_speeds = {"Slowest", "Slower", "Normal", "Max speed", "And then some more"}
@@ -84,6 +85,14 @@ local function native_notice(native, message, is_error)
   if native and type(native.set_notice) == "function" then
     pcall(native.set_notice, tostring(message or ""), is_error == true)
   end
+end
+
+local function native_hint(native, id, fallback)
+  if native and type(native.notice_hint) == "function" then
+    local ok, accepted = pcall(native.notice_hint, id)
+    if ok and accepted ~= false then return end
+  end
+  native_notice(native, fallback, false)
 end
 
 local function native_checkpoint(native, name, phase, identity, bytes, requested)
@@ -285,7 +294,7 @@ function Platform:editText(requested)
   local policy = keyboard_policy(selected)
   if not policy then return true, "noop:no-text-focus" end
   if type(self.native.text_keyboard) ~= "function" then
-    native_notice(self.native, "KEYBOARD UNAVAILABLE - USE SAVE SLOTS", false); return true, "unsupported:keyboard"
+    native_hint(self.native, "keyboard_unavailable", "KEYBOARD UNAVAILABLE - USE SAVE SLOTS"); return true, "unsupported:keyboard"
   end
   local limit = math.max(1, math.min(selected.char_limit or 40, 40))
   local owner = selected.panel.window
@@ -297,8 +306,9 @@ function Platform:editText(requested)
       (policy == "filename" and "[^A-Za-z0-9 _%-]" or "[^A-Za-z0-9 +%-]")
   if type(text) ~= "string" or #text > limit or text:find(pattern) or
       (policy == "filename" and not text:find("%S")) then
-    native_notice(self.native, policy == "numbers" and "USE DIGITS ONLY" or
-      "INPUT DOES NOT MATCH THIS FIELD", false); return true, "noop:text-rejected"
+    native_hint(self.native, policy == "numbers" and "digits_only" or "input_rejected",
+      policy == "numbers" and "USE DIGITS ONLY" or "INPUT DOES NOT MATCH THIS FIELD")
+    return true, "noop:text-rejected"
   end
   selected:setText(text)
   selected:setActive(true) -- refresh byte cursor after replacement
@@ -665,6 +675,7 @@ function Platform:syncBottomState()
   local selected = ui and (ui.last_hovered_entity or ui.last_clicked_entity)
 
   local state = {
+    chinese_ui = Media.isChinese(app),
     cash = hospital and math.floor(hospital.balance or 0) or 0,
     reputation = hospital and math.floor(hospital.reputation or 0) or 0,
     day = day,
@@ -808,7 +819,7 @@ function Platform:cycleSpeed()
   -- Read back the authoritative rate; mandatory pauses take precedence.
   local current = world:getCurrentSpeed()
   if current == "Pause" or world:mustPause() then
-    native_notice(self.native, "PAUSED - RESUME BEFORE CHANGING SPEED", false)
+    native_hint(self.native, "resume_speed", "PAUSED - RESUME BEFORE CHANGING SPEED")
     return true, "noop:paused"
   end
   local next_speed = "Normal"
@@ -818,10 +829,12 @@ function Platform:cycleSpeed()
   world:setSpeed(next_speed)
   local actual = world:getCurrentSpeed()
   if actual ~= next_speed then
-    native_notice(self.native, "SPEED UNCHANGED: " .. tostring(actual), false)
+    native_hint(self.native, "speed_unchanged", "SPEED UNCHANGED: " .. tostring(actual))
     return true, "noop:speed-unchanged"
   end
-  native_notice(self.native, "SPEED: " .. actual:upper(), false)
+  for index, name in ipairs(game_speeds) do
+    if name == actual then native_hint(self.native, "speed_" .. index, "SPEED: " .. actual:upper()); break end
+  end
   native_checkpoint(self.native, "game_speed", "selected", actual)
   return self:finishAction()
 end
@@ -834,7 +847,7 @@ end
 -- 1.0 also keeps direct_zoom on the fast path where no intermediate
 -- full-screen render target is allocated per frame.
 function Platform:adjustZoom(_)
-  native_notice(self.native, "ZOOM LOCKED ON 3DS", false)
+  native_hint(self.native, "zoom_locked", "ZOOM LOCKED ON 3DS")
   return true, "unsupported:engine-zoom"
 end
 
@@ -974,7 +987,7 @@ function Platform:handleAction(action)
       self:prepareInput()
       return self:finishAction()
     end
-    native_notice(self.native, "START OR LOAD A HOSPITAL TO SAVE", false)
+    native_hint(self.native, "save_no_world", "START OR LOAD A HOSPITAL TO SAVE")
     return true, "noop:no-world"
   elseif kind == "show_help" then
     ui:addWindow(UIInformation(ui, {

@@ -357,9 +357,9 @@ print('PASS 49 cleanup success/failure/reentry routes: actual Stress, annual inc
         runtime=(ROOT/'src/3ds/runtime_3ds.cpp').read_text()
         actual='\n'.join(function_body(runtime,name) for name in (
             'void reset_benchmark_activation(', 'int l_benchmark_state(', 'int l_benchmark_active(',
-            'int l_benchmark_enabled(', 'int l_mark_ready(', 'int load_embedded_operations(', 'int ensure_adapter('))
+            'int l_benchmark_enabled(', 'int l_mark_ready(', 'int load_embedded_operations(', 'int load_embedded_media(', 'int ensure_adapter('))
         header=(ROOT/'src/3ds/embedded_platform_lua.hpp').read_text()
-        for symbol,delimiter,filename in (('Platform','cth3ds_lua','platform.lua'),('Operations','cth3ds_ops','operations.lua')):
+        for symbol,delimiter,filename in (('Platform','cth3ds_lua','platform.lua'),('Operations','cth3ds_ops','operations.lua'),('Media','cth3ds_media','media.lua')):
             self.assertEqual(re.search(r'R"'+delimiter+r'\((.*)\)'+delimiter+r'"',header,re.S).group(1),
                              (ROOT/'lua/3ds'/filename).read_text())
         self.assertIn('++epoch_;\n    reset_benchmark_activation();',runtime)
@@ -450,6 +450,7 @@ for _,origin in ipairs({'sd','embedded'})do
  if origin=='embedded' then
   assert(debug.getinfo(module.attach).source=='@builtin/3ds/platform.lua')
   assert(debug.getinfo(require('3ds.operations').new).source=='@builtin/3ds/operations.lua')
+  assert(debug.getinfo(require('3ds.media').isChinese).source=='@builtin/3ds/media.lua')
  end
  local owner,native=fixture(false)
  native.benchmark_enabled=enabled;native.benchmark_active=active;native.benchmark_state=state

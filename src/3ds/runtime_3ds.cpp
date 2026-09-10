@@ -36,6 +36,7 @@
 #include "cth3ds/atomic_save.hpp"
 #include "cth3ds/bottom_ui.hpp"
 #include "cth3ds/boot_presentation.hpp"
+#include "cth3ds/notice_hints.hpp"
 #include "cth3ds/bounded_log.hpp"
 #include "cth3ds/crc32.hpp"
 #include "cth3ds/events.hpp"
@@ -852,6 +853,11 @@ int load_embedded_operations(lua_State* state) {
   lua_call(state,0,1);
   return 1;
 }
+int load_embedded_media(lua_State* state) {
+  if(luaL_loadbuffer(state,kEmbeddedMediaLua,std::strlen(kEmbeddedMediaLua),"@builtin/3ds/media.lua")!=LUA_OK)return lua_error(state);
+  lua_call(state,0,1);
+  return 1;
+}
 int ensure_adapter(lua_State* state) {
   boot_log_checkpoint("adapter_attach", "begin");
   lua_getglobal(state,"require");lua_pushstring(state,kAdapterModule);
@@ -859,8 +865,10 @@ int ensure_adapter(lua_State* state) {
     lua_pop(state,1);
     lua_getglobal(state,"package");
     lua_getfield(state,-1,"preload");
-    lua_pushcfunction(state,load_embedded_operations);lua_setfield(state,-2,"3ds.operations");lua_pop(state,1);
-    lua_getfield(state,-1,"loaded");lua_pushnil(state);lua_setfield(state,-2,"3ds.operations");lua_pop(state,2);
+    lua_pushcfunction(state,load_embedded_operations);lua_setfield(state,-2,"3ds.operations");
+    lua_pushcfunction(state,load_embedded_media);lua_setfield(state,-2,"3ds.media");lua_pop(state,1);
+    lua_getfield(state,-1,"loaded");lua_pushnil(state);lua_setfield(state,-2,"3ds.operations");
+    lua_pushnil(state);lua_setfield(state,-2,"3ds.media");lua_pop(state,2);
     if(luaL_loadbuffer(state,kEmbeddedPlatformLua,std::strlen(kEmbeddedPlatformLua),"@builtin/3ds/platform.lua")!=LUA_OK)return lua_error(state);
     lua_call(state,0,1);
   }
@@ -1134,7 +1142,7 @@ class Runtime {
         }
         if (now_us() > snapshot.timestamp_us + 2000000U) {
           input_collector_.discard(); cancel_input(state);
-          set_notice("INPUT QUEUE RESET AFTER LONG STALL", false); break;
+          set_hint("input_reset"); break;
         }
         refresh_input();
         const auto owner_epoch = g_input_owner_epoch;
@@ -1171,7 +1179,7 @@ class Runtime {
             }
             else if (activation_needs_focus(action)) {
               focus_view(g_input_cursor_x, g_input_cursor_y);
-              set_notice("TARGET REVEALED - PRESS AGAIN", false);
+              set_hint("target");
             } else {
               input_state.invalidate();
               ok = call_platform_method(state,"handleAction",&action,&error);
@@ -1328,16 +1336,16 @@ class Runtime {
     if (view_.set_context(context)) request_redraw();
     if (entered) {
       if (context == InputContext::PlaceObject)
-        set_notice("A: PLACE  X: ROTATE  B: CANCEL", false);
+        set_hint("place");
       else if (context == InputContext::BuildRoom)
-        set_notice("DRAG: ROOM  B: CANCEL  Y: WALLS", false);
+        set_hint("room");
       else if (context == InputContext::TextInput)
-        set_notice("A: KEYBOARD  B: CANCEL", false);
+        set_hint("keyboard");
     }
   }
   void toggle_view() {
     if (view_.toggle()) request_redraw();
-    set_notice(view_.bounds().w == 480 ? "WIDE 480x288 - L: CLEAR" : "CLEAR 400x240 - L: WIDE", false);
+    set_hint(view_.bounds().w == 480 ? "wide" : "clear");
   }
   Vec2f move_view(Vec2f delta) noexcept {
     const auto residual = view_.move(delta, {g_input_cursor_x, g_input_cursor_y});
@@ -1566,7 +1574,7 @@ class Runtime {
     for (int i=0;i<32;++i) if(!channel_paused[i]) Mix_Resume(i);
     if(!music_paused) Mix_ResumeMusic();
     input_collector_.pause(false); last_input_us_=0;
-    if (button == SWKBD_BUTTON_NONE) set_notice("KEYBOARD UNAVAILABLE - USE SAVE SLOTS",false);
+    if (button == SWKBD_BUTTON_NONE) set_hint("keyboard_unavailable");
     return button==SWKBD_BUTTON_RIGHT && !(pending_lifecycle_.load() & kLifecycleExit);
 #else
     (void)initial; (void)limit; (void)policy; (void)output; (void)capacity;
@@ -1617,12 +1625,19 @@ class Runtime {
   }
 
 #endif
-  void set_notice(std::string notice, bool is_error) {
+  bool set_hint(std::string_view id) {
+    const auto* hint = notice_hint(id);
+    if (!hint) return false;
+    set_notice(hint->english, false, std::string(hint->id));
+    return true;
+  }
+  void set_notice(std::string notice, bool is_error, std::string hint = "") {
     BottomUiState copy = bottom_ui_.state();
-    if (copy.notice == notice && copy.notice_is_error == is_error) {
+    if (copy.notice == notice && copy.notice_is_error == is_error && copy.notice_hint == hint) {
       return;
     }
     copy.notice = std::move(notice);
+    copy.notice_hint = std::move(hint);
     notice_until_us_ = now_us() + 4000000U;
     copy.notice_is_error = is_error;
     bottom_ui_.set_state(std::move(copy));
@@ -1988,20 +2003,25 @@ class Runtime {
     if (text.empty()) {
       return nullptr;
     }
-    if(text==overlay_text_ && has_error==overlay_error_)
+    const auto* hint = !has_error && !paused && state.chinese_ui && show_notice ? notice_hint(state.notice_hint) : nullptr;
+    const presentation_masks::Mask* mask = !has_error && state.chinese_ui ?
+      (paused ? (state.user_actions_allowed ? &presentation_masks::paused_build : &presentation_masks::paused) :
+       hint ? hint->chinese : nullptr) : nullptr;
+    if(text==overlay_text_ && has_error==overlay_error_ && mask==overlay_mask_)
       return reinterpret_cast<const std::uint32_t*>(overlay_canvas_.rgba_bytes().data());
-    overlay_text_=text;overlay_error_=has_error;
+    overlay_text_=text;overlay_error_=has_error;overlay_mask_=mask;
     overlay_canvas_.clear(has_error ? Rgba{176, 46, 40, 255}
                                     : Rgba{18, 25, 32, 255});
-    if(paused&&!has_error){
-      const auto& mask=state.user_actions_allowed?presentation_masks::paused_build:presentation_masks::paused;
-      paint_fixed_mask(mask,(320-mask.width)/2,(kOverlayHeight-mask.height)/2,
+    if(mask){
+      paint_fixed_mask(*mask,(320-mask->width)/2,(kOverlayHeight-mask->height)/2,
         [this](int x,int y,unsigned alpha){
           overlay_canvas_.pixel(x,y,{static_cast<std::uint8_t>(18+(239-18)*alpha/255),
             static_cast<std::uint8_t>(25+(242-25)*alpha/255),
             static_cast<std::uint8_t>(32+(244-32)*alpha/255),255});
         });
-    } else overlay_canvas_.text(3, 3, text, Rgba{239, 242, 244, 255});
+    } else overlay_canvas_.text(3, 3, paused && !has_error ?
+      (state.user_actions_allowed ? "PAUSED - BUILD OK - START: RESUME" : "PAUSED - START: RESUME") : text,
+      Rgba{239, 242, 244, 255});
 
     const auto& bytes = overlay_canvas_.rgba_bytes();
     return reinterpret_cast<const std::uint32_t*>(bytes.data());
@@ -2214,6 +2234,7 @@ class Runtime {
   bool cpu_bottom_presented_{false}; // completion of current engine end_frame only
   std::string overlay_text_{};
   bool overlay_error_{false};
+  const presentation_masks::Mask* overlay_mask_{nullptr};
   bool trace_next_present_{false};
   std::uint32_t traced_held_{0};
   const char* display_error_{nullptr};
@@ -2770,6 +2791,7 @@ int l_set_state(lua_State* state) {
   value.message_count = static_cast<int>(table_integer(state, 1, "message_count", value.message_count));
   value.game_speed = static_cast<int>(table_integer(state, 1, "game_speed", value.game_speed));
   value.paused = table_boolean(state, 1, "paused", value.paused);
+  value.chinese_ui = table_boolean(state, 1, "chinese_ui", value.chinese_ui);
   value.must_pause = table_boolean(state, 1, "must_pause", value.must_pause);
   value.user_actions_allowed = table_boolean(state, 1, "user_actions_allowed", value.user_actions_allowed);
   value.selected_name = table_string(state, 1, "selected_name", value.selected_name);
@@ -2922,6 +2944,11 @@ int l_set_notice(lua_State* state) {
   return 0;
 }
 
+int l_notice_hint(lua_State* state) {
+  lua_pushboolean(state, runtime().set_hint(luaL_checkstring(state, 1)));
+  return 1;
+}
+
 int l_performance(lua_State* state) {
   const PerformanceSnapshot snapshot = runtime().performance();
   lua_newtable(state);
@@ -2980,6 +3007,7 @@ int luaopen_th3ds(lua_State* state) {
   set_function(state, "resource_event", l_resource_event);
   set_function(state, "scene", l_scene);
   set_function(state, "set_notice", l_set_notice);
+  set_function(state, "notice_hint", l_notice_hint);
   set_function(state, "performance", l_performance);
   set_function(state, "cpu_profile", l_cpu_profile);
   set_function(state, "music_state", l_music_state);

@@ -184,6 +184,13 @@ end
         text=replace_exact(text,old,'''  local media=require("3ds.media")
   local ok,err=media.cycleSpeech(self.app)
   if ok then self.voice_panel:setLabel(media.voiceLabel(self.app))''','voice cycling upgrade')
+    for old, new in (
+        (':setLabel("Voice language")', ':setLabel(media.uiText(app,"voice_language"))'),
+        ('label=label.." (Chinese data missing)"', 'label=label..media.uiText(app,"missing_chinese")'),
+        (':setLabel("Music: PCM stream / one active voice bank")', ':setLabel(media.uiText(app,"music_transport"))'),
+    ):
+        if old in text:
+            text=replace_exact(text,old,new,'bilingual handheld media menu')
     yield path,text
 
     path = 'CorsixTH/Src/sdl_audio.cpp'

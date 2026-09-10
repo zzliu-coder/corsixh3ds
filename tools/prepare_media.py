@@ -24,6 +24,9 @@ def prepare(source, stage, runtime, tracks=None, voices=None):
         raise ValueError('expected regular subset font <=1 MiB')
     language = runtime/'Lua/languages/simplified_chinese.lua'
     text = language.read_text() + (runtime/'Lua/languages/english.lua').read_text()
+    # Platform menus are outside the upstream catalogue but use the same font.
+    for module in (runtime/'Lua/3ds').glob('*.lua'):
+        text += module.read_text()
     required = {ord(c) for c in text if c.isprintable()} | set(range(32,127))
     with TTFont(font) as face:
         missing = required - set(face.getBestCmap())

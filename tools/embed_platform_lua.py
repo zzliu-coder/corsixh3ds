@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "lua" / "3ds" / "platform.lua"
 HEADER = ROOT / "src" / "3ds" / "embedded_platform_lua.hpp"
 OPERATIONS = ROOT / "lua" / "3ds" / "operations.lua"
+MEDIA = ROOT / "lua" / "3ds" / "media.lua"
 
 DELIMITER = "cth3ds_lua"
 
@@ -36,6 +37,7 @@ namespace cth3ds {{
 // SD card does not provide a loadable Lua/3ds/platform.lua.
 inline constexpr char kEmbeddedPlatformLua[] = R"{delimiter}({body}){delimiter}";
 inline constexpr char kEmbeddedOperationsLua[] = R"cth3ds_ops({operations})cth3ds_ops";
+inline constexpr char kEmbeddedMediaLua[] = R"cth3ds_media({media})cth3ds_media";
 
 }}  // namespace cth3ds
 """
@@ -47,7 +49,10 @@ def render(source_text: str) -> str:
     operations = OPERATIONS.read_text(encoding="utf-8")
     if ')cth3ds_ops"' in operations:
         raise SystemExit("operations source contains the raw-string delimiter")
-    return TEMPLATE.format(delimiter=DELIMITER, body=source_text, operations=operations)
+    media = MEDIA.read_text(encoding="utf-8")
+    if ')cth3ds_media"' in media:
+        raise SystemExit("media source contains the raw-string delimiter")
+    return TEMPLATE.format(delimiter=DELIMITER, body=source_text, operations=operations, media=media)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

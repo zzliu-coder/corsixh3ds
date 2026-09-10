@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
                 self.assertIn(marker, run.stdout)
             self.assertIn('PASS restored machine information and native diagnostics', run.stdout)
             self.assertIn('PASS scoped level briefing and error refusal', run.stdout)
+            self.assertIn('PASS native capacity return boundary, completed save, new-world refusal and failure cleanup', run.stdout)
             print(run.stdout, end='')
 
 

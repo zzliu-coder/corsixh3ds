@@ -246,8 +246,11 @@ function C:tick()
     self.b.results.capacity_level_outcome="PASS"
     self:snapshot("level_reloaded")
     self.level_old=setmetatable({self.app.world,self.app.map,self.app.ui},{__mode="v"})
-    self.guard:allowLevelBriefing(nil)
     self:load(self.b.root.."expanded.sav")
+    -- load checks the departing UI before replacing it. Retain the exact
+    -- level-12 allowance through that boundary; the new map must independently
+    -- satisfy the guard, then the transition's allowance ends immediately.
+    self.guard:allowLevelBriefing(nil)
     self:snapshot("expanded_returned")
     self:normal("return_run",5000)
   else

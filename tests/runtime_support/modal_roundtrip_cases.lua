@@ -184,6 +184,75 @@ for _,mutate in ipairs{
 end
 print('PASS scoped level briefing and error refusal')
 do
+ -- Join native UI persistence to the actual capacity level_run -> load ->
+ -- return_run path. World time, graphics and filesystem are explicit seams;
+ -- guard, fingerprint, controller and persistence are production code.
+ local C=require('3ds.benchmark_capacity')
+ class 'ModalFixtureDate'
+ function ModalFixtureDate:tostring()return '1-01-01T00'end
+ function ModalFixtureWorld:setSpeed(value)self.speed=value end
+ function ModalFixtureWorld:getCurrentSpeed()return self.speed end
+ local plots=permanent('modal.fixture.plots',{
+  getPlotCount=function()return 1 end,getPlotOwner=function()return 1 end})
+ for _,mode in ipairs{'success','same_text','error_text','load_failure'}do
+  local app,s=setup();local saved={};local now=1;local final_saves=0
+  app.savegame_dir='private/save/'
+  app.config.language='Chinese (simplified)';app.config.play_music=true;app.config.speech_language='zh'
+  app._3ds={simulation_errors=0};app.eventHandlers={timer=function()end}
+  app.map=app.world.map;app.map.level_number=1;app.map.difficulty='full';app.map.th=plots
+  app.world.entities={};app.world.rooms={};app.ui.hospital.staff={}
+  app.world.game_date=setmetatable({},ModalFixtureDate._metatable);app.world.speed='Normal'
+  function app:save(file)
+   saved[file]=assert(P.dump({ui=self.ui,world=self.world},make_permanent(false)))
+   if file=='private/save/completed.sav'then final_saves=final_saves+1 end
+   return true
+  end
+  function app:load(file)
+   if file=='private/expanded.sav' and mode=='load_failure'then return false end
+   local graph=assert(P.load(assert(saved[file]),make_permanent(true)))
+   self.ui=graph.ui;self.world=graph.world;self.map=self.world.map;TheApp=self
+   self.ui:afterLoad(237,237)
+   if file=='private/expanded.sav' and (mode=='same_text' or mode=='error_text')then
+    self.ui:addWindow(UIInformation(self.ui,{mode=='same_text' and _S.introduction_texts.level12 or 'save failed'}))
+   end
+   return true
+  end
+  assert(app:save('private/expanded.sav'))
+  app.map.level_number=12;app.ui:addWindow(UIInformation(app.ui,{_S.introduction_texts.level12}))
+  s:allowLevelBriefing(12)
+  assert(s.briefing_level==12 and s.briefing_text==_S.introduction_texts.level12)
+  local native={clock_ms=function()return now end,diagnostic_line=function(line)assert(#line<=230)end,
+   memory=function()return{heap_available_estimate=1000,linear_free=2000,lua_current=3000}end,
+   runner_checkpoint=function()end}
+  s.native=native
+  local b={root='private/',run={capacity='r73-v1'},results={},expected_language=app.config.language,
+   expected_music=true,expected_voice='zh',expected_errors=0,deadline=0,
+   progress=function()return{world=now,hours=now,frames=now,entities=0,at=now}end}
+  local c=setmetatable({app=app,b=b,native=native,guard=s,phase='level_run',old={},
+   level_initial=setmetatable({app.world,app.map,app.ui},{__mode='v'}),
+   start_progress={world=0,hours=0,frames=0,entities=0,at=0}},C)
+  local ok,err=pcall(c.tick,c)
+  assert(saved['private/save/r73-level12.sav'],'actual level roundtrip was skipped')
+  if mode=='success'then
+   assert(ok and err==false and c.phase=='return_run',tostring(err))
+   assert(app.map.level_number==1 and s.briefing_level==nil and s.briefing_text==nil)
+   now=6001;assert(c:tick()==true and b.results.capacity_return_outcome=='PASS')
+   -- Benchmark's completed-save call is its existing independently tested
+   -- terminal seam; retain native persistence here after capacity cleanup.
+   assert(app:save('private/save/completed.sav') and final_saves==1)
+   assert(app:load('private/save/completed.sav'));s:checkMandatory()
+  else
+   assert(not ok)
+   if mode=='load_failure'then assert(err:find('capacity private load failed',1,true))
+   else assert(err:match('TH3DS_NEEDS_INPUT$'))end
+   c:close();assert(s.briefing_level==nil and s.briefing_text==nil and final_saves==0)
+   assert(saved['private/save/completed.sav']==nil)
+  end
+  c:close();assert(s.briefing_level==nil and s.briefing_text==nil) -- repeated cleanup is safe
+ end
+ print('PASS native capacity return boundary, completed save, new-world refusal and failure cleanup')
+end
+do
  -- Native userdata + the pinned stringProxy registry layout is an explicit
  -- service seam. Full UI persistence above uses strings, not a fake TH loader.
  local app,s=setup();app.map=app.world.map

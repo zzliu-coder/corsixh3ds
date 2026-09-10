@@ -10,3 +10,8 @@
 
 `tests/support/pinned_upstream.py` 在使用前逐文件校验，并验证二次组装内容一致。
 更新资料必须来自明确的上游提交，同时更新摘要；不可用已经打补丁的产物替换原始输入。
+
+R74 默认 bootstrap 测试另使用上一级 `edit_room.lua.pinned` 的完整原文件，
+取自相同固定提交，SHA-256 为
+`db2cdc5cdfe72af22f1c3fb39d236ece4dcb099d933aad67cedeb0c8829e22b6`。
+该文件供真实 Lua API 预检使用，测试加载前校验摘要；不改变原转换夹具的44文件合同。

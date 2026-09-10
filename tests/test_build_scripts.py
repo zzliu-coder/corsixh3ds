@@ -424,6 +424,11 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('--asset-mode ${PACKAGE_ASSET_MODE}', script)
         self.assertIn('--theme-hospital /theme-hospital', script)
         self.assertIn('loose product-candidate package; device NOT_PROVEN', script)
+        # Both bind mounts preserve host topology, so relative source aliases
+        # remain valid when --rm removes the container after building.
+        self.assertIn('-v "${CTH3DS_ROOT}:${CTH3DS_ROOT}"', script)
+        self.assertIn('-v "${CTH3DS_GENERATED_DIR}:${CTH3DS_GENERATED_DIR}"', script)
+        self.assertIn('-w "${CTH3DS_ROOT}"', script)
 
     def test_public_cross_build_does_not_claim_a_package_without_game_data(self) -> None:
         workflow = (ROOT / ".github/workflows/old3ds-validation.yml").read_text(

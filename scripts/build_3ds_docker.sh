@@ -49,12 +49,15 @@ else
 fi
 
 log "running reproducible 3DS cross-build in ${IMAGE}"
+mkdir -p "${CTH3DS_GENERATED_DIR}"
 "${ENGINE}" run --rm \
   -e CTH3DS_JOBS="${CTH3DS_JOBS}" \
   -e CTH3DS_CONTAINER_IMAGE="${IMAGE}" \
-  -v "${CTH3DS_ROOT}:/work" \
+  -e CTH3DS_GENERATED_DIR="${CTH3DS_GENERATED_DIR}" \
+  -v "${CTH3DS_ROOT}:${CTH3DS_ROOT}" \
+  -v "${CTH3DS_GENERATED_DIR}:${CTH3DS_GENERATED_DIR}" \
   "${PACKAGE_MOUNT_ARGS[@]}" \
-  -w /work \
+  -w "${CTH3DS_ROOT}" \
   "${IMAGE}" \
   bash -lc "set -euo pipefail; dkp-pacman -S --needed --noconfirm 3ds-dev${PACKAGE_ARGS}; export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM; scripts/build_3ds.sh${PACKAGE_COMMAND}"
 log "containerized output is under ${ROOT_Q}/build-3ds and ${ROOT_Q}/dist"

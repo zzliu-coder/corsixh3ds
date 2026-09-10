@@ -136,9 +136,12 @@ if(CTH3DS_BUILD_TESTS)
     )
   endif()
   add_test(NAME cth3ds-tests COMMAND cth3ds-tests)
-  # Each Python fixture owns its profile; host target identity remains explicit above.
+  # Each Python fixture owns its profile. Nested configurations inherit CMake's
+  # resolved host generator/compiler, including a later standalone ctest run.
   set(CTH3DS_PYTHON_TEST_ENV
     CTH3DS_BUILD_PROFILE=loose
+    CMAKE_GENERATOR=${CMAKE_GENERATOR}
+    CXX=${CMAKE_CXX_COMPILER}
     PYTHONPATH=${CMAKE_SOURCE_DIR}/tools
     PYTHONDONTWRITEBYTECODE=1
     CTH3DS_RUNTIME_PROBE=$<TARGET_FILE:cth3ds-runtime-probe>)

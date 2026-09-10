@@ -17,7 +17,8 @@ if python3 "${CTH3DS_ROOT}/tools/integrate_corsixth.py" "${UPSTREAM_DIR}" \
   log "verified existing complete source view at ${UPSTREAM_DIR}"
   exit 0
 fi
-VIEW_OWNER="$(mktemp -d "${CTH3DS_EXTERNAL_DIR}/source-generation.XXXXXX")"
+mkdir -p "${CTH3DS_GENERATED_DIR}"
+VIEW_OWNER="$(mktemp -d "${CTH3DS_GENERATED_DIR}/source-generation.XXXXXX")"
 VIEW="${VIEW_OWNER}/view"
 python3 "${CTH3DS_ROOT}/tools/integrate_corsixth.py" "${CTH3DS_UPSTREAM_PIN}" \
   --overlay-root "${CTH3DS_ROOT}" --build-profile "${CTH3DS_BUILD_PROFILE}" --output "${VIEW}"

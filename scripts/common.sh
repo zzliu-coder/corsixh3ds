@@ -12,7 +12,11 @@ CTH3DS_PROFILE_SUFFIX=""
 if [[ "${CTH3DS_BUILD_PROFILE}" == resource-experiment ]]; then CTH3DS_PROFILE_SUFFIX="-resource-experiment"; fi
 CTH3DS_EXTERNAL_DIR="${CTH3DS_EXTERNAL_DIR:-${CTH3DS_ROOT}/external}"
 CTH3DS_UPSTREAM_PIN="${CTH3DS_UPSTREAM_PIN:-${CTH3DS_EXTERNAL_DIR}/CorsixTH-pin}"
-export CTH3DS_ROOT CTH3DS_EXTERNAL_DIR CTH3DS_UPSTREAM_PIN
+# Published views outlive bootstrap and must remain outside both input trees.
+# Keep the downloaded pins, selected alias and owner lock in external; only
+# generated snapshots use this persistent sibling directory.
+CTH3DS_GENERATED_DIR="${CTH3DS_GENERATED_DIR:-${CTH3DS_ROOT}-generated}"
+export CTH3DS_ROOT CTH3DS_EXTERNAL_DIR CTH3DS_UPSTREAM_PIN CTH3DS_GENERATED_DIR
 CTH3DS_BUILD_DIR="${CTH3DS_BUILD_DIR:-${CTH3DS_ROOT}/build-3ds${CTH3DS_PROFILE_SUFFIX}}"
 CTH3DS_DEPS_PREFIX="${CTH3DS_DEPS_PREFIX:-${CTH3DS_BUILD_DIR}/deps}"
 CTH3DS_BUILD_MANIFEST="${CTH3DS_BUILD_MANIFEST:-${CTH3DS_ROOT}/artifacts/verification/cross-build${CTH3DS_PROFILE_SUFFIX}/artifact-manifest.json}"

@@ -385,13 +385,14 @@ extern "C" {
 using namespace cth3ds;
 const char* kAdapterModule="3ds.platform";
 void boot_log_checkpoint(const char*,const char*){}
-bool g_benchmark_active=false,g_operation_blocked=false,g_runner=false;
+bool g_benchmark_active=false,g_operation_blocked=false,g_runner=false,g_runner_interactive=false;
 bool runner_active(){return g_runner;}
+bool runner_interactive(){return g_runner_interactive;}
 void boot_log(const char*,...){}
 struct Runtime {int calls=0;int epoch(){return 68;}bool mark_ready(lua_State*){++calls;return true;}} instance;
 Runtime& runtime(){return instance;}
 '''+actual+r'''
-int flags(lua_State* L){g_runner=lua_toboolean(L,1);g_operation_blocked=lua_toboolean(L,2);return 0;}
+int flags(lua_State* L){g_runner=lua_toboolean(L,1);g_operation_blocked=lua_toboolean(L,2);g_runner_interactive=lua_toboolean(L,3);return 0;}
 int reset(lua_State*){reset_benchmark_activation();return 0;}
 int main(int argc,char**argv){
  auto* L=luaL_newstate();luaL_openlibs(L);
@@ -459,6 +460,22 @@ for _,origin in ipairs({'sd','embedded'})do
  assert(module.attach(owner,native,{epoch=68,resource_events=false})==adapter)
  adapter.benchmark:releaseActivation();assert(not active())
 end
+-- Explicit runner-interactive native service: the actual early branch must
+-- leave every real one-shot file unchanged for both peek and claim. Ordinary
+-- binding remains active without constructing or activating a Benchmark.
+write(marker,'R63\n');local prior_used,prior_input=read(used),read(input)
+flags(true,false,true)
+assert(not enabled(false) and not enabled(true) and not enabled(false))
+assert(read(marker)=='R63\n' and read(used)==prior_used and read(input)==prior_input)
+local interactive_app,interactive_native=fixture(false)
+interactive_native.benchmark_enabled=enabled
+interactive_native.benchmark_active=active;interactive_native.benchmark_state=state
+interactive_native.runner_context=function()error('interactive must not construct Benchmark')end
+local interactive_platform=P.attach(interactive_app,interactive_native,{epoch=68,resource_events=false})
+assert(interactive_platform.completed and interactive_platform.benchmark==nil and not active())
+assert(read(marker)=='R63\n' and read(used)==prior_used and read(input)==prior_input)
+flags(false,false,true);assert(enabled(false) and read(marker)=='R63\n')
+assert(os.remove(marker))
 flags(true,false);assert(enabled(false) and enabled(true));flags(false,false);assert(not enabled(false))
 TheApp={};TheApp._3ds={app=TheApp,completed=true,capabilities={epoch=68}}
 assert(ready());TheApp._3ds.app={};assert(not pcall(ready));TheApp._3ds.app=TheApp
@@ -466,7 +483,7 @@ TheApp._3ds.capabilities.epoch=69;assert(not pcall(ready));TheApp._3ds.capabilit
 flags(false,true);assert(not pcall(ready));flags(false,false)
 local adapter=TheApp._3ds;TheApp._3ds=nil;setmetatable(TheApp,{__index={_3ds=adapter}})
 assert(not pcall(ready))
-print('PASS native active getter/setter, read-only peek, single claim, bad/missing input/rename failure/runner, owner+epoch+raw readiness')
+print('PASS native active getter/setter, read-only peek, single claim, bad/missing input/rename failure/runner, interactive bypass preserves files and ordinary binding, owner+epoch+raw readiness')
 '''
         with tempfile.TemporaryDirectory(prefix='cth-r68-binding-') as name:
             directory=Path(name)
